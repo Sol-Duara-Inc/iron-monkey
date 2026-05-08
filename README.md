@@ -162,7 +162,7 @@ General precedence: CLI args > environment variables > config file > built-in de
 
 ## Workflow YAML
 
-See [`examples/workflows/happy-path.yaml`](examples/workflows/happy-path.yaml) for a complete 3-tool cross-tool workflow (Jenkins → JFrog → Spinnaker).
+See [`examples/workflows/happy-path.yaml`](examples/workflows/happy-path.yaml) for a complete 2-tool cross-tool workflow (Jenkins → Spinnaker / GKE).
 
 A workflow has a flat `produces[]` list. Each item is either a bare `event:` or an `expression:` reference:
 
@@ -179,19 +179,26 @@ workflow:
     timeout_ms: 30000
     min_wait_ms: 100
   produces:
-    - event: dev.cdevents.pipelinerun.started.0.3.0
+    - event: dev.cdevents.pipelinerun.started.0.5.1
       tool: jenkins-prod
-      subject:
-        id: run-1
-
-    - expression: build:^0.1.0
-      tool: jenkins-prod
-
-    - event: dev.cdevents.pipelinerun.finished.0.3.0
-      tool: jenkins-prod
+      source: https://jenkins.example.com/
       subject:
         id: run-1
         content:
+          pipelineName: my-pipeline
+          uri: https://jenkins.example.com/job/my-pipeline/1
+
+    - expression: build:^0.1.0
+      tool: jenkins-prod
+      source: https://jenkins.example.com/
+
+    - event: dev.cdevents.pipelinerun.finished.0.5.1
+      tool: jenkins-prod
+      source: https://jenkins.example.com/
+      subject:
+        id: run-1
+        content:
+          pipelineName: my-pipeline
           outcome: success
 ```
 
@@ -200,7 +207,8 @@ Key points:
 - **No `stages:`** — the list is flat; tool is set per-item or via `workflow.defaults`.
 - `workflow.defaults` applies to every item; per-item fields override defaults.
 - `tool:` maps to a `tools.*` entry in your config file for source URI resolution. You can also set `source:` directly on any item.
-- Event `type:` must exactly match a type string in one of the loaded CDEvent schemas.
+- Event type strings use CDEvents 0.5.1 versioning — the suffix is always `.0.5.1` for all event types bundled with Iron Monkey (e.g. `dev.cdevents.build.started.0.5.1`).
+- `pipelinerun.started` requires `subject.content.pipelineName` (string) and `subject.content.uri` (URI). Check `docs/SCHEMAS.md` for the required content fields of each event type.
 
 ---
 
@@ -291,15 +299,15 @@ Event IDs used in `--inject` specs are the `workflowEventId` values visible in t
 
 ## CDEvent payload shape
 
-Every event Iron Monkey emits follows the CDEvents 0.6.0-draft envelope:
+Every event Iron Monkey emits follows the CDEvents 0.5.1 envelope:
 
 ```json
 {
   "context": {
-    "specversion": "0.6.0-draft",
+    "specversion": "0.5.1",
     "id": "<uuid>",
     "source": "<tool-source-uri>",
-    "type": "dev.cdevents.<noun>.<verb>.<major>.<minor>.<patch>",
+    "type": "dev.cdevents.<noun>.<verb>.0.5.1",
     "timestamp": "<iso-8601>",
     "chainId": "<uuid-or-fallback-urn>",
     "links": [
@@ -313,6 +321,8 @@ Every event Iron Monkey emits follows the CDEvents 0.6.0-draft envelope:
 }
 ```
 
+`context.specversion` is always `"0.5.1"`. The type suffix is also `.0.5.1` for all 45 event types bundled with Iron Monkey.
+
 `context.links` is a plain array of link objects. The first event in a chain has no `links` entry. After the last event, Iron Monkey emits a standalone `dev.cdevents.chain.end` payload to close the chain.
 
 The fallback chainId (used when `--no-conduit` is set and no Conduit is reachable) takes the form `urn:sol-duara:fallback:<slug>:<timestamp>:<nonce>` — intentionally non-UUID so downstream UUID validators will flag it.
@@ -324,7 +334,7 @@ The fallback chainId (used when `--no-conduit` is set and no Conduit is reachabl
 Iron Monkey validates each event against a per-event schema loaded from `schemas/cdevents/`. The loader keys schemas by the type string in `context.type.enum[0]` — filenames don't matter.
 
 To add a new event type:
-1. Get the schema from the [CDEvents spec repository](https://github.com/cdevents/spec) or write one following the 0.6.0-draft shape (JSON Schema 2020-12).
+1. Get the schema from the [CDEvents spec repository](https://github.com/cdevents/spec) or write one following the 0.5.1 shape (JSON Schema 2020-12).
 2. Drop it in `schemas/cdevents/` (or point `IRON_MONKEY_SCHEMAS` to a custom directory).
 3. Use the matching type string in your workflow YAML.
 

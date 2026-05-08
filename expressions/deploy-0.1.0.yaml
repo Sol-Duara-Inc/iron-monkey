@@ -1,0 +1,27 @@
+expression:
+  name: deploy
+  version: 0.1.0
+  description: Deployment lifecycle — taskrun brackets service operations
+  produces:
+    - event: dev.cdevents.taskrun.started.0.5.1
+      id: deployment-started
+      timeout_ms: 30000
+      min_wait_ms: 100
+
+    - event: dev.cdevents.service.deployed.0.5.1
+      timeout_ms: 30000
+      min_wait_ms: 100
+      subject:
+        content:
+          environment:
+            id: production
+          artifactId: pkg:docker/junction-box-demo@latest
+
+    - event: dev.cdevents.service.published.0.5.1
+      timeout_ms: 30000
+      min_wait_ms: 100
+
+    - event: dev.cdevents.taskrun.finished.0.5.1
+      id: deployment-finished
+      timeout_ms: 30000
+      min_wait_ms: 100

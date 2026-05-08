@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cdevents.dev/schemas/0.5.1/base-event.json",
+  "title": "Conduit CDEvents Base Event",
+  "description": "Base schema for all Conduit CDEvents. All Conduit event types extend this structure. Does not include customData or data — all event-specific payload belongs in subject.content.",
+  "type": "object",
+  "required": ["context", "subject"],
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "type": "object",
+      "description": "Routing and identification envelope. Contains only the metadata Conduit needs to route, version, and validate an event — no semantic payload.",
+      "required": ["version", "id", "source", "type", "timestamp", "schemaUri"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "CDEvents specification version this event conforms to.",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "examples": ["0.5.1"]
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this event instance. MUST be a UUID.",
+          "format": "uuid",
+          "examples": ["550e8400-e29b-41d4-a716-446655440000"]
+        },
+        "source": {
+          "type": "string",
+          "description": "URI-reference identifying the system that produced this event.",
+          "format": "uri-reference",
+          "examples": ["example.com/source", "https://ci.example.com/pipelines"]
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type. For the Conduit base event this MUST be exactly: dev.cdevents.event.base.<major>.<minor>.<patch>.",
+          "pattern": "^dev\\.cdevents\\.event\\.base\\.\\d+\\.\\d+\\.\\d+$",
+          "examples": ["dev.cdevents.event.base.0.5.1"]
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO 8601 / RFC 3339 timestamp indicating when this event occurred.",
+          "format": "date-time",
+          "examples": ["2025-07-03T21:47:00.000Z"]
+        },
+        "schemaUri": {
+          "type": "string",
+          "description": "Absolute URI pointing to the JSON Schema that validates this event type.",
+          "format": "uri",
+          "examples": ["https://cdevents.dev/schemas/0.5.1/base-event.json"]
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "description": "The entity this event is about. All semantic payload — both identity fields and event-specific attributes — lives here.",
+      "required": ["id", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identifier of the subject this event relates to. MUST be non-empty.",
+          "minLength": 1,
+          "examples": ["subject-123", "pipeline-run-42"]
+        },
+        "type": {
+          "type": "string",
+          "description": "Type label for the subject entity (e.g. pipelineRun, taskRun, artifact).",
+          "minLength": 1,
+          "examples": ["pipelineRun", "taskRun", "artifact", "repository"]
+        },
+        "source": {
+          "type": "string",
+          "description": "URI-reference identifying the subject's origin system, if different from context.source.",
+          "format": "uri-reference",
+          "examples": ["https://tekton.example.com"]
+        },
+        "content": {
+          "type": "object",
+          "description": "Event-type-specific payload. All semantic data introduced by a derived schema lives here. If a concept key (e.g. 'url') must appear more than once at the same level in this object, it MUST be suffixed with an underscore and a qualifier identifying what it refers to (e.g. 'url_artifact', 'url_pipelineRun'). If the top-level keys are already semantically distinct objects (e.g. 'artifact', 'pipelineRun'), each may carry its own 'url' key internally without namespacing — the parent key provides the disambiguation.",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "context": {
+        "version": "0.5.1",
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "source": "example.com/source",
+        "type": "dev.cdevents.event.base.0.5.1",
+        "timestamp": "2025-07-03T21:47:00.000Z",
+        "schemaUri": "https://cdevents.dev/schemas/0.5.1/base-event.json"
+      },
+      "subject": {
+        "id": "subject-123",
+        "type": "example"
+      }
+    }
+  ]
+}
