@@ -50,18 +50,24 @@ In a Sympraxis workflow:
 - **The workflow ends with a single terminal `pipelineRun.finished`**, regardless of how many tool boundaries appeared.
 - **`targetBus`** is stamped on every manifest entry as a seam for future multi-bus support. On day 1, every entry carries the same value (the selected bus name).
 
-A typical 3-tool cross-tool sequence looks like:
+A typical 2-tool cross-tool sequence (as in `examples/workflows/happy-path.yaml`) looks like:
 ```
-pipelineRun.started  (tool 1)
-  ... tool 1 events ...
-pipelineRun.queued   (handoff signal)
-pipelineRun.started  (tool 2)
-  ... tool 2 events ...
-pipelineRun.queued   (handoff signal)
-pipelineRun.started  (tool 3)
-  ... tool 3 events ...
-pipelineRun.finished (terminal)
+pipelineRun.started   (tool 1 — Jenkins)
+  build.started
+  testsuiterun.started
+  testsuiterun.finished
+  build.finished
+  artifact.packaged
+  artifact.published
+pipelineRun.started   (tool 2 — Spinnaker)
+  taskrun.started
+  service.deployed
+  service.published
+  taskrun.finished
+pipelineRun.finished  (terminal)
 ```
+
+`pipelineRun.queued` is available as a handoff signal between tools but is **never auto-injected** — include it explicitly in `produces[]` when needed.
 
 ## Key design decisions
 
@@ -71,7 +77,7 @@ pipelineRun.finished (terminal)
 
 **Schema lookup by type enum, not filename.** The schema loader reads `context.type.enum[0]` from every `.json` file in the schemas directory and builds a `Map<typeString, schema>`. Filenames are irrelevant. This means any schema dropped into the directory is picked up automatically as long as it contains the correct type enum.
 
-**`context.links` is a plain array.** Per the CDEvents 0.6.0-draft spec, `links` in the event context is a `LinkEntry[]` (type + target pairs). The loader pre-registers the `links/embeddedlinksarray` AJV sub-schema so that `$ref` resolution works without a filesystem dependency.
+**`context.links` is a plain array.** Per the CDEvents 0.5.1 spec, `links` in the event context is a `LinkEntry[]` (type + target pairs). The loader pre-registers the `links/embeddedlinksarray` AJV sub-schema so that `$ref` resolution works without a filesystem dependency.
 
 **chainId as first-class citizen.** The chainId flows through every event payload and every log line. The fallback URN is intentionally non-UUID so downstream UUID validators will flag it.
 
@@ -79,15 +85,15 @@ pipelineRun.finished (terminal)
 
 ## CDEvent payload shape
 
-Every emitted event follows the CDEvents 0.6.0-draft envelope:
+Every emitted event follows the CDEvents 0.5.1 envelope:
 
 ```json
 {
   "context": {
-    "specversion": "0.6.0-draft",
+    "specversion": "0.5.1",
     "id": "<uuid>",
     "source": "<tool-source-uri>",
-    "type": "dev.cdevents.<noun>.<verb>.<major>.<minor>.<patch>",
+    "type": "dev.cdevents.<noun>.<verb>.0.5.1",
     "timestamp": "<iso-8601>",
     "chainId": "<uuid-or-fallback-urn>",
     "links": [

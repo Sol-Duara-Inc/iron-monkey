@@ -1,0 +1,16 @@
+buses:
+  default:
+    type: rabbitmq
+    url: amqp://localhost:5672
+    exchange: cdevents
+    routing_key_template: "{eventType}"
+
+tools:
+  jenkins-prod:
+    source: dev/jenkins
+  spinnaker-prod:
+    source: dev/spinnaker
+  jfrog-prod:
+    source: dev/jfrog
+  gke-prod:
+    source: dev/gke

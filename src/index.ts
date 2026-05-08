@@ -1,0 +1,48 @@
+/**
+ * @module iron-monkey
+ * Public API surface for the Iron Monkey CDEvents pitching machine library.
+ * Re-exports all stable functions, classes, interfaces, and types that external
+ * consumers and the CLI entry point can depend on.
+ *
+ * Typical programmatic usage:
+ * ```ts
+ * import { runWorkflow } from 'iron-monkey';
+ * await runWorkflow('./workflow.yaml', { logLevel: 'info', logFormat: 'text' });
+ * ```
+ *
+ * Individual modules can also be imported directly for more granular control
+ * over config loading, manifest building, injection, and bus management.
+ */
+
+export { validateWorkflow, resolveProduces } from './workflow/parser.js';
+export { loadConfig, resolveBusName } from './config/loader.js';
+export { loadExpressionRegistry } from './expressions/loader.js';
+export { buildManifest } from './manifest/builder.js';
+export { parseInjections } from './injection/parser.js';
+export { applyInjections } from './injection/apply.js';
+export { acquireChainId } from './chain/acquire.js';
+export { generateFallbackChainId } from './chain/fallback.js';
+export { loadSchemas, validateEvent } from './schema/validator.js';
+export { createBus } from './bus/interface.js';
+export { runWorkflow } from './emitter/runner.js';
+export { createLogger, setLogger, getLogger } from './logger/index.js';
+
+export type {
+  WorkflowFile,
+  WorkflowDef,
+  WorkflowDefaults,
+  EventItem,
+  ExpressionItem,
+  ExpressionOverride,
+  ProducesItem,
+} from './workflow/types.js';
+export type { ResolvedEvent } from './workflow/parser.js';
+export type {
+  ExpressionBundle,
+  ExpressionEvent,
+  ExpressionBundleFile,
+} from './expressions/types.js';
+export type { ExpressionRegistry } from './expressions/loader.js';
+export type { IronMonkeyConfig, BusConfig, ToolConfig, ConduitConfig } from './config/types.js';
+export type { Manifest, ManifestEvent, CDEventPayload } from './manifest/types.js';
+export type { Injection } from './injection/parser.js';
