@@ -3,7 +3,7 @@ import { writeFile, mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { validateWorkflow, resolveProduces } from '../../src/workflow/parser.js';
-import { loadExpressionRegistry } from '../../src/expressions/loader.js';
+import { loadExpressionRegistry } from '../../src/loaders/expression.loader.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -176,7 +176,7 @@ workflow:
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
     const events = resolveProduces(wf, registry);
     const deployed = events.find((e) => e.type === 'dev.cdevents.service.deployed.0.5.1');
-    const started = events.find((e) => e.id === 'deployment-started');
+    const started = events.find((e) => e.type === 'dev.cdevents.taskrun.started.0.5.1');
     expect(deployed?.tool).toBe('gke');
     expect(deployed?.source).toBe('https://gke.example.com/');
     expect(started?.tool).toBe('spinnaker');

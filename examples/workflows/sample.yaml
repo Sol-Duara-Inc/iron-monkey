@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=./src/schemas/cdrus/workflow.schema.json
+workflow:
+  id: junction-box-demo-2
+  name: junction-box-demo
+  cdrus:
+    version: 1
+    metadata:
+      description: cdCon May 2026 Junction Box happy path — full CI/CD chain (Sympraxis)
+      owner: Sol Duara
+      tags: [github-actions, gke]
+
+  defaults:
+    pipeline: junction-box-demo
+    timeout_ms: 450000
+    min_wait_ms: 100
+
+  produces:
+    # ── Github Action ──────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.started.0.5.1
+
+    - expression: build:^0.1.0
+
+    - expression: artifact-store:^0.1.0
+
+    - expression: deploy:^0.1.0
+      overrides:
+        service.deployed:
+          tool: gke-prod
+          source: https://gke.example.com/
+        service.published:
+          tool: gke-prod
+          source: https://gke.example.com/
+
+    # ── Terminal ─────────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.finished.0.5.1

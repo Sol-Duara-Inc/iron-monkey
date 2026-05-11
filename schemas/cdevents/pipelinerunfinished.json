@@ -19,9 +19,7 @@
         },
         "type": {
           "type": "string",
-          "enum": [
-            "dev.cdevents.pipelinerun.finished.0.5.1"
-          ],
+          "enum": ["dev.cdevents.pipelinerun.finished.0.5.1"],
           "default": "dev.cdevents.pipelinerun.finished.0.5.1"
         },
         "timestamp": {
@@ -43,13 +41,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": [
-        "specversion",
-        "id",
-        "source",
-        "type",
-        "timestamp"
-      ]
+      "required": ["specversion", "id", "source", "type", "timestamp"]
     },
     "subject": {
       "properties": {
@@ -73,12 +65,7 @@
             },
             "outcome": {
               "type": "string",
-              "enum": [
-                "success",
-                "failure",
-                "cancel",
-                "error"
-              ]
+              "enum": ["success", "failure", "cancel", "error"]
             },
             "errors": {
               "type": "string"
@@ -90,10 +77,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": [
-        "id",
-        "content"
-      ]
+      "required": ["id", "content"]
     },
     "customData": {
       "oneOf": [
@@ -112,8 +96,5 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": [
-    "context",
-    "subject"
-  ]
+  "required": ["context", "subject"]
 }

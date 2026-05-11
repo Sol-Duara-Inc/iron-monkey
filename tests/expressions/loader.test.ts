@@ -47,8 +47,8 @@ describe('loadExpressionRegistry — bundled expressions', () => {
     const bundle = registry.resolve('deploy:^0.1.0');
     expect(bundle.name).toBe('deploy');
     expect(bundle.produces).toHaveLength(4);
-    expect(bundle.produces[0].id).toBe('deployment-started');
-    expect(bundle.produces[3].id).toBe('deployment-finished');
+    expect(bundle.produces[0].min_wait_ms).toStrictEqual(100);
+    expect(bundle.produces[3].timeout_ms).toStrictEqual(30000);
   });
 });
 

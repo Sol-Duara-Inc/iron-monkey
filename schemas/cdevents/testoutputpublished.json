@@ -18,9 +18,7 @@
         },
         "type": {
           "type": "string",
-          "enum": [
-            "dev.cdevents.testoutput.published.0.5.1"
-          ],
+          "enum": ["dev.cdevents.testoutput.published.0.5.1"],
           "default": "dev.cdevents.testoutput.published.0.5.1"
         },
         "timestamp": {
@@ -42,13 +40,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": [
-        "specversion",
-        "id",
-        "source",
-        "type",
-        "timestamp"
-      ]
+      "required": ["specversion", "id", "source", "type", "timestamp"]
     },
     "subject": {
       "properties": {
@@ -63,13 +55,7 @@
           "properties": {
             "outputType": {
               "type": "string",
-              "enum": [
-                "report",
-                "video",
-                "image",
-                "log",
-                "other"
-              ]
+              "enum": ["report", "video", "image", "log", "other"]
             },
             "format": {
               "type": "string",
@@ -91,25 +77,17 @@
                 }
               },
               "additionalProperties": false,
-              "required": [
-                "id"
-              ]
+              "required": ["id"]
             }
           },
           "additionalProperties": false,
           "type": "object",
-          "required": [
-            "outputType",
-            "format"
-          ]
+          "required": ["outputType", "format"]
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "required": [
-        "id",
-        "content"
-      ]
+      "required": ["id", "content"]
     },
     "customData": {
       "oneOf": [
@@ -128,8 +106,5 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": [
-    "context",
-    "subject"
-  ]
+  "required": ["context", "subject"]
 }

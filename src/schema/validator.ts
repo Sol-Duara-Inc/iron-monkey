@@ -8,7 +8,7 @@
 
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { loadSchemasFromDir, getDefaultSchemasDir } from './loader.js';
+import { loadSchemasFromDir, getDefaultSchemasDir } from '../loaders/schema.loader.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AjvConstructor = (Ajv2020 as any).default ?? Ajv2020;

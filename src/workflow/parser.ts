@@ -13,9 +13,9 @@ import yaml from 'js-yaml';
 import Ajv from 'ajv';
 import { workflowSchema } from './schema.js';
 import { isEventItem, isExpressionItem } from './types.js';
-import { nounVerbFromType } from '../expressions/loader.js';
+import { nounVerbFromType } from '../loaders/expression.loader.js';
 import type { WorkflowFile, WorkflowDefaults } from './types.js';
-import type { ExpressionRegistry } from '../expressions/loader.js';
+import type { ExpressionRegistry } from '../loaders/expression.loader.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AjvConstructor = (Ajv as any).default ?? Ajv;

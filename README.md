@@ -1,8 +1,9 @@
+<p style="text-align: center;"><a href="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml"><img src="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml/badge.svg" alt="CI"></a> <img src="https://img.shields.io/github/license/Sol-Duara-Inc/iron-monkey.svg" alt="License"> <img src="https://img.shields.io/github/v/release/Sol-Duara-Inc/iron-monkey.svg" alt="Latest Release"><img src="https://img.shields.io/codecov/c/github/Sol-Duara-Inc/iron-monkey.svg?branch=main" alt="Coverage"> </p>
 <img src="docs/iron-monkey-logo.png" alt="Iron Monkey logo" width="200" />
 
 A CDEvents pitching machine for testing SDLC orchestration platforms.
 
-Iron Monkey takes a workflow YAML describing a happy path and a set of failure-injection arguments, then fires CDEvents at a configured message bus (RabbitMQ or Kafka) on a controllable schedule.
+Iron Monkey takes a workflow YAML describing a happy path and a set of failure-injection arguments, then fires CDEvents at a configured message bus (RabbitMQ, Kafka, or Junction Box over HTTP) on a controllable schedule. Workflows and bundled expressions only need to describe the _shape_ of the happy path — Iron Monkey's payload synthesizer fills in any required `subject.content` fields that the schemas demand but the author omitted.
 
 The name is a nod to Iron Mike (the pitching machine) and Chaos Monkey (Netflix's failure-injection tool).
 
@@ -20,7 +21,7 @@ A Sympraxis chain is tool-bracketed: each tool's contribution opens with a `pipe
 
 - Node.js 20+ LTS
 - npm 9+
-- RabbitMQ or Kafka (for `run` / `inspect` / `purge`)
+- One of: RabbitMQ, Kafka, or a reachable Junction Box instance (for `run` / `inspect` / `purge`)
 
 ---
 
@@ -62,6 +63,11 @@ iron-monkey run examples/workflows/happy-path.yaml \
   --config examples/configs/local-rabbit.yaml \
   --no-conduit --bus default
 
+# Run against a local Junction Box (HTTP)
+iron-monkey run examples/workflows/happy-path.yaml \
+  --config examples/configs/local-junction-box.yaml \
+  --no-conduit --bus default --interval 1000
+
 # Run with failure injection
 iron-monkey run examples/workflows/happy-path.yaml \
   --config examples/configs/local-rabbit.yaml \
@@ -95,6 +101,10 @@ iron-monkey version                   Print version and exit
 --config <path>         Path to JSON/YAML config file
 --bus <name>            Bus name to use (overrides IRON_MONKEY_BUS_NAME env var)
 --no-conduit            Skip chainId acquisition; use fallback URN (no warning)
+--no-synth              Disable simulated-data synthesis; fail validation on
+                        any schema-required field the workflow did not supply
+--interval <ms>         Override min_wait_ms and timeout_ms on every event for
+                        fixed-cadence emission (e.g. 1000 = one event per second)
 --seed <int>            Seed for deterministic IDs and timing
 --inject <spec>         Failure injection spec (repeatable)
 --manifest-out <path>   Write the manifest to file as JSON
@@ -121,13 +131,25 @@ buses:
       username: ${RABBIT_USER}
       password: ${RABBIT_PASS}
     exchange: cdevents
-    routing_key_template: "{eventType}"
+    routing_key_template: '{eventType}'
 
   kafka-staging:
     type: kafka
     brokers:
       - kafka-1.local:9092
     topic: cdevents
+
+  junction-box-local:
+    type: junction-box
+    url: http://localhost:3000
+    # POSTed to /api/launch on connect; the returned runId becomes the chainId.
+    workflow_id: junction-box-demo-1
+    # health_check: true        # GET /health preflight (default)
+    # launch: true              # POST /api/launch (default)
+    # events_path: /api/events  # path used for per-event POSTs
+    # expected_status: 202      # HTTP status that signals "accepted"
+    # headers:                  # forwarded on every request
+    #   Authorization: Bearer ${JB_TOKEN}
 
 tools:
   jenkins-prod:
@@ -142,17 +164,17 @@ tools:
 
 ### Environment variables
 
-| Variable | Description |
-|---|---|
-| `IRON_MONKEY_CONFIG` | Path to config file |
-| `IRON_MONKEY_SCHEMAS` | Path to CDEvent schemas directory |
-| `IRON_MONKEY_CONDUIT_URL` | Conduit base URL |
-| `IRON_MONKEY_CONDUIT_TOKEN` | Conduit bearer token |
-| `IRON_MONKEY_BUS_NAME` | Bus name to use (must match a key in `buses`) |
-| `IRON_MONKEY_BUS_URL` | Bus connection URL (`amqp://` or `kafka://`) |
-| `IRON_MONKEY_BUS_USER` | Bus username |
-| `IRON_MONKEY_BUS_PASS` | Bus password |
-| `IRON_MONKEY_EXPRESSIONS` | Path to expressions directory (default: `expressions/`) |
+| Variable                    | Description                                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------- |
+| `IRON_MONKEY_CONFIG`        | Path to config file                                                                                |
+| `IRON_MONKEY_SCHEMAS`       | Path to CDEvent schemas directory                                                                  |
+| `IRON_MONKEY_CONDUIT_URL`   | Conduit base URL                                                                                   |
+| `IRON_MONKEY_CONDUIT_TOKEN` | Conduit bearer token                                                                               |
+| `IRON_MONKEY_BUS_NAME`      | Bus name to use (must match a key in `buses`)                                                      |
+| `IRON_MONKEY_BUS_URL`       | Bus connection URL (`amqp://` or `kafka://`). Junction Box buses are configured via the YAML file. |
+| `IRON_MONKEY_BUS_USER`      | Bus username                                                                                       |
+| `IRON_MONKEY_BUS_PASS`      | Bus password                                                                                       |
+| `IRON_MONKEY_EXPRESSIONS`   | Path to expressions directory (default: `expressions/`)                                            |
 
 **Bus selection precedence:** `--bus` CLI flag > `IRON_MONKEY_BUS_NAME` env > config bus named `default` > error if multiple buses and none of the above resolved.
 
@@ -167,13 +189,14 @@ See [`examples/workflows/happy-path.yaml`](examples/workflows/happy-path.yaml) f
 A workflow has a flat `produces[]` list. Each item is either a bare `event:` or an `expression:` reference:
 
 ```yaml
-# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/workflow.schema.json
+# yaml-language-server: $schema=./schemas/cdrus/workflow.schema.json
 workflow:
   id: my-workflow
   name: my-workflow
-  version: 1
-  metadata:
-    description: Example
+  cdrus:
+    version: 1
+    metadata:
+      description: Example
   defaults:
     pipeline: my-pipeline
     timeout_ms: 30000
@@ -182,11 +205,7 @@ workflow:
     - event: dev.cdevents.pipelinerun.started.0.5.1
       tool: jenkins-prod
       source: https://jenkins.example.com/
-      subject:
-        id: run-1
-        content:
-          pipelineName: my-pipeline
-          uri: https://jenkins.example.com/job/my-pipeline/1
+      pipeline: my-pipeline
 
     - expression: build:^0.1.0
       tool: jenkins-prod
@@ -195,20 +214,17 @@ workflow:
     - event: dev.cdevents.pipelinerun.finished.0.5.1
       tool: jenkins-prod
       source: https://jenkins.example.com/
-      subject:
-        id: run-1
-        content:
-          pipelineName: my-pipeline
-          outcome: success
+      pipeline: my-pipeline
 ```
 
 Key points:
+
 - **No `bus:` field** in workflow YAML — bus is selected via `--bus` flag or env var.
 - **No `stages:`** — the list is flat; tool is set per-item or via `workflow.defaults`.
 - `workflow.defaults` applies to every item; per-item fields override defaults.
 - `tool:` maps to a `tools.*` entry in your config file for source URI resolution. You can also set `source:` directly on any item.
 - Event type strings use CDEvents 0.5.1 versioning — the suffix is always `.0.5.1` for all event types bundled with Iron Monkey (e.g. `dev.cdevents.build.started.0.5.1`).
-- `pipelinerun.started` requires `subject.content.pipelineName` (string) and `subject.content.uri` (URI). Check `docs/SCHEMAS.md` for the required content fields of each event type.
+- **You do not need to spell out every required `subject.content` field.** Iron Monkey synthesizes anything the schema marks `required` but the workflow/bundle omits (see _Payload synthesis_ below). Use `content:` on an event item if you want to pin specific values; everything else is filled in for you.
 
 ---
 
@@ -218,11 +234,11 @@ Expressions are named, versioned bundles of CDEvents that represent common SDLC 
 
 ### Bundled expressions
 
-| Name | Version | Events (in order) |
-|---|---|---|
-| `build` | `0.1.0` | build.started → testsuiterun.started → testsuiterun.finished → build.finished |
-| `artifact-store` | `0.1.0` | artifact.packaged → artifact.published |
-| `deploy` | `0.1.0` | taskrun.started → service.deployed → service.published → taskrun.finished |
+| Name             | Version | Events (in order)                                                             |
+| ---------------- | ------- | ----------------------------------------------------------------------------- |
+| `build`          | `0.1.0` | build.started → testsuiterun.started → testsuiterun.finished → build.finished |
+| `artifact-store` | `0.1.0` | artifact.packaged → artifact.published                                        |
+| `deploy`         | `0.1.0` | taskrun.started → service.deployed → service.published → taskrun.finished     |
 
 The `deploy` bundle uses explicit event IDs: `deployment-started` (taskrun.started) and `deployment-finished` (taskrun.finished).
 
@@ -269,6 +285,22 @@ The `content` field deep-merges at each level; all other fields are simple repla
 2. Reference it in your workflow as `expression: <name>:<semver-range>`.
 
 If two events in a bundle share the same `noun.verb`, each must have a unique explicit `id` field or the bundle will fail to load.
+
+---
+
+## Payload synthesis
+
+CDEvent schemas typically require fields that are noise to hand-author across every event of a long happy path — `outcome` on every `*.finished`, `environment.id` on deploys, `artifactId` on packagings, `pipelineName`/`uri` on every `pipelinerun.started`, and so on. Iron Monkey treats workflows and expression bundles as **intent** (the shape of the chain) and the CDEvent schemas as **contract** (what each event must carry), and synthesizes any required field the intent did not supply.
+
+How it works:
+
+- For each event, the manifest builder loads the matching JSON schema and walks `subject.content`. Anything marked `required` and not supplied by the workflow/bundle is generated.
+- **User-supplied values are never overwritten.** Whatever you put in `content:` on an event item (or in a bundle's event content, or in an expression override) wins.
+- Generators are semantic where it helps: `outcome: 'success'`, `pipelineName: <workflow.name>`, `artifactId: pkg:oci/<workflow-name>@1.0.0`, `errors: ''`, `source: <toolSource>`. URI-format fields are derived from the configured tool source (`https://jenkins.example.com/synth/<field>/<short-hash>`); when the tool source isn't an absolute URI, an `https://<slug>.synth.iron-monkey.local/` fallback is used. Enums prefer `'success'` when available, else the first declared value.
+- Output is deterministic per `(chainId, eventType, JSON pointer)` so repeat runs with the same seed produce identical payloads.
+- Every synthesized field is recorded on the manifest event as a JSON pointer in a `synthesized: string[]` array, visible in `dry-run` output and `--manifest-out` files — so you can tell at a glance what was real and what was filled in.
+
+Pass `--no-synth` to disable synthesis and have the schema validator fail loudly on any missing required field. Useful for authoring workflows where you want to know precisely which fields you forgot.
 
 ---
 
@@ -323,7 +355,7 @@ Every event Iron Monkey emits follows the CDEvents 0.5.1 envelope:
 
 `context.specversion` is always `"0.5.1"`. The type suffix is also `.0.5.1` for all 45 event types bundled with Iron Monkey.
 
-`context.links` is a plain array of link objects. The first event in a chain has no `links` entry. After the last event, Iron Monkey emits a standalone `dev.cdevents.chain.end` payload to close the chain.
+`context.links` is a plain array of link objects. The first event in a chain has no `links` entry. After the last event, Iron Monkey emits a `dev.cdevents.chain.end` sentinel as a fully-structured CDEvent envelope: `context` carries the type and a single `END` link pointing at the last substantive event, and `subject.id` is the chain ID itself (the chain is the subject of its own closure), with `subject.content.lastEventId` mirroring the END target for consumers that only inspect `subject.content`. This makes the sentinel acceptable to consumers that validate every body against the base CDEvent shape.
 
 The fallback chainId (used when `--no-conduit` is set and no Conduit is reachable) takes the form `urn:sol-duara:fallback:<slug>:<timestamp>:<nonce>` — intentionally non-UUID so downstream UUID validators will flag it.
 
@@ -334,6 +366,7 @@ The fallback chainId (used when `--no-conduit` is set and no Conduit is reachabl
 Iron Monkey validates each event against a per-event schema loaded from `schemas/cdevents/`. The loader keys schemas by the type string in `context.type.enum[0]` — filenames don't matter.
 
 To add a new event type:
+
 1. Get the schema from the [CDEvents spec repository](https://github.com/cdevents/spec) or write one following the 0.5.1 shape (JSON Schema 2020-12).
 2. Drop it in `schemas/cdevents/` (or point `IRON_MONKEY_SCHEMAS` to a custom directory).
 3. Use the matching type string in your workflow YAML.
@@ -348,9 +381,12 @@ See [docs/SCHEMAS.md](docs/SCHEMAS.md) for the complete schema format requiremen
 npm install
 npm run build
 npm test                  # unit tests
-npm run test:integration  # integration tests (requires RabbitMQ on localhost:5672)
+npm run test:coverage     # unit tests with coverage report (80% global threshold)
+npm run test:integration  # integration tests (requires RabbitMQ on localhost:5672;
+                          # honours IRON_MONKEY_BUS_URL, e.g. amqp://admin:admin@localhost:5672)
 npm run lint
 npm run typecheck
+npm run format:check      # Prettier — CI runs this; use `format` to fix in place
 ```
 
 ---

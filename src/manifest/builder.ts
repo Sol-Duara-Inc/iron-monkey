@@ -13,6 +13,7 @@ import { IdAllocator } from './id-allocator.js';
 import { TimingAllocator } from './timing.js';
 import { buildPathLink } from '../links/builder.js';
 import { loadSchemas, validateEvent } from '../schema/validator.js';
+import { synthesize } from '../synth/synthesizer.js';
 import type { ResolvedEvent } from '../workflow/parser.js';
 import type { IronMonkeyConfig } from '../config/types.js';
 import type { Manifest, ManifestEvent, CDEventPayload } from './types.js';
@@ -36,12 +37,18 @@ export interface BuildManifestOptions {
    */
   chainId?: string;
   /** Source of the pre-acquired `chainId`, stamped on the manifest. */
-  chainIdSource?: 'conduit' | 'fallback';
+  chainIdSource?: 'conduit' | 'bus' | 'fallback';
   /**
    * Name of the target bus. Stamped on each manifest event as `targetBus`.
    * Defaults to `IRON_MONKEY_BUS_NAME` env var or `'default'`.
    */
   busName?: string;
+  /**
+   * When `false`, disables the simulated-data synthesizer so the validator
+   * fails loudly on any schema-required field the workflow/expression did not
+   * supply. Default `true`.
+   */
+  synth?: boolean;
 }
 
 /**
@@ -78,7 +85,7 @@ export async function buildManifest(
   const { acquireChainId } = await import('../chain/acquire.js');
 
   let chainId: string;
-  let chainIdSource: 'conduit' | 'fallback';
+  let chainIdSource: 'conduit' | 'bus' | 'fallback';
 
   if (opts.chainId) {
     chainId = opts.chainId;
@@ -116,6 +123,29 @@ export async function buildManifest(
       links.push(buildPathLink(manifestEvents[i - 1].eventId));
     }
 
+    const schema = schemas.get(re.type);
+    if (!schema) {
+      throw new Error(
+        `No schema found for event type '${re.type}'. ` +
+          `Place the schema at ${config.schemasPath ?? 'schemas/cdevents'}/${re.type}.json or set IRON_MONKEY_SCHEMAS.`,
+      );
+    }
+
+    let content = re.subject.content ?? {};
+    let synthesized: string[] = [];
+    if (opts.synth !== false) {
+      const result = synthesize(content, schema, {
+        toolSource,
+        chainId,
+        eventType: re.type,
+        workflowName: workflowMeta.name,
+        subjectId: re.subject.id,
+        timestamp,
+      });
+      content = result.content;
+      synthesized = result.synthesized;
+    }
+
     const payload: CDEventPayload = {
       context: {
         specversion: '0.5.1',
@@ -128,17 +158,9 @@ export async function buildManifest(
       },
       subject: {
         id: re.subject.id,
-        content: re.subject.content ?? {},
+        content,
       },
     };
-
-    const schema = schemas.get(re.type);
-    if (!schema) {
-      throw new Error(
-        `No schema found for event type '${re.type}'. ` +
-          `Place the schema at ${config.schemasPath ?? 'schemas/cdevents'}/${re.type}.json or set IRON_MONKEY_SCHEMAS.`,
-      );
-    }
 
     const validationResult = validateEvent(payload, schema);
     if (!validationResult.valid) {
@@ -162,6 +184,7 @@ export async function buildManifest(
       injections: [],
       isLast: i === events.length - 1,
       emitStatus: 'pending',
+      synthesized,
     });
   }
 

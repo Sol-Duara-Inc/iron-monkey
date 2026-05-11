@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
 expression:
   name: build
   version: 0.1.0
@@ -18,11 +19,6 @@ expression:
     - event: dev.cdevents.testsuiterun.finished.0.5.1
       timeout_ms: 30000
       min_wait_ms: 100
-      subject:
-        content:
-          outcome: success
-          environment:
-            id: ci-env
 
     - event: dev.cdevents.build.finished.0.5.1
       timeout_ms: 30000

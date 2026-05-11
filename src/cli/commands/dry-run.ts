@@ -11,8 +11,8 @@ export function dryRunCommand(): Command {
 
   cmd.action(async (workflowPath: string, options: Record<string, unknown>) => {
     const { validateWorkflow, resolveProduces } = await import('../../workflow/parser.js');
-    const { loadConfig, resolveBusName } = await import('../../config/loader.js');
-    const { loadExpressionRegistry } = await import('../../expressions/loader.js');
+    const { loadConfig, resolveBusName } = await import('../../loaders/config.loader.js');
+    const { loadExpressionRegistry } = await import('../../loaders/expression.loader.js');
     const { buildManifest } = await import('../../manifest/builder.js');
     const { parseInjections } = await import('../../injection/parser.js');
     const { applyInjections } = await import('../../injection/apply.js');
@@ -33,6 +33,14 @@ export function dryRunCommand(): Command {
     const registry = loadExpressionRegistry();
     const events = resolveProduces(workflow, registry);
 
+    const interval = options.interval as number | undefined;
+    if (typeof interval === 'number' && interval >= 0) {
+      for (const e of events) {
+        e.min_wait_ms = interval;
+        e.timeout_ms = interval;
+      }
+    }
+
     const injections = parseInjections((options.inject as string[]) ?? []);
     const busName = resolveBusName(config, options.bus as string | undefined);
 
@@ -40,7 +48,12 @@ export function dryRunCommand(): Command {
       { id: workflow.workflow.id, name: workflow.workflow.name },
       events,
       config,
-      { noConduit: true, seed: options.seed as number | undefined, busName },
+      {
+        noConduit: true,
+        seed: options.seed as number | undefined,
+        busName,
+        synth: options.synth !== false,
+      },
     );
 
     const injected = applyInjections(manifest, injections);

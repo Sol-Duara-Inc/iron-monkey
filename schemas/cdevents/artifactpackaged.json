@@ -19,9 +19,7 @@
         },
         "type": {
           "type": "string",
-          "enum": [
-            "dev.cdevents.artifact.packaged.0.5.1"
-          ],
+          "enum": ["dev.cdevents.artifact.packaged.0.5.1"],
           "default": "dev.cdevents.artifact.packaged.0.5.1"
         },
         "timestamp": {
@@ -43,13 +41,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": [
-        "specversion",
-        "id",
-        "source",
-        "type",
-        "timestamp"
-      ]
+      "required": ["specversion", "id", "source", "type", "timestamp"]
     },
     "subject": {
       "properties": {
@@ -78,9 +70,7 @@
               },
               "additionalProperties": false,
               "type": "object",
-              "required": [
-                "id"
-              ]
+              "required": ["id"]
             },
             "sbom": {
               "properties": {
@@ -92,24 +82,17 @@
               },
               "additionalProperties": false,
               "type": "object",
-              "required": [
-                "uri"
-              ]
+              "required": ["uri"]
             }
           },
           "additionalProperties": false,
           "type": "object",
-          "required": [
-            "change"
-          ]
+          "required": ["change"]
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "required": [
-        "id",
-        "content"
-      ]
+      "required": ["id", "content"]
     },
     "customData": {
       "oneOf": [
@@ -128,8 +111,5 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": [
-    "context",
-    "subject"
-  ]
+  "required": ["context", "subject"]
 }
