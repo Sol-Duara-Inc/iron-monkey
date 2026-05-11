@@ -38,8 +38,45 @@ export interface KafkaBusConfig {
   topic?: string;
 }
 
+/**
+ * Connection settings for the Junction Box HTTP bus. Junction Box exposes a
+ * REST API that mirrors the role of an AMQP broker — `/api/launch` activates a
+ * workflow run and returns a `runId` that becomes the Sympraxis chainId, and
+ * `/api/events` accepts each individual CDEvent (responding 202 on accept).
+ * This adapter is the Iron Monkey counterpart of the `fire-sequence.zsh`
+ * reference script.
+ */
+export interface JunctionBoxBusConfig {
+  /** Discriminant field identifying this as a Junction Box config. */
+  type: 'junction-box';
+  /** Base URL of the Junction Box service, e.g. `http://localhost:3000`. */
+  url: string;
+  /**
+   * Workflow ID to activate via `POST /api/launch` on connect. When omitted,
+   * the bus skips the launch step and relies on the workflow being pre-active
+   * (or on an externally-supplied chainId).
+   */
+  workflow_id?: string;
+  /** When `false`, skips the `GET /health` preflight. Default `true`. */
+  health_check?: boolean;
+  /**
+   * When `false`, skips the `POST /api/launch` step even when `workflow_id`
+   * is set. Default `true`.
+   */
+  launch?: boolean;
+  /** Path used for individual event POSTs. Default `/api/events`. */
+  events_path?: string;
+  /**
+   * HTTP status code expected from the events endpoint on successful publish.
+   * Default `202`.
+   */
+  expected_status?: number;
+  /** Extra headers to attach to every request (e.g. authorization tokens). */
+  headers?: Record<string, string>;
+}
+
 /** Union of supported bus connection configs. */
-export type BusConfig = RabbitMQBusConfig | KafkaBusConfig;
+export type BusConfig = RabbitMQBusConfig | KafkaBusConfig | JunctionBoxBusConfig;
 
 /**
  * Configuration for a single SDLC tool whose events Iron Monkey emits.

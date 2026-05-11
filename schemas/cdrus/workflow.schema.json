@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cdrus.dev/schemas/v1/workflow.schema.json",
+  "title": "CDrus Workflow",
+  "description": "Defines a workflow in the CDrus language.",
+  "type": "object",
+  "required": ["workflow"],
+  "additionalProperties": false,
+  "properties": {
+    "workflow": {
+      "type": "object",
+      "required": ["id", "name", "cdrus", "produces"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique identifier for this workflow definition."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable pipeline name."
+        },
+        "cdrus": {
+          "type": "object",
+          "required": ["version"],
+          "properties": {
+            "version": {
+              "type": "number",
+              "description": "Schema version this workflow YAML targets."
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Free-form metadata."
+            }
+          }
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Default values applied to every event node in this workflow.",
+          "additionalProperties": false,
+          "properties": {
+            "tool": { "type": "string", "minLength": 1 },
+            "source": { "type": "string", "format": "uri" },
+            "pipeline": { "type": "string", "minLength": 1 },
+            "timeout_ms": { "type": "number", "minimum": 0 },
+            "min_wait_ms": { "type": "number", "minimum": 0 }
+          }
+        },
+        "produces": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Ordered list of CDEvents and/or expression references.",
+          "items": { "$ref": "#/definitions/produce_item" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "produce_item": {
+      "description": "A workflow produce item is either a CDEvent or a reference to a CDrus Expression.",
+      "oneOf": [{ "$ref": "#/definitions/event_item" }, { "$ref": "#/definitions/expression_item" }]
+    },
+    "event_item": {
+      "type": "object",
+      "required": ["event"],
+      "additionalProperties": false,
+      "description": "An inline event in a workflow's produces list.",
+      "properties": {
+        "event": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^dev\\.cdevents\\.[a-z]+\\.[a-z]+(\\.\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?|:[^\\s]+)?$"
+        },
+        "tool": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "format": "uri" },
+        "pipeline": { "type": "string", "minLength": 1 },
+        "content": { "type": "object", "additionalProperties": true },
+        "produces": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/produce_item" }
+        },
+        "detach": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/produce_item" }
+        }
+      }
+    },
+    "expression_item": {
+      "type": "object",
+      "required": ["expression"],
+      "additionalProperties": false,
+      "description": "A reference to a CDrus Expression.",
+      "properties": {
+        "expression": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*(:[^\\s]+)?$"
+        },
+        "tool": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "format": "uri" },
+        "pipeline": { "type": "string", "minLength": 1 },
+        "overrides": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/event_override" }
+        }
+      }
+    },
+    "event_override": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-event override.",
+      "properties": {
+        "tool": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "format": "uri" },
+        "content": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

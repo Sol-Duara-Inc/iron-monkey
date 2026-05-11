@@ -18,12 +18,20 @@ export const workflowSchema = {
   properties: {
     workflow: {
       type: 'object',
-      required: ['id', 'name', 'version', 'produces'],
+      required: ['id', 'name', 'produces'],
       additionalProperties: false,
       properties: {
         id: { type: 'string', minLength: 1 },
         name: { type: 'string', minLength: 1 },
         version: { type: 'integer', minimum: 1 },
+        cdrus: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            version: { type: 'number' },
+            metadata: { type: 'object', additionalProperties: true },
+          },
+        },
         metadata: {
           type: 'object',
           additionalProperties: true,

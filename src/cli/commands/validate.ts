@@ -10,8 +10,8 @@ export function validateCommand(): Command {
 
   cmd.action(async (workflowPath: string, options: Record<string, unknown>) => {
     const { validateWorkflow, resolveProduces } = await import('../../workflow/parser.js');
-    const { loadConfig, resolveBusName } = await import('../../config/loader.js');
-    const { loadExpressionRegistry } = await import('../../expressions/loader.js');
+    const { loadConfig, resolveBusName } = await import('../../loaders/config.loader.js');
+    const { loadExpressionRegistry } = await import('../../loaders/expression.loader.js');
     const { buildManifest } = await import('../../manifest/builder.js');
     const { createLogger, setLogger } = await import('../../logger/index.js');
 

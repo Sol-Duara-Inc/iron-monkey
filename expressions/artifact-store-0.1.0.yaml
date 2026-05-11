@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
 expression:
   name: artifact-store
   version: 0.1.0
@@ -6,10 +7,6 @@ expression:
     - event: dev.cdevents.artifact.packaged.0.5.1
       timeout_ms: 30000
       min_wait_ms: 100
-      subject:
-        content:
-          change:
-            id: commit-1
 
     - event: dev.cdevents.artifact.published.0.5.1
       timeout_ms: 30000

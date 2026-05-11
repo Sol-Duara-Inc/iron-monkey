@@ -92,6 +92,12 @@ export interface ManifestEvent {
   emitStatus?: 'pending' | 'emitted' | 'skipped' | 'error';
   /** Error message recorded when `emitStatus` is `'error'`. */
   emitError?: string;
+  /**
+   * JSON pointers (relative to the event payload root) of fields the
+   * synthesizer filled in because they were schema-required but absent from
+   * the workflow/expression. Empty when synthesis was disabled or unnecessary.
+   */
+  synthesized?: string[];
 }
 
 /**
@@ -155,8 +161,13 @@ export interface Manifest {
   workflowName: string;
   /** The Sympraxis chain ID shared across all events in this run. */
   chainId: string;
-  /** Indicates whether `chainId` was issued by Conduit or generated locally. */
-  chainIdSource: 'conduit' | 'fallback';
+  /**
+   * Indicates how `chainId` was obtained:
+   * - `'conduit'`     — issued by the Conduit chain-ID service
+   * - `'bus'`         — issued by the target bus (e.g. Junction Box `/api/launch` `runId`)
+   * - `'fallback'`    — locally-generated fallback URN
+   */
+  chainIdSource: 'conduit' | 'bus' | 'fallback';
   /** ISO 8601 timestamp of when the manifest was built. */
   createdAt: string;
   /** Ordered list of CDEvents to emit, with timing and chain-link wiring resolved. */

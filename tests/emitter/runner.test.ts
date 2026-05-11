@@ -13,7 +13,7 @@ const mockBus = vi.hoisted(() => ({
 
 // ── module mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('../../src/config/loader.js', () => ({
+vi.mock('../../src/loaders/config.loader.js', () => ({
   loadConfig: vi.fn(),
   resolveBusName: vi.fn().mockReturnValue('default'),
 }));
@@ -23,7 +23,7 @@ vi.mock('../../src/workflow/parser.js', () => ({
   resolveProduces: vi.fn().mockReturnValue([]),
 }));
 
-vi.mock('../../src/expressions/loader.js', () => ({
+vi.mock('../../src/loaders/expression.loader.js', () => ({
   loadExpressionRegistry: vi.fn().mockReturnValue({ resolve: vi.fn(), list: vi.fn() }),
 }));
 
@@ -41,13 +41,19 @@ vi.mock('../../src/injection/apply.js', () => ({
 
 vi.mock('../../src/links/builder.js', () => ({
   buildStandaloneEndLink: vi.fn().mockReturnValue({
-    specversion: '0.5.1',
-    id: 'end-link-id',
-    source: 'https://example.com/',
-    type: 'dev.cdevents.chain.end',
-    timestamp: new Date().toISOString(),
-    chainId: 'chain-1',
-    lastEventId: 'last-evt',
+    context: {
+      specversion: '0.5.1',
+      id: 'end-link-id',
+      source: 'https://example.com/',
+      type: 'dev.cdevents.chain.end',
+      timestamp: new Date().toISOString(),
+      chainId: 'chain-1',
+      links: [{ type: 'END', target: 'last-evt' }],
+    },
+    subject: {
+      id: 'chain-1',
+      content: { lastEventId: 'last-evt' },
+    },
   }),
 }));
 
@@ -58,7 +64,7 @@ vi.mock('../../src/bus/interface.js', () => ({
 // ── import after mocks ────────────────────────────────────────────────────────
 
 import { runWorkflow } from '../../src/emitter/runner.js';
-import { loadConfig, resolveBusName } from '../../src/config/loader.js';
+import { loadConfig, resolveBusName } from '../../src/loaders/config.loader.js';
 import { validateWorkflow } from '../../src/workflow/parser.js';
 import { buildManifest } from '../../src/manifest/builder.js';
 import { applyInjections } from '../../src/injection/apply.js';
@@ -180,13 +186,14 @@ describe('runWorkflow', () => {
   });
 
   it('throws when the resolved bus name is not in config', async () => {
+    (loadConfig as ReturnType<typeof vi.fn>).mockResolvedValue({ buses: {}, tools: {} });
     (resolveBusName as ReturnType<typeof vi.fn>).mockReturnValue('nonexistent');
     const manifest = makeManifest([makeEvent()]);
     (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
     (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
 
-    await expect(runWorkflow('workflow.yaml', { conduit: false })).rejects.toThrow(
-      "Bus 'nonexistent' not found",
-    );
+    await expect(
+      runWorkflow('workflow.yaml', { bus: 'nonexistent', conduit: false }),
+    ).rejects.toThrow("Bus 'nonexistent' not found");
   });
 });

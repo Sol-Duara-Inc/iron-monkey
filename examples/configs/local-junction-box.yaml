@@ -1,0 +1,24 @@
+# Iron Monkey config: emit directly to a local Junction Box instance.
+# Mirrors the connection flow of scripts/cdevents/fire-sequence.zsh:
+#   GET  /health         (preflight)
+#   POST /api/launch     (returns runId, used as Sympraxis chainId)
+#   POST /api/events     (one POST per CDEvent, expects HTTP 202)
+buses:
+  default:
+    type: junction-box
+    url: http://localhost:3000
+    workflow_id: junction-box-demo-1
+    # health_check: true        # default
+    # launch: true              # default
+    # events_path: /api/events  # default
+    # expected_status: 202      # default
+
+tools:
+  jenkins-prod:
+    source: https://jenkins.example.com/
+  spinnaker-prod:
+    source: https://spinnaker.example.com/
+  jfrog-prod:
+    source: https://artifacts.example.com/
+  gke-prod:
+    source: https://gke.example.com/

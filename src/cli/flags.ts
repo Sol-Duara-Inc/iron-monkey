@@ -5,6 +5,15 @@ export function addCommonFlags(cmd: Command): Command {
     .option('--config <path>', 'path to JSON/YAML config file')
     .option('--bus <name>', 'bus name to use (overrides IRON_MONKEY_BUS_NAME env var)')
     .option('--no-conduit', 'skip chainId acquisition; use fallback URN')
+    .option(
+      '--no-synth',
+      'disable simulated-data synthesis; fail validation on missing required fields',
+    )
+    .option(
+      '--interval <ms>',
+      'override min_wait_ms and timeout_ms on every event for fixed pacing',
+      parseInt,
+    )
     .option('--seed <int>', 'seed for deterministic IDs and timing', parseInt)
     .option('--inject <spec>', 'failure injection spec (repeatable)', collect, [])
     .option('--manifest-out <path>', 'write pre-allocated manifest to file (JSON)')

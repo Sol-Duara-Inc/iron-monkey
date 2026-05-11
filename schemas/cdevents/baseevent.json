@@ -13,7 +13,7 @@
       "required": ["version", "id", "source", "type", "timestamp", "schemaUri"],
       "additionalProperties": false,
       "properties": {
-        "version": {
+        "specversion": {
           "type": "string",
           "description": "CDEvents specification version this event conforms to.",
           "pattern": "^\\d+\\.\\d+\\.\\d+$",

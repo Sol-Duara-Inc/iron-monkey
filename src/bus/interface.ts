@@ -6,7 +6,12 @@
  * Currently supported adapters: `'rabbitmq'` and `'kafka'`.
  */
 
-import type { BusConfig } from '../config/types.js';
+import type {
+  BusConfig,
+  JunctionBoxBusConfig,
+  KafkaBusConfig,
+  RabbitMQBusConfig,
+} from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
 
 /** Diagnostic information returned by {@link Bus.inspect}. */
@@ -72,6 +77,20 @@ export interface Bus {
    * more than once; subsequent calls are no-ops.
    */
   disconnect(): Promise<void>;
+
+  /**
+   * Optional hook for buses that issue their own Sympraxis chain ID as part of
+   * connection setup (e.g. Junction Box returns a `runId` from `/api/launch`).
+   * When implemented and a non-empty string is returned, the runner uses this
+   * value as the manifest's chainId in preference to Conduit or the local
+   * fallback URN.
+   *
+   * @param workflowName - Workflow `name` from the YAML, available for adapters
+   *   that need it for the activation request.
+   * @returns The acquired chain ID, or `undefined` to defer to the standard
+   *   chain-acquisition pipeline.
+   */
+  acquireChainId?(workflowName: string): Promise<string | undefined>;
 }
 
 /**
@@ -86,12 +105,15 @@ export interface Bus {
  * @throws {Error} If `config.type` is not a recognised bus type.
  */
 export async function createBus(name: string, config: BusConfig): Promise<Bus> {
-  if (config.type === 'rabbitmq') {
-    const { RabbitMQBus } = await import('./rabbit.js');
-    return new RabbitMQBus(name, config);
-  } else if (config.type === 'kafka') {
-    const { KafkaBus } = await import('./kafka.js');
-    return new KafkaBus(name, config);
+  const busFactories = {
+    rabbitmq: async () =>
+      new (await import('./rabbit.js')).RabbitMQBus(name, config as RabbitMQBusConfig),
+    kafka: async () => new (await import('./kafka.js')).KafkaBus(name, config as KafkaBusConfig),
+    'junction-box': async () =>
+      new (await import('./junctionbox.js')).JunctionBoxBus(name, config as JunctionBoxBusConfig),
+  };
+  if (busFactories[config.type]) {
+    return busFactories[config.type]();
   }
   throw new Error(`Unknown bus type: '${(config as { type: string }).type}'`);
 }

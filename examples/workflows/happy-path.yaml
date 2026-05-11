@@ -1,29 +1,25 @@
-# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/workflow.schema.json
+# yaml-language-server: $schema=./src/schemas/cdrus/workflow.schema.json
 workflow:
   id: junction-box-demo-1
   name: junction-box-demo
-  version: 1
-  metadata:
-    description: cdCon May 2026 Junction Box happy path — full CI/CD chain (Sympraxis)
-    owner: Sol Duara
-    tags: [jenkins, spinnaker, gke]
+  cdrus:
+    version: 1
+    metadata:
+      description: cdCon May 2026 Junction Box happy path — full CI/CD chain (Sympraxis)
+      owner: Sol Duara
+      tags: [jenkins, spinnaker, gke]
 
   defaults:
     pipeline: junction-box-demo
-    timeout_ms: 30000
+    timeout_ms: 300000
     min_wait_ms: 100
 
   produces:
-
     # ── Jenkins (tool 1) ──────────────────────────────────────────────────────
     - event: dev.cdevents.pipelinerun.started.0.5.1
       tool: jenkins-prod
       source: https://jenkins.example.com/
-      subject:
-        id: pipeline-run-1
-        content:
-          pipelineName: junction-box-demo
-          uri: https://jenkins.example.com/job/junction-box-demo/1
+      pipeline: junction-box-demo
 
     - expression: build:^0.1.0
       tool: jenkins-prod
@@ -36,12 +32,7 @@ workflow:
     # ── Spinnaker (tool 2) ───────────────────────────────────────────────────
     - event: dev.cdevents.pipelinerun.started.0.5.1
       tool: spinnaker-prod
-      source: https://spinnaker.example.com/
-      subject:
-        id: pipeline-run-1
-        content:
-          pipelineName: junction-box-demo
-          uri: https://spinnaker.example.com/job/junction-box-demo/1
+      pipeline: junction-box-demo
 
     - expression: deploy:^0.1.0
       tool: spinnaker-prod
@@ -58,8 +49,4 @@ workflow:
     - event: dev.cdevents.pipelinerun.finished.0.5.1
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
-      subject:
-        id: pipeline-run-1
-        content:
-          pipelineName: junction-box-demo
-          outcome: success
+      pipeline: junction-box-demo

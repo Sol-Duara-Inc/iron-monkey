@@ -9,8 +9,8 @@
 
 import { writeFile } from 'fs/promises';
 import { validateWorkflow, resolveProduces } from '../workflow/parser.js';
-import { loadConfig, resolveBusName } from '../config/loader.js';
-import { loadExpressionRegistry } from '../expressions/loader.js';
+import { loadConfig, resolveBusName } from '../loaders/config.loader.js';
+import { loadExpressionRegistry } from '../loaders/expression.loader.js';
 import { buildManifest } from '../manifest/builder.js';
 import { parseInjections } from '../injection/parser.js';
 import { applyInjections } from '../injection/apply.js';
@@ -51,6 +51,16 @@ export interface RunOptions {
   logLevel?: string;
   /** Log format: `'json'` (default) or `'text'` for human-friendly output. */
   logFormat?: string;
+  /**
+   * When `false`, disables the simulated-data synthesizer. Default `true`.
+   */
+  synth?: boolean;
+  /**
+   * When set, overrides every resolved event's `min_wait_ms` and `timeout_ms`
+   * to this value, producing fixed-cadence emission (mirrors the spacing of
+   * a hand-rolled fire-sequence script).
+   */
+  interval?: number;
 }
 
 /**
@@ -81,15 +91,49 @@ export async function runWorkflow(workflowPath: string, options: RunOptions): Pr
   const registry = loadExpressionRegistry();
   const events = resolveProduces(workflow, registry);
 
+  if (typeof options.interval === 'number' && options.interval >= 0) {
+    for (const e of events) {
+      e.min_wait_ms = options.interval;
+      e.timeout_ms = options.interval;
+    }
+  }
+
   const injections = parseInjections(options.inject ?? []);
   const noConduit = options.conduit === false;
   const busName = resolveBusName(config, options.bus);
+
+  const busConfig = config.buses[busName];
+  if (!busConfig) {
+    throw new Error(`Bus '${busName}' not found in config.`);
+  }
+
+  // Connect the bus first so adapters that issue their own chainId on
+  // connection (e.g. Junction Box `/api/launch` → runId) can hand it back to
+  // the manifest builder via the `acquireChainId` hook. This keeps Conduit /
+  // fallback as the path for buses that have no opinion on chain identity.
+  const bus = await createBus(busName, busConfig);
+  await bus.connect();
+
+  let busChainId: string | undefined;
+  if (typeof bus.acquireChainId === 'function') {
+    busChainId = await bus.acquireChainId(workflow.workflow.name);
+    if (busChainId) {
+      logger.info({ bus: busName, chainId: busChainId }, 'using chainId acquired from bus');
+    }
+  }
 
   const manifest = await buildManifest(
     { id: workflow.workflow.id, name: workflow.workflow.name },
     events,
     config,
-    { noConduit, seed: options.seed, busName },
+    {
+      noConduit,
+      seed: options.seed,
+      busName,
+      synth: options.synth !== false,
+      chainId: busChainId,
+      chainIdSource: busChainId ? 'bus' : undefined,
+    },
   );
 
   const injected = applyInjections(manifest, injections);
@@ -99,30 +143,18 @@ export async function runWorkflow(workflowPath: string, options: RunOptions): Pr
     logger.info({ path: options.manifestOut }, 'manifest written');
   }
 
-  const busConfig = config.buses[busName];
-  if (!busConfig) {
-    throw new Error(`Bus '${busName}' not found in config.`);
-  }
-
-  const bus = await createBus(busName, busConfig);
-  await bus.connect();
-
   try {
     await executeManifest(injected, bus, logger);
 
     const lastEvent = injected.events[injected.events.length - 1];
-    const endLink = buildStandaloneEndLink({
+    const endPayload = buildStandaloneEndLink({
       id: uuidv4(),
       source: lastEvent.source,
       chainId: injected.chainId,
       lastEventId: lastEvent.eventId,
       timestamp: new Date().toISOString(),
     });
-    await bus.emit(
-      'dev.cdevents.chain.end',
-      endLink.id,
-      endLink as unknown as typeof lastEvent.payload,
-    );
+    await bus.emit('dev.cdevents.chain.end', endPayload.context.id, endPayload);
     logger.info({ chainId: injected.chainId }, 'emitted END link');
   } finally {
     await bus.disconnect();
@@ -213,7 +245,12 @@ async function emitEvent(
     return;
   }
 
-  const delay = event.targetEmitTime - startTime;
+  // `targetEmitTime` is an absolute epoch-ms scheduled by the manifest builder.
+  // Sleep until that wall-clock instant, not until "startTime + offset" — using
+  // startTime would re-include the time already burned by previous sleeps and
+  // make inter-event gaps grow linearly (1s, 2s, 3s, …).
+  void startTime;
+  const delay = event.targetEmitTime - Date.now();
   if (delay > 0) {
     await sleep(delay);
   }

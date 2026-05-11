@@ -6,7 +6,7 @@
  * of a workflow run.
  */
 
-import type { LinkEntry } from '../manifest/types.js';
+import type { CDEventPayload, LinkEntry } from '../manifest/types.js';
 
 /**
  * Creates a `PATH` link pointing to the immediately preceding event, indicating
@@ -46,34 +46,21 @@ export function buildStartLink(firstEventId: string): LinkEntry {
 }
 
 /**
- * The payload shape emitted as the `dev.cdevents.chain.end` sentinel event
- * that closes a Sympraxis chain. Emitted after all manifest events have been
- * published so consumers know the chain is complete.
- */
-export interface StandaloneEndLink {
-  /** CloudEvents spec version, currently `'0.5.1'`. */
-  specversion: string;
-  /** Unique UUID for this sentinel event. */
-  id: string;
-  /** CDEvents source URI identifying the Iron Monkey instance. */
-  source: string;
-  /** Fixed CDEvent type discriminant for the chain-end sentinel. */
-  type: 'dev.cdevents.chain.end';
-  /** ISO 8601 timestamp of when the chain end was emitted. */
-  timestamp: string;
-  /** The chain ID shared by all events in this run. */
-  chainId: string;
-  /** The `eventId` of the last substantive event before the end sentinel. */
-  lastEventId: string;
-}
-
-/**
- * Constructs a {@link StandaloneEndLink} payload that signals the completion
- * of a Sympraxis chain. Iron Monkey emits this as the final message on the bus
- * after all manifest events have been published.
+ * Builds the `dev.cdevents.chain.end` sentinel as a fully-structured CDEvent
+ * envelope (context + subject), so HTTP consumers like Junction Box that
+ * validate every body against the base CDEvent shape will accept it.
+ *
+ * Semantics:
+ * - `context.type` is the reserved sentinel discriminant `dev.cdevents.chain.end`.
+ * - `context.links` carries a single `END` link pointing at the last
+ *   substantive event in the chain — this is where the closure information
+ *   lives, mirroring how `PATH` links thread the rest of the chain.
+ * - `subject.id` is the chain ID itself (the chain is the subject of its own
+ *   closure event), and `subject.content.lastEventId` repeats the END target
+ *   for consumers that ignore `links` and only look at `subject.content`.
  *
  * @param opts - Fields needed to build the sentinel payload.
- * @returns A fully populated {@link StandaloneEndLink}.
+ * @returns A fully populated chain-end CDEvent payload.
  */
 export function buildStandaloneEndLink(opts: {
   id: string;
@@ -81,14 +68,22 @@ export function buildStandaloneEndLink(opts: {
   chainId: string;
   lastEventId: string;
   timestamp: string;
-}): StandaloneEndLink {
+}): CDEventPayload {
   return {
-    specversion: '0.5.1',
-    id: opts.id,
-    source: opts.source,
-    type: 'dev.cdevents.chain.end',
-    timestamp: opts.timestamp,
-    chainId: opts.chainId,
-    lastEventId: opts.lastEventId,
+    context: {
+      specversion: '0.5.1',
+      id: opts.id,
+      source: opts.source,
+      type: 'dev.cdevents.chain.end',
+      timestamp: opts.timestamp,
+      chainId: opts.chainId,
+      links: [{ type: 'END', target: opts.lastEventId }],
+    },
+    subject: {
+      id: opts.chainId,
+      content: {
+        lastEventId: opts.lastEventId,
+      },
+    },
   };
 }
