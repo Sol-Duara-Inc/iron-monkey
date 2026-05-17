@@ -21,7 +21,7 @@ A Sympraxis chain is tool-bracketed: each tool's contribution opens with a `pipe
 
 - Node.js 20+ LTS
 - npm 9+
-- One of: RabbitMQ, Kafka, or a reachable Junction Box instance (for `run` / `inspect` / `purge`)
+- One of: RabbitMQ, Kafka, or a reachable Junction Box instance (for `run` / `pitch` / `inspect` / `purge`)
 
 ---
 
@@ -58,17 +58,23 @@ iron-monkey dry-run examples/workflows/happy-path.yaml \
 iron-monkey dry-run examples/workflows/happy-path.yaml \
   --no-conduit --bus default --seed 42
 
-# Run against a local RabbitMQ
+# Pitch a single workflow against a local RabbitMQ
 iron-monkey run examples/workflows/happy-path.yaml \
   --config examples/configs/local-rabbit.yaml \
   --no-conduit --bus default
 
-# Run against a local Junction Box (HTTP)
+# Pitch multiple workflows simultaneously (each runs independently)
 iron-monkey run examples/workflows/happy-path.yaml \
-  --config examples/configs/local-junction-box.yaml \
-  --no-conduit --bus default --interval 1000
+            examples/workflows/sample.yaml \
+            examples/workflows/canary.yaml \
+  --config examples/configs/local-rabbit.yaml \
+  --no-conduit --bus default
 
-# Run with failure injection
+# Pitch a full repertoire — per-workflow options, all thrown at once
+iron-monkey pitch --from examples/repertoires/chaos.yaml \
+  --config examples/configs/local-rabbit.yaml
+
+# Pitch with failure injection
 iron-monkey run examples/workflows/happy-path.yaml \
   --config examples/configs/local-rabbit.yaml \
   --no-conduit --bus default \
@@ -87,7 +93,8 @@ iron-monkey run examples/workflows/happy-path.yaml \
 ## Commands
 
 ```
-iron-monkey run <workflow.yaml>       Emit events per the workflow
+iron-monkey run <workflows...>        Pitch one or more workflows (simultaneously if multiple)
+iron-monkey pitch --from <file.yaml>  Pitch all workflows in a repertoire YAML simultaneously
 iron-monkey validate <workflow.yaml>  Parse and validate; do not connect to bus
 iron-monkey dry-run <workflow.yaml>   Build the manifest, print it, exit
 iron-monkey inspect <bus-name>        Show queue/topic depth and bindings
@@ -95,7 +102,7 @@ iron-monkey purge <bus-name>          Drain a queue / reset a topic (--confirm r
 iron-monkey version                   Print version and exit
 ```
 
-### Common flags
+### Common flags (`run` and `dry-run`)
 
 ```
 --config <path>         Path to JSON/YAML config file
@@ -110,6 +117,15 @@ iron-monkey version                   Print version and exit
 --manifest-out <path>   Write the manifest to file as JSON
 --log-level <level>     error | warn | info | debug  (default: info)
 --log-format <fmt>      json | text                  (default: json)
+```
+
+### `pitch` flags
+
+```
+--from <repertoire.yaml>   Path to the repertoire YAML file (required)
+--config <path>            Path to Iron Monkey config file
+--log-level <level>        error | warn | info | debug  (default: info)
+--log-format <fmt>         json | text                  (default: json)
 ```
 
 ---
@@ -207,7 +223,7 @@ workflow:
       source: https://jenkins.example.com/
       pipeline: my-pipeline
 
-    - expression: build:^0.1.0
+    - expression: build
       tool: jenkins-prod
       source: https://jenkins.example.com/
 
@@ -225,29 +241,101 @@ Key points:
 - `tool:` maps to a `tools.*` entry in your config file for source URI resolution. You can also set `source:` directly on any item.
 - Event type strings use CDEvents 0.5.1 versioning — the suffix is always `.0.5.1` for all event types bundled with Iron Monkey (e.g. `dev.cdevents.build.started.0.5.1`).
 - **You do not need to spell out every required `subject.content` field.** Iron Monkey synthesizes anything the schema marks `required` but the workflow/bundle omits (see _Payload synthesis_ below). Use `content:` on an event item if you want to pin specific values; everything else is filled in for you.
+- The schema version lives under `workflow.cdrus.version`, not at the top level.
+
+---
+
+## Pitching multiple workflows
+
+### `run` — shared options, multiple paths
+
+Pass more than one workflow path to `run` and Iron Monkey pitches them all simultaneously. Each workflow gets its own bus connection, chain ID, and timing. One failure does not abort the others.
+
+```bash
+iron-monkey run happy-path.yaml sample.yaml canary.yaml \
+  --config local-rabbit.yaml --no-conduit --interval 1000
+```
+
+All workflows share the same flags. For per-workflow control use `pitch`.
+
+### `pitch` — a repertoire of pitches
+
+A **repertoire** is a YAML file that maps each workflow to its own options. A `shared` block provides defaults; pitch-level values override them.
+
+```yaml
+# chaos.yaml
+# yaml-language-server: $schema=./schemas/cdrus/repertoire.schema.json
+shared:
+  bus: rabbitmq-prod
+  interval: 1000
+
+pitches:
+  - workflow: examples/workflows/happy-path.yaml
+    interval: 500                 # overrides shared
+
+  - workflow: examples/workflows/sample.yaml
+    inject:
+      - missing:build-started
+      - late:deployment-finished:5000
+
+  - workflow: examples/workflows/canary.yaml
+    interval: 100
+    seed: 42
+    bus: local-bus                # overrides shared
+```
+
+```bash
+iron-monkey pitch --from chaos.yaml --config local-rabbit.yaml
+```
+
+**Merge priority** (lowest → highest): `--config` / `--log-level` CLI flags → `shared` → per-pitch values.
+
+Per-pitch fields mirror the common `run` flags:
+
+| Field          | Type       | Description                                      |
+| -------------- | ---------- | ------------------------------------------------ |
+| `workflow`     | `string`   | Path to the workflow YAML file (**required**)    |
+| `bus`          | `string`   | Named bus to target                              |
+| `conduit`      | `boolean`  | `false` to skip Conduit chainId acquisition      |
+| `interval`     | `number`   | Fixed cadence override in milliseconds           |
+| `seed`         | `number`   | Deterministic ID/timing seed                     |
+| `inject`       | `string[]` | Failure injection specs                          |
+| `manifest_out` | `string`   | Path to write the pre-emission manifest as JSON  |
+| `synth`        | `boolean`  | `false` to disable payload synthesis             |
 
 ---
 
 ## Expressions
 
-Expressions are named, versioned bundles of CDEvents that represent common SDLC patterns. They live in the `expressions/` directory and are referenced by `<name>:<semver-range>`.
+Expressions are named bundles of CDEvents that represent common SDLC patterns. They live in the `expressions/` directory and are identified by a three-part tuple: `(group, author, expression)`. A change to an expression's boundary semantics requires a new expression name, not a version bump.
 
 ### Bundled expressions
 
-| Name             | Version | Events (in order)                                                             |
-| ---------------- | ------- | ----------------------------------------------------------------------------- |
-| `build`          | `0.1.0` | build.started → testsuiterun.started → testsuiterun.finished → build.finished |
-| `artifact-store` | `0.1.0` | artifact.packaged → artifact.published                                        |
-| `deploy`         | `0.1.0` | taskrun.started → service.deployed → service.published → taskrun.finished     |
+| Expression       | Group       | Author         | Events (in order)                                                             |
+| ---------------- | ----------- | -------------- | ----------------------------------------------------------------------------- |
+| `build`          | `sol-duara` | `iron-monkey`  | build.started → testsuiterun.started → testsuiterun.finished → build.finished |
+| `artifact-store` | `sol-duara` | `iron-monkey`  | artifact.packaged → artifact.published                                        |
+| `deploy`         | `sol-duara` | `iron-monkey`  | taskrun.started → service.deployed → service.published → taskrun.finished     |
 
 The `deploy` bundle uses explicit event IDs: `deployment-started` (taskrun.started) and `deployment-finished` (taskrun.finished).
 
 ### Referencing an expression
 
+Expressions are referenced by path-style notation — bare name, `author/expression`, or `group/author/expression`. Use the longer form when multiple bundles share the same expression name and Iron Monkey cannot resolve the reference unambiguously.
+
 ```yaml
-- expression: build:^0.1.0
+# bare name (unambiguous)
+- expression: build
   tool: jenkins-prod
   source: https://jenkins.example.com/
+
+# scoped to author
+- expression: iron-monkey/build
+  tool: jenkins-prod
+
+# fully qualified
+- expression: sol-duara/iron-monkey/build
+  tool: jenkins-prod
 ```
 
 All fields on the expression item (`tool`, `source`, `pipeline`, `timeout_ms`, `min_wait_ms`) become defaults for every event inlined from that bundle.
@@ -257,7 +345,7 @@ All fields on the expression item (`tool`, `source`, `pipeline`, `timeout_ms`, `
 Use `overrides:` to change fields on specific events within an expression. The key is the `noun.verb` of the event type (e.g., `service.deployed`), or the bundle's explicit `id` if one is set:
 
 ```yaml
-- expression: deploy:^0.1.0
+- expression: deploy
   tool: spinnaker-prod
   source: https://spinnaker.example.com/
   overrides:
@@ -281,8 +369,23 @@ The `content` field deep-merges at each level; all other fields are simple repla
 
 ### Adding a new expression bundle
 
-1. Create `expressions/<name>-<version>.yaml` following the bundle format in `expressions/build-0.1.0.yaml`.
-2. Reference it in your workflow as `expression: <name>:<semver-range>`.
+Create a YAML file anywhere in the `expressions/` directory (filename does not matter) following the flat bundle format:
+
+```yaml
+# yaml-language-server: $schema=./schemas/cdrus/expression.schema.json
+group: my-org
+author: my-tool
+expression: my-pattern
+produces:
+  - event: dev.cdevents.build.started.0.5.1
+    timeout_ms: 30000
+    min_wait_ms: 100
+  - event: dev.cdevents.build.finished.0.5.1
+    timeout_ms: 30000
+    min_wait_ms: 500
+```
+
+Reference it in your workflow as `expression: my-pattern` (or `my-tool/my-pattern` / `my-org/my-tool/my-pattern` if disambiguation is needed).
 
 If two events in a bundle share the same `noun.verb`, each must have a unique explicit `id` field or the bundle will fail to load.
 

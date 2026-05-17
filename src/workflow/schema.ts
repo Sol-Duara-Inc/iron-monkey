@@ -6,8 +6,12 @@
  * rather than a nested `stages` hierarchy. Used by {@link module:workflow/parser}
  * to validate files before resolution.
  *
- * Top-level key: `workflow` containing `id`, `name`, `version`, optional
- * `metadata` and `defaults`, and a non-empty `produces` array.
+ * Aligns with the CDrus workflow schema (`schemas/cdrus/workflow.schema.json`):
+ * `cdrus` is required, expression references use CDrus path-style identity
+ * notation, and event items support the `produces`/`detach` nesting grammar.
+ * Iron Monkey extends the CDrus event-item shape with `timeout_ms`,
+ * `min_wait_ms`, and `subject` to support timing control and explicit subject
+ * seeding without modifying the CDrus grammar.
  */
 
 export const workflowSchema = {
@@ -18,27 +22,18 @@ export const workflowSchema = {
   properties: {
     workflow: {
       type: 'object',
-      required: ['id', 'name', 'produces'],
+      required: ['id', 'name', 'cdrus', 'produces'],
       additionalProperties: false,
       properties: {
         id: { type: 'string', minLength: 1 },
         name: { type: 'string', minLength: 1 },
-        version: { type: 'integer', minimum: 1 },
         cdrus: {
           type: 'object',
+          required: ['version'],
           additionalProperties: true,
           properties: {
             version: { type: 'number' },
             metadata: { type: 'object', additionalProperties: true },
-          },
-        },
-        metadata: {
-          type: 'object',
-          additionalProperties: true,
-          properties: {
-            description: { type: 'string' },
-            owner: { type: 'string' },
-            tags: { type: 'array', items: { type: 'string' } },
           },
         },
         defaults: {
@@ -50,6 +45,7 @@ export const workflowSchema = {
             pipeline: { type: 'string' },
             tool: { type: 'string' },
             source: { type: 'string' },
+            // Iron Monkey extension: default subject content merged into every event
             content: { type: 'object', additionalProperties: true },
           },
         },
@@ -59,6 +55,7 @@ export const workflowSchema = {
           items: {
             oneOf: [
               {
+                // ── Direct event item ──────────────────────────────────────────
                 type: 'object',
                 required: ['event'],
                 additionalProperties: false,
@@ -67,6 +64,19 @@ export const workflowSchema = {
                   tool: { type: 'string', minLength: 1 },
                   source: { type: 'string', minLength: 1 },
                   pipeline: { type: 'string', minLength: 1 },
+                  content: { type: 'object', additionalProperties: true },
+                  // ── CDrus composition grammar ──────────────────────────────
+                  produces: {
+                    type: 'array',
+                    minItems: 1,
+                    items: { type: 'object' },
+                  },
+                  detach: {
+                    type: 'array',
+                    minItems: 1,
+                    items: { type: 'object' },
+                  },
+                  // ── Iron Monkey extensions ─────────────────────────────────
                   timeout_ms: { type: 'integer', minimum: 0 },
                   min_wait_ms: { type: 'integer', minimum: 0 },
                   subject: {
@@ -77,18 +87,23 @@ export const workflowSchema = {
                       content: { type: 'object', additionalProperties: true },
                     },
                   },
-                  content: { type: 'object', additionalProperties: true },
                 },
               },
               {
+                // ── Expression reference item ──────────────────────────────────
                 type: 'object',
                 required: ['expression'],
                 additionalProperties: false,
                 properties: {
-                  expression: { type: 'string', pattern: '^[a-zA-Z0-9_-]+:.+$' },
+                  // CDrus path-style identity: expression | author/expression | group/author/expression
+                  expression: {
+                    type: 'string',
+                    pattern: '^([a-z][a-z0-9-]*/){0,2}[a-z][a-z0-9-]*$',
+                  },
                   tool: { type: 'string', minLength: 1 },
                   source: { type: 'string', minLength: 1 },
                   pipeline: { type: 'string', minLength: 1 },
+                  // ── Iron Monkey extensions ─────────────────────────────────
                   timeout_ms: { type: 'integer', minimum: 0 },
                   min_wait_ms: { type: 'integer', minimum: 0 },
                   overrides: {

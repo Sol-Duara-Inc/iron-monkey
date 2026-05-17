@@ -18,11 +18,13 @@ async function writeTmpYaml(content: string): Promise<string> {
   return file;
 }
 
+// Minimal valid workflow — cdrus block is required by the updated CDrus schema.
 const minimalWorkflow = `
 workflow:
   id: test-wf
   name: test
-  version: 1
+  cdrus:
+    version: 1
   produces:
     - event: dev.cdevents.build.started.0.5.1
       tool: jenkins
@@ -43,7 +45,8 @@ describe('validateWorkflow', () => {
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   bus: default
   produces:
     - event: dev.cdevents.build.started.0.5.1
@@ -57,7 +60,8 @@ workflow:
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   stages:
     - id: build
       type: ci
@@ -75,7 +79,20 @@ workflow:
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
+`);
+    await expect(validateWorkflow(file)).rejects.toThrow('validation failed');
+    await unlink(file);
+  });
+
+  it('throws on missing required cdrus field', async () => {
+    const file = await writeTmpYaml(`
+workflow:
+  id: test
+  name: test
+  produces:
+    - event: dev.cdevents.build.started.0.5.1
 `);
     await expect(validateWorkflow(file)).rejects.toThrow('validation failed');
     await unlink(file);
@@ -94,7 +111,8 @@ describe('resolveProduces — defaults cascade', () => {
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   defaults:
     tool: default-tool
     source: https://default.example.com/
@@ -118,7 +136,8 @@ workflow:
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   defaults:
     tool: default-tool
     timeout_ms: 9999
@@ -142,9 +161,10 @@ describe('resolveProduces — expression items', () => {
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   produces:
-    - expression: build:^0.1.0
+    - expression: build
       tool: jenkins
 `);
     const wf = await validateWorkflow(file);
@@ -162,9 +182,10 @@ workflow:
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   produces:
-    - expression: deploy:^0.1.0
+    - expression: deploy
       tool: spinnaker
       source: https://spinnaker.example.com/
       overrides:
@@ -188,15 +209,16 @@ workflow:
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   produces:
-    - expression: nonexistent:^1.0.0
+    - expression: nonexistent
       tool: jenkins
 `);
     const wf = await validateWorkflow(file);
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
     expect(() => resolveProduces(wf, registry)).toThrow(
-      "No expression bundle found for 'nonexistent:^1.0.0'",
+      "No expression bundle found for 'nonexistent'",
     );
     await unlink(file);
   });
@@ -206,7 +228,8 @@ workflow:
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   produces:
     - event: dev.cdevents.pipelinerun.started.0.5.1
       tool: jenkins
@@ -234,7 +257,8 @@ describe('resolveProduces — cross-tool workflow', () => {
 workflow:
   id: test
   name: test
-  version: 1
+  cdrus:
+    version: 1
   produces:
     - event: dev.cdevents.pipelinerun.started.0.5.1
       tool: jenkins

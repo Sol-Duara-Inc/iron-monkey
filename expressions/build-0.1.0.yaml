@@ -1,25 +1,25 @@
-# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
-expression:
-  name: build
-  version: 0.1.0
-  description: Canonical CI build pattern — build with integrated test suite run
-  produces:
-    - event: dev.cdevents.build.started.0.5.1
-      timeout_ms: 30000
-      min_wait_ms: 100
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: sol-duara
+author: iron-monkey
+expression: build
+description: Canonical CI build pattern — build with integrated test suite run
+produces:
+  - event: dev.cdevents.build.started.0.5.1
+    timeout_ms: 30000
+    min_wait_ms: 100
 
-    - event: dev.cdevents.testsuiterun.started.0.5.1
-      timeout_ms: 30000
-      min_wait_ms: 200
-      subject:
-        content:
-          environment:
-            id: ci-env
+  - event: dev.cdevents.testsuiterun.started.0.5.1
+    timeout_ms: 30000
+    min_wait_ms: 200
+    subject:
+      content:
+        environment:
+          id: ci-env
 
-    - event: dev.cdevents.testsuiterun.finished.0.5.1
-      timeout_ms: 30000
-      min_wait_ms: 100
+  - event: dev.cdevents.testsuiterun.finished.0.5.1
+    timeout_ms: 30000
+    min_wait_ms: 100
 
-    - event: dev.cdevents.build.finished.0.5.1
-      timeout_ms: 30000
-      min_wait_ms: 100
+  - event: dev.cdevents.build.finished.0.5.1
+    timeout_ms: 30000
+    min_wait_ms: 100

@@ -63,6 +63,43 @@ export interface RunOptions {
   interval?: number;
 }
 
+/** Result of a single workflow run within a {@link runWorkflows} call. */
+export interface WorkflowRunResult {
+  /** Filesystem path of the workflow that was run. */
+  workflowPath: string;
+  /** `'fulfilled'` if the run completed without error, `'rejected'` otherwise. */
+  status: 'fulfilled' | 'rejected';
+  /** Error message when `status` is `'rejected'`. */
+  error?: string;
+}
+
+/**
+ * Fires multiple workflows simultaneously — each as a fully independent run
+ * with its own bus connection, chain ID, and timing. One failure does not
+ * abort the others. Results are returned in the same order as `workflowPaths`.
+ *
+ * @param workflowPaths - Filesystem paths to the workflow YAML files to run.
+ * @param options - Shared runtime options applied to every workflow run.
+ * @returns Per-workflow results in input order.
+ */
+export async function runWorkflows(
+  workflowPaths: string[],
+  options: RunOptions,
+): Promise<WorkflowRunResult[]> {
+  const settlements = await Promise.allSettled(workflowPaths.map((p) => runWorkflow(p, options)));
+
+  return settlements.map((result, i) => {
+    if (result.status === 'fulfilled') {
+      return { workflowPath: workflowPaths[i], status: 'fulfilled' };
+    }
+    return {
+      workflowPath: workflowPaths[i],
+      status: 'rejected',
+      error: (result.reason as Error)?.message ?? String(result.reason),
+    };
+  });
+}
+
 /**
  * Executes a complete Iron Monkey workflow: validates the YAML, builds a
  * pre-allocated event manifest, applies any failure injections, emits all

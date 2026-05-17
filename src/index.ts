@@ -24,7 +24,10 @@ export { acquireChainId } from './chain/acquire.js';
 export { generateFallbackChainId } from './chain/fallback.js';
 export { loadSchemas, validateEvent } from './schema/validator.js';
 export { createBus } from './bus/interface.js';
-export { runWorkflow } from './emitter/runner.js';
+export { runWorkflow, runWorkflows } from './emitter/runner.js';
+export type { WorkflowRunResult } from './emitter/runner.js';
+export { loadRepertoire, buildPitchOptions } from './repertoire/loader.js';
+export type { RepertoireFile, RepertoirePitch, RepertoireShared } from './repertoire/types.js';
 export { createLogger, setLogger, getLogger } from './logger/index.js';
 
 export type {
@@ -37,11 +40,7 @@ export type {
   ProducesItem,
 } from './workflow/types.js';
 export type { ResolvedEvent } from './workflow/parser.js';
-export type {
-  ExpressionBundle,
-  ExpressionEvent,
-  ExpressionBundleFile,
-} from './expressions/types.js';
+export type { ExpressionBundle, ExpressionEvent } from './expressions/types.js';
 export type { ExpressionRegistry } from './expressions/loader.js';
 export type { IronMonkeyConfig, BusConfig, ToolConfig, ConduitConfig } from './config/types.js';
 export type { Manifest, ManifestEvent, CDEventPayload } from './manifest/types.js';

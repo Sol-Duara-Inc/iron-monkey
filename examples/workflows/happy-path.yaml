@@ -21,11 +21,11 @@ workflow:
       source: https://jenkins.example.com/
       pipeline: junction-box-demo
 
-    - expression: build:^0.1.0
+    - expression: build
       tool: jenkins-prod
       source: https://jenkins.example.com/
 
-    - expression: artifact-store:^0.1.0
+    - expression: artifact-store
       tool: jenkins-prod
       source: https://jenkins.example.com/
 
@@ -34,7 +34,7 @@ workflow:
       tool: spinnaker-prod
       pipeline: junction-box-demo
 
-    - expression: deploy:^0.1.0
+    - expression: deploy
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
       overrides:

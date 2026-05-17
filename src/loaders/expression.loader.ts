@@ -1,10 +1,12 @@
 /**
  * @module loaders/expression.loader
  * Loads and indexes CDrus expression bundles from a directory of YAML files,
- * then exposes them through a registry that resolves bundle references of the
- * form `<name>:<semver-range>`. Bundles are discovered by filename pattern
- * `<name>-<major>.<minor>.<patch>.yaml` and validated against the expression
- * bundle schema before indexing.
+ * then exposes them through a registry that resolves bundle references using
+ * CDrus path-style identity notation: `expression`, `author/expression`, or
+ * `group/author/expression`. Bundles are discovered by scanning for `.yaml` /
+ * `.yml` files and validated against the expression bundle schema before
+ * indexing. Identity is read from the YAML content (`group`, `author`,
+ * `expression` fields), not inferred from the filename.
  */
 
 import { readFileSync, readdirSync } from 'fs';
@@ -13,7 +15,7 @@ import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 import Ajv from 'ajv';
 import { expressionBundleSchema } from '../expressions/schema.js';
-import type { ExpressionBundle, ExpressionBundleFile } from '../expressions/types.js';
+import type { ExpressionBundle } from '../expressions/types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AjvConstructor = (Ajv as any).default ?? Ajv;
@@ -28,48 +30,8 @@ function defaultExpressionsDir(): string {
 }
 
 /**
- * Parses a version string into a `[major, minor, patch]` tuple.
- *
- * @throws {Error} If the string is not a valid three-part numeric semver.
- */
-function parseSemver(version: string): [number, number, number] {
-  const parts = version.split('.').map(Number);
-  if (parts.length !== 3 || parts.some((n) => isNaN(n))) {
-    throw new Error(`Invalid semver: '${version}'`);
-  }
-  return [parts[0], parts[1], parts[2]];
-}
-
-/**
- * Returns `true` when `version` satisfies `range`. Supports caret (`^`)
- * ranges and exact matches; other range syntaxes are not implemented.
- */
-function satisfiesRange(version: string, range: string): boolean {
-  if (range.startsWith('^')) {
-    const [rv0, rv1, rv2] = parseSemver(range.slice(1));
-    const [v0, v1, v2] = parseSemver(version);
-    if (rv0 > 0) return v0 === rv0 && (v1 > rv1 || (v1 === rv1 && v2 >= rv2));
-    if (rv1 > 0) return v0 === 0 && v1 === rv1 && v2 >= rv2;
-    return v0 === 0 && v1 === 0 && v2 === rv2;
-  }
-  // exact match
-  return version === range;
-}
-
-/**
- * Compares two semver strings. Returns a negative number if `a < b`, zero if
- * equal, or positive if `a > b`. Used to select the highest compatible bundle
- * version when multiple satisfy a range.
- */
-function semverCompare(a: string, b: string): number {
-  const [a0, a1, a2] = parseSemver(a);
-  const [b0, b1, b2] = parseSemver(b);
-  return a0 !== b0 ? a0 - b0 : a1 !== b1 ? a1 - b1 : a2 - b2;
-}
-
-/**
  * Extracts the `noun.verb` key from a fully-qualified CDEvent type string such
- * as `dev.cdevents.build.started.0.1.0`. Used for collision detection in
+ * as `dev.cdevents.build.started.0.5.1`. Used for collision detection in
  * expression bundles and for generating default `workflowEventId` values.
  *
  * @param eventType - A CDEvent type string or similar dot-separated identifier.
@@ -121,7 +83,7 @@ function loadBundle(filePath: string): ExpressionBundle {
     throw new Error(`Expression bundle schema validation failed at ${filePath}:\n${errors}`);
   }
 
-  const bundle = (parsed as ExpressionBundleFile).expression;
+  const bundle = parsed as ExpressionBundle;
 
   // Detect noun.verb collisions without explicit id disambiguation
   const nounVerbCount = new Map<string, number>();
@@ -134,7 +96,7 @@ function loadBundle(filePath: string): ExpressionBundle {
       const withoutId = bundle.produces.filter((ev) => nounVerbFromType(ev.event) === nv && !ev.id);
       if (withoutId.length > 0) {
         throw new Error(
-          `Expression bundle '${bundle.name}' at ${filePath}: ` +
+          `Expression bundle '${bundle.expression}' at ${filePath}: ` +
             `events with duplicate noun.verb '${nv}' must each have an explicit 'id' field.`,
         );
       }
@@ -151,38 +113,44 @@ function loadBundle(filePath: string): ExpressionBundle {
  */
 export interface ExpressionRegistry {
   /**
-   * Resolves a bundle reference string to the highest-version bundle that
-   * satisfies the given semver range.
+   * Resolves a path-style bundle reference to the matching bundle.
    *
-   * @param ref - Reference in the format `<name>:<semver-range>`, e.g.
-   *   `'github-actions:^1.0.0'`.
+   * Three reference forms are accepted (from least to most qualified):
+   * - `'build'` — matches by expression name alone (errors if ambiguous)
+   * - `'iron-monkey/build'` — matches by author + expression name
+   * - `'sol-duara/iron-monkey/build'` — fully-qualified group/author/expression
+   *
+   * @param ref - Path-style reference string.
    * @returns The matching {@link ExpressionBundle}.
-   * @throws {Error} If the reference is malformed or no matching bundle is
-   *   found in the registry.
+   * @throws {Error} If no matching bundle is found or the reference is ambiguous.
    */
   resolve(ref: string): ExpressionBundle;
 
   /**
-   * Lists all indexed bundles as `{ name, version }` pairs, useful for
-   * diagnostics and `--list-expressions` CLI output.
+   * Lists all indexed bundles as `{ name, group, author }` records, useful for
+   * diagnostics and `--list-expressions` CLI output. `name` is the expression
+   * name component of the identity tuple.
    */
-  list(): { name: string; version: string }[];
+  list(): { name: string; group: string; author: string }[];
 }
 
-/** Internal representation of an indexed bundle with its parsed metadata. */
+/** Internal representation of an indexed bundle with its parsed identity. */
 interface IndexedBundle {
-  /** Bundle name as declared in the YAML `expression.name` field. */
+  /** Expression name (the `expression` field value). */
   name: string;
-  /** Semver version string declared in the YAML `expression.version` field. */
-  version: string;
+  /** Group component of the identity tuple. */
+  group: string;
+  /** Author component of the identity tuple. */
+  author: string;
   /** The fully parsed bundle object. */
   bundle: ExpressionBundle;
 }
 
 /**
  * Scans a directory of expression bundle YAML files, validates and indexes
- * them, and returns a resolver registry. Files must be named
- * `<name>-<major>.<minor>.<patch>.yaml`; others are silently skipped.
+ * them, and returns a resolver registry. All `.yaml` / `.yml` files are
+ * considered; identity is read from the YAML content. Files that fail
+ * validation throw immediately.
  *
  * The directory is resolved in this order:
  * 1. `IRON_MONKEY_EXPRESSIONS` environment variable.
@@ -206,39 +174,50 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
   const indexed: IndexedBundle[] = [];
 
   for (const file of files) {
-    const match = file.match(/^(.+)-(\d+\.\d+\.\d+)\.ya?ml$/);
-    if (!match) continue;
     const filePath = join(expressionsDir, file);
     const bundle = loadBundle(filePath);
-    indexed.push({ name: bundle.name, version: bundle.version, bundle });
+    indexed.push({ name: bundle.expression, group: bundle.group, author: bundle.author, bundle });
   }
 
   return {
     resolve(ref: string): ExpressionBundle {
-      const colonIdx = ref.indexOf(':');
-      if (colonIdx === -1) {
+      const parts = ref.split('/');
+      let candidates: IndexedBundle[];
+
+      if (parts.length === 1) {
+        // expression name only
+        candidates = indexed.filter((b) => b.name === parts[0]);
+        if (candidates.length > 1) {
+          const identities = candidates.map((b) => `${b.group}/${b.author}/${b.name}`).join(', ');
+          throw new Error(
+            `Ambiguous expression reference '${ref}': multiple bundles match — ${identities}. ` +
+              `Use a more qualified path (author/expression or group/author/expression).`,
+          );
+        }
+      } else if (parts.length === 2) {
+        // author/expression
+        candidates = indexed.filter((b) => b.author === parts[0] && b.name === parts[1]);
+      } else if (parts.length === 3) {
+        // group/author/expression
+        candidates = indexed.filter(
+          (b) => b.group === parts[0] && b.author === parts[1] && b.name === parts[2],
+        );
+      } else {
         throw new Error(
-          `Invalid expression reference '${ref}': expected format '<name>:<semver-range>'`,
+          `Invalid expression reference '${ref}': expected 'expression', 'author/expression', ` +
+            `or 'group/author/expression'.`,
         );
       }
-      const name = ref.slice(0, colonIdx);
-      const range = ref.slice(colonIdx + 1);
-
-      const candidates = indexed
-        .filter((b) => b.name === name && satisfiesRange(b.version, range))
-        .sort((a, b) => semverCompare(b.version, a.version));
 
       if (candidates.length === 0) {
-        throw new Error(
-          `No expression bundle found for '${ref}'. Searched ${expressionsDir}/${name}-*.yaml.`,
-        );
+        throw new Error(`No expression bundle found for '${ref}'. Searched in ${expressionsDir}.`);
       }
 
       return candidates[0].bundle;
     },
 
-    list(): { name: string; version: string }[] {
-      return indexed.map((b) => ({ name: b.name, version: b.version }));
+    list(): { name: string; group: string; author: string }[] {
+      return indexed.map((b) => ({ name: b.name, group: b.group, author: b.author }));
     },
   };
 }

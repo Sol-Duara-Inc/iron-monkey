@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://cdrus.dev/schemas/v1/workflow.schema.json",
   "title": "CDrus Workflow",
-  "description": "Defines a workflow in the CDrus language.",
+  "description": "Defines a workflow in the CDrus language. A workflow orchestrates CDEvents and references CDrus Expressions by identity. Expressions are addressed via the (group, author, expression) identity tuple defined in the Expression schema.",
   "type": "object",
   "required": ["workflow"],
   "additionalProperties": false,
@@ -52,7 +52,7 @@
         "produces": {
           "type": "array",
           "minItems": 1,
-          "description": "Ordered list of CDEvents and/or expression references.",
+          "description": "Ordered list of CDEvents and/or CDrus Expression references.",
           "items": { "$ref": "#/definitions/produce_item" }
         }
       }
@@ -60,7 +60,7 @@
   },
   "definitions": {
     "produce_item": {
-      "description": "A workflow produce item is either a CDEvent or a reference to a CDrus Expression.",
+      "description": "A workflow produce item is either a CDEvent or a reference to a CDrus Expression by identity.",
       "oneOf": [{ "$ref": "#/definitions/event_item" }, { "$ref": "#/definitions/expression_item" }]
     },
     "event_item": {
@@ -94,12 +94,13 @@
       "type": "object",
       "required": ["expression"],
       "additionalProperties": false,
-      "description": "A reference to a CDrus Expression.",
+      "description": "A reference to a CDrus Expression by identity. Expressions are identified by the (group, author, expression) tuple defined in the Expression schema. Path-style references resolve abbreviated forms against the workflow's current processing context.",
       "properties": {
         "expression": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^[a-z][a-z0-9-]*(:[^\\s]+)?$"
+          "pattern": "^([a-z][a-z0-9-]*/){0,2}[a-z][a-z0-9-]*$",
+          "description": "Reference to a CDrus Expression by identity, in path form. Three reference forms are supported: 'build' (resolved within current group and author context); 'mchen/build' (explicit author within current group); 'payment-engineering/mchen/build' (fully qualified identity)."
         },
         "tool": { "type": "string", "minLength": 1 },
         "source": { "type": "string", "format": "uri" },

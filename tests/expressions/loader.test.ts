@@ -17,6 +17,13 @@ async function makeTmpDir(): Promise<string> {
   return dir;
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/** Minimal valid expression bundle in the new CDrus flat format. */
+function minimalBundle(name: string): string {
+  return `group: sol-duara\nauthor: iron-monkey\nexpression: ${name}\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n`;
+}
+
 describe('loadExpressionRegistry — bundled expressions', () => {
   it('loads all three bundled expressions', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
@@ -27,50 +34,67 @@ describe('loadExpressionRegistry — bundled expressions', () => {
     expect(names).toContain('deploy');
   });
 
-  it('resolves build:^0.1.0 to the highest matching version', () => {
+  it('list() includes group and author for each bundle', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
-    const bundle = registry.resolve('build:^0.1.0');
-    expect(bundle.name).toBe('build');
-    expect(bundle.version).toBe('0.1.0');
+    const list = registry.list();
+    for (const entry of list) {
+      expect(entry.group).toBe('sol-duara');
+      expect(entry.author).toBe('iron-monkey');
+      expect(typeof entry.name).toBe('string');
+    }
+  });
+
+  it('resolves "build" to the build expression bundle', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    const bundle = registry.resolve('build');
+    expect(bundle.expression).toBe('build');
+    expect(bundle.group).toBe('sol-duara');
+    expect(bundle.author).toBe('iron-monkey');
     expect(bundle.produces).toHaveLength(4);
   });
 
-  it('resolves artifact-store:^0.1.0', () => {
+  it('resolves "artifact-store" to the artifact-store bundle', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
-    const bundle = registry.resolve('artifact-store:^0.1.0');
-    expect(bundle.name).toBe('artifact-store');
+    const bundle = registry.resolve('artifact-store');
+    expect(bundle.expression).toBe('artifact-store');
     expect(bundle.produces).toHaveLength(2);
   });
 
-  it('resolves deploy:^0.1.0 and includes explicit ids', () => {
+  it('resolves "deploy" and preserves timing extensions', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
-    const bundle = registry.resolve('deploy:^0.1.0');
-    expect(bundle.name).toBe('deploy');
+    const bundle = registry.resolve('deploy');
+    expect(bundle.expression).toBe('deploy');
     expect(bundle.produces).toHaveLength(4);
     expect(bundle.produces[0].min_wait_ms).toStrictEqual(100);
     expect(bundle.produces[3].timeout_ms).toStrictEqual(30000);
+  });
+
+  it('resolves using author/expression path form', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    const bundle = registry.resolve('iron-monkey/build');
+    expect(bundle.expression).toBe('build');
+  });
+
+  it('resolves using group/author/expression path form', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    const bundle = registry.resolve('sol-duara/iron-monkey/build');
+    expect(bundle.expression).toBe('build');
   });
 });
 
 describe('loadExpressionRegistry — error cases', () => {
   it('fails with clear error on unresolvable reference', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
-    expect(() => registry.resolve('nonexistent:^1.0.0')).toThrow(
-      "No expression bundle found for 'nonexistent:^1.0.0'",
-    );
-  });
-
-  it('fails with clear error when range does not match any version', () => {
-    const registry = loadExpressionRegistry(BUNDLED_DIR);
-    expect(() => registry.resolve('build:^9.9.9')).toThrow(
-      "No expression bundle found for 'build:^9.9.9'",
+    expect(() => registry.resolve('nonexistent')).toThrow(
+      "No expression bundle found for 'nonexistent'",
     );
   });
 
   it('fails with clear error on missing required fields in bundle', async () => {
     const dir = await makeTmpDir();
     await writeFile(
-      path.join(dir, 'bad-1.0.0.yaml'),
+      path.join(dir, 'bad.yaml'),
+      // old format: missing group/author/expression at top level
       `expression:\n  name: bad\n  version: 1.0.0\n`,
       'utf-8',
     );
@@ -79,66 +103,59 @@ describe('loadExpressionRegistry — error cases', () => {
 
   it('fails with clear error on malformed YAML bundle', async () => {
     const dir = await makeTmpDir();
-    await writeFile(
-      path.join(dir, 'broken-1.0.0.yaml'),
-      `expression: [invalid: yaml: {\n`,
-      'utf-8',
-    );
+    await writeFile(path.join(dir, 'broken.yaml'), `group: [invalid: yaml: {\n`, 'utf-8');
     expect(() => loadExpressionRegistry(dir)).toThrow('Failed to parse expression bundle YAML');
   });
 
   it('fails when bundle has noun.verb collision without explicit ids', async () => {
     const dir = await makeTmpDir();
     await writeFile(
-      path.join(dir, 'collision-1.0.0.yaml'),
-      `expression:
-  name: collision
-  version: 1.0.0
-  produces:
-    - event: dev.cdevents.build.started.0.5.1
-    - event: dev.cdevents.build.started.0.5.1
-`,
+      path.join(dir, 'collision.yaml'),
+      `group: sol-duara\nauthor: iron-monkey\nexpression: collision\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n  - event: dev.cdevents.build.started.0.5.1\n`,
       'utf-8',
     );
     expect(() => loadExpressionRegistry(dir)).toThrow("must each have an explicit 'id' field");
   });
+
+  it('fails with a clear error for an overly-qualified path reference', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    expect(() => registry.resolve('a/b/c/d')).toThrow('Invalid expression reference');
+  });
 });
 
-describe('loadExpressionRegistry — semver range matching', () => {
-  it('exact match resolves correctly', async () => {
+describe('loadExpressionRegistry — path-style disambiguation', () => {
+  it('resolves by author/expression when two bundles share the same expression name', async () => {
     const dir = await makeTmpDir();
+    // Two bundles with the same expression name but different authors
     await writeFile(
-      path.join(dir, 'myexpr-1.2.3.yaml'),
-      `expression:
-  name: myexpr
-  version: 1.2.3
-  produces:
-    - event: dev.cdevents.build.started.0.5.1
-`,
+      path.join(dir, 'alpha.yaml'),
+      `group: acme\nauthor: team-alpha\nexpression: build\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n`,
       'utf-8',
     );
+    await writeFile(
+      path.join(dir, 'beta.yaml'),
+      `group: acme\nauthor: team-beta\nexpression: build\nproduces:\n  - event: dev.cdevents.build.finished.0.5.1\n`,
+      'utf-8',
+    );
+
     const registry = loadExpressionRegistry(dir);
-    const bundle = registry.resolve('myexpr:1.2.3');
-    expect(bundle.version).toBe('1.2.3');
+
+    // Simple name is ambiguous
+    expect(() => registry.resolve('build')).toThrow('Ambiguous expression reference');
+
+    // Qualified by author resolves unambiguously
+    const alpha = registry.resolve('team-alpha/build');
+    expect(alpha.produces[0].event).toBe('dev.cdevents.build.started.0.5.1');
+
+    const beta = registry.resolve('team-beta/build');
+    expect(beta.produces[0].event).toBe('dev.cdevents.build.finished.0.5.1');
   });
 
-  it('caret range selects highest compatible version', async () => {
+  it('resolves with fully-qualified group/author/expression path', async () => {
     const dir = await makeTmpDir();
-    for (const v of ['0.1.0', '0.1.1', '0.2.0']) {
-      await writeFile(
-        path.join(dir, `expr-${v}.yaml`),
-        `expression:
-  name: expr
-  version: ${v}
-  produces:
-    - event: dev.cdevents.build.started.0.5.1
-`,
-        'utf-8',
-      );
-    }
+    await writeFile(path.join(dir, 'myexpr.yaml'), minimalBundle('myexpr'), 'utf-8');
     const registry = loadExpressionRegistry(dir);
-    // ^0.1.0 matches 0.1.x only (minor 1, patch >= 0)
-    const bundle = registry.resolve('expr:^0.1.0');
-    expect(bundle.version).toBe('0.1.1');
+    const bundle = registry.resolve('sol-duara/iron-monkey/myexpr');
+    expect(bundle.expression).toBe('myexpr');
   });
 });
