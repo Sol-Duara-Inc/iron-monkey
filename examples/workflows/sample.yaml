@@ -18,11 +18,11 @@ workflow:
     # ── Github Action ──────────────────────────────────────────────────────
     - event: dev.cdevents.pipelinerun.started.0.5.1
 
-    - expression: build:^0.1.0
+    - expression: build
 
-    - expression: artifact-store:^0.1.0
+    - expression: artifact-store
 
-    - expression: deploy:^0.1.0
+    - expression: deploy
       overrides:
         service.deployed:
           tool: gke-prod

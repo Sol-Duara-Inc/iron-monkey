@@ -114,8 +114,9 @@ export interface ResolvedEvent {
   /** Whether this event originated from a direct `event:` item or an `expression:` expansion. */
   origin: 'event' | 'expression';
   /**
-   * The `<name>:<semver-range>` reference string when `origin` is
-   * `'expression'`; absent for direct event items.
+   * The path-style CDrus identity reference string when `origin` is
+   * `'expression'` (e.g. `'build'`, `'iron-monkey/build'`); absent for
+   * direct event items.
    */
   expressionRef?: string;
 }

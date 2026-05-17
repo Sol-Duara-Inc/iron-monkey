@@ -102,15 +102,16 @@ export interface ExpressionOverride {
 
 /**
  * An expression produce item in the workflow `produces` list. References a
- * CDrus expression bundle by name and semver range; the bundle is expanded into
+ * CDrus expression bundle by path-style identity; the bundle is expanded into
  * one or more CDEvent entries by {@link resolveProduces}. Item-level fields and
  * `overrides` allow fine-grained customisation without forking the bundle.
  */
 export interface ExpressionItem {
   /**
-   * Expression bundle reference in `<name>:<semver-range>` format, e.g.
-   * `'github-actions:^1.0.0'`. Resolved against the expression registry at
-   * parse time.
+   * Expression bundle reference in path-style CDrus identity notation:
+   * `'build'` (expression name only), `'iron-monkey/build'` (author/expression),
+   * or `'sol-duara/iron-monkey/build'` (group/author/expression).
+   * Resolved against the expression registry at parse time.
    */
   expression: string;
   /** Default tool identifier for all events expanded from this expression. */
@@ -143,10 +144,16 @@ export interface WorkflowDef {
   id: string;
   /** Human-readable name displayed in logs and used for fallback chain ID slugs. */
   name: string;
-  /** Integer schema version; increment when making breaking changes to the workflow. */
-  version: number;
-  /** Optional documentation metadata (description, owner, tags). */
-  metadata?: WorkflowMetadata;
+  /**
+   * CDrus grammar block. Required per the CDrus workflow schema. Contains the
+   * schema version this workflow targets and optional free-form metadata.
+   */
+  cdrus: {
+    /** CDrus schema version this workflow YAML targets (e.g. `1`). */
+    version: number;
+    /** Optional documentation metadata (description, owner, tags). */
+    metadata?: WorkflowMetadata;
+  };
   /**
    * Default values applied to all `produces` items that do not specify their
    * own values for the same fields.

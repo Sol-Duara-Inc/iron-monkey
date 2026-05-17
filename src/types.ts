@@ -377,15 +377,16 @@ export interface ExpressionOverride {
 
 /**
  * An expression produce item in the workflow `produces` list. References a
- * CDrus expression bundle by name and semver range; the bundle is expanded into
+ * CDrus expression bundle by path-style identity; the bundle is expanded into
  * one or more CDEvent entries by {@link resolveProduces}. Item-level fields and
  * `overrides` allow fine-grained customisation without forking the bundle.
  */
 export interface ExpressionItem {
   /**
-   * Expression bundle reference in `<name>:<semver-range>` format, e.g.
-   * `'github-actions:^1.0.0'`. Resolved against the expression registry at
-   * parse time.
+   * Expression bundle reference in CDrus path-style identity notation:
+   * `'build'` (expression name only), `'iron-monkey/build'` (author/expression),
+   * or `'sol-duara/iron-monkey/build'` (group/author/expression).
+   * Resolved against the expression registry at parse time.
    */
   expression: string;
   /** Default tool identifier for all events expanded from this expression. */
@@ -418,10 +419,16 @@ export interface WorkflowDef {
   id: string;
   /** Human-readable name displayed in logs and used for fallback chain ID slugs. */
   name: string;
-  /** Integer schema version; increment when making breaking changes to the workflow. */
-  version: number;
-  /** Optional documentation metadata (description, owner, tags). */
-  metadata?: WorkflowMetadata;
+  /**
+   * CDrus grammar block. Required per the CDrus workflow schema. Contains the
+   * schema version this workflow targets and optional free-form metadata.
+   */
+  cdrus: {
+    /** CDrus schema version this workflow YAML targets (e.g. `1`). */
+    version: number;
+    /** Optional documentation metadata (description, owner, tags). */
+    metadata?: WorkflowMetadata;
+  };
   /**
    * Default values applied to all `produces` items that do not specify their
    * own values for the same fields.
@@ -462,68 +469,60 @@ export function isExpressionItem(item: ProducesItem): item is ExpressionItem {
 
 /**
  * @module expressions/types
- * TypeScript types for CDrus expression bundles. A bundle is a versioned,
- * named collection of CDEvents that an SDLC tool or pipeline stage is expected
- * to produce. Bundles are referenced from workflow `produces` arrays as
- * `expression: '<name>:<semver-range>'` items.
+ * TypeScript types for CDrus expression bundles. A bundle declares a named
+ * SDLC intent — build, deploy, verify, and so on — by listing the CDEvents
+ * that together fulfil that intent. Every bundle is bound to an identity tuple:
+ * (group, author, expression). Bundles are referenced from workflow `produces`
+ * arrays using path-style notation: `expression`, `author/expression`, or
+ * `group/author/expression`.
  */
 
 /**
  * A single CDEvent entry within an expression bundle's `produces` list.
- * Declares the expected event type along with optional timing and subject hints
- * that the manifest builder uses when no workflow-level overrides are present.
+ * Declares the expected event type along with optional Iron Monkey timing and
+ * subject hints that the manifest builder uses when no workflow-level overrides
+ * are present.
  */
 export interface ExpressionEvent {
-  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.1.0`. */
+  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.5.1`. */
   event: string;
   /**
    * Optional stable identifier for this event within the bundle. Required when
-   * multiple events in the same bundle share the same `noun.verb` (e.g. two
-   * `build.started` events for parallel builds). Referenced as override keys in
-   * workflow YAML.
+   * multiple events in the same bundle share the same `noun.verb`. Referenced
+   * as override keys in workflow YAML.
    */
   id?: string;
   /**
    * Maximum number of milliseconds the emitter waits before the event is
-   * considered overdue. Used as the upper bound for the timing allocation.
+   * considered overdue. Iron Monkey extension.
    */
   timeout_ms?: number;
   /**
    * Minimum number of milliseconds the emitter waits after the previous event
-   * before emitting this one. Used as the lower bound for timing allocation.
+   * before emitting this one. Iron Monkey extension.
    */
   min_wait_ms?: number;
-  /** Default CDEvents subject shape contributed by the bundle. */
+  /** Default CDEvents subject shape contributed by the bundle. Iron Monkey extension. */
   subject?: {
-    /** Default subject ID; overridden by workflow or manifest allocation when absent. */
     id?: string;
-    /** Default subject content fields merged with workflow and override-level content. */
     content?: Record<string, unknown>;
   };
 }
 
 /**
- * A CDrus expression bundle: a versioned, named grouping of CDEvents that
+ * A CDrus expression bundle: a named, unversioned grouping of CDEvents that
  * represents the expected output of a particular SDLC tool or pipeline stage.
- * Bundles are discovered from YAML files and indexed by the expression registry.
+ * Identity is bound to the (group, author, expression) tuple — not a version.
  */
 export interface ExpressionBundle {
-  /** Unique name used to reference this bundle, e.g. `'github-actions'`. */
-  name: string;
-  /** Semantic version string of the bundle, e.g. `'1.2.0'`. */
-  version: string;
+  /** Group component of the identity tuple (e.g. `'sol-duara'`). */
+  group: string;
+  /** Author component of the identity tuple (e.g. `'iron-monkey'`). */
+  author: string;
+  /** Expression name component of the identity tuple (e.g. `'build'`, `'deploy'`). */
+  expression: string;
   /** Optional human-readable description of what this bundle models. */
   description?: string;
   /** Ordered list of CDEvents this bundle declares the tool will produce. */
   produces: ExpressionEvent[];
-}
-
-/**
- * The top-level structure of an expression bundle YAML file. The `expression`
- * key wraps the {@link ExpressionBundle} to allow for future metadata fields at
- * the file level.
- */
-export interface ExpressionBundleFile {
-  /** The expression bundle declared in this file. */
-  expression: ExpressionBundle;
 }

@@ -1,22 +1,29 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://cdrus.dev/schemas/0.1.0/expression.schema.json",
+  "$id": "https://cdrus.dev/schemas/0.2.0/expression.schema.json",
   "title": "CDrus Expression",
-  "description": "Defines a Expression in the CDrus language. CDrus is the grammar layer in a three-pillar language architecture for describing SDLC work: CDEvents (vocabulary of what happened), CDrus (grammar of what is intended), and Koine (execution of intent against present tools). A Expression specifies an intent — build, deploy, verify, and so on — by declaring the CDEvents that together fulfill that intent. Expressions compose: a composite expression references other CDrus Expressions as constituents. Per-event field requirements live in the CDEvent schemas themselves (using one-way inheritance for vendor-specific extensions), not in the expression.",
+  "description": "Defines an Expression in the CDrus language. An Expression specifies an intent — build, deploy, verify, and so on — by declaring the CDEvents that together fulfill that intent. Every Expression is bound to an identity tuple: (group, author, expression). The identity is the commitment; Expressions do not carry versions. A change to the boundary semantics of an Expression requires a new identity (a new expression name, or transfer to a different author or group). Internal refinements that preserve the boundary contract retain the same identity. Expressions compose: a composite Expression references other CDrus Expressions as constituents by identity. Per-event field requirements live in the CDEvent schemas themselves (using one-way inheritance for vendor-specific extensions), not in the Expression.",
   "type": "object",
-  "required": ["expression", "version", "produces"],
+  "required": ["group", "author", "expression", "produces"],
   "additionalProperties": false,
   "properties": {
+    "group": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Group component of the Expression's identity tuple. MUST be a registered group name in the processing service's group index (e.g., 'payment-engineering', 'prod-sres', 'data-platform', 'identity-services', 'risk-analytics'). Lowercase, hyphen-separated. The group is the organizational unit within the enterprise; it is what scopes authorship and authorization for the Expression."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Author component of the Expression's identity tuple. MUST be a registered user name in the processing service's user index. The author is the engineer whose intent this Expression encodes; ownership of the Expression — including responsibility for what should happen, what failure looks like, and how to respond when expectations diverge — is bound to this identity. Lowercase, hyphen-separated."
+    },
     "expression": {
       "type": "string",
       "minLength": 1,
       "pattern": "^[a-z][a-z0-9-]*$",
-      "description": "Unique name of this CDrus Expression (e.g., 'build', 'deploy', 'verify', 'build-deploy'). Lowercase, hyphen-separated."
-    },
-    "version": {
-      "type": "string",
-      "pattern": "^\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?$",
-      "description": "Semantic version of this CDrus Expression. Bumping a version signals a change in intent. Consumers may pin to a version via 'expression: <name>:<version>' syntax, or use semver ranges like 'expression: build:^1.2.0'."
+      "description": "Expression component of the identity tuple (e.g., 'build', 'deploy', 'verify', 'build-deploy', 'integration-test'). The full identity is the tuple (group, author, expression). The canonical file naming pattern is <group>.<author>.<expression>.expression.yaml. Lowercase, hyphen-separated."
     },
     "description": {
       "type": "string",
@@ -25,13 +32,13 @@
     "produces": {
       "type": "array",
       "minItems": 1,
-      "description": "Ordered list of CDEvents and/or sub-expressions that together fulfill this CDrus Expression. Order is significant: events fire depth-first in the order specified — a parent event with nested produces fires, all its descendants fire (recursively), then the parent's next sibling fires. Sub-expressions are expanded recursively at the position they appear.",
+      "description": "Ordered list of CDEvents and/or sub-Expressions that together fulfill this CDrus Expression. Order is significant: events fire depth-first in the order specified — a parent event with nested produces fires, all its descendants fire (recursively), then the parent's next sibling fires. Sub-Expressions are expanded recursively at the position they appear, resolved by identity.",
       "items": { "$ref": "#/definitions/produce_item" }
     }
   },
   "definitions": {
     "produce_item": {
-      "description": "A produce item is either a CDEvent (terminal, optionally with nested produces and/or detach lists) or a reference to another CDrus Expression (composition, no nesting). The two forms are mutually exclusive within a single item.",
+      "description": "A produce item is either a CDEvent (terminal, optionally with nested produces and/or detach lists) or a reference to another CDrus Expression by identity (composition, no nesting). The two forms are mutually exclusive within a single item.",
       "oneOf": [{ "$ref": "#/definitions/event_item" }, { "$ref": "#/definitions/expression_item" }]
     },
     "event_item": {
@@ -44,7 +51,7 @@
           "type": "string",
           "minLength": 1,
           "pattern": "^dev\\.cdevents\\.[a-z]+\\.[a-z]+(\\.\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?|:[^\\s]+)?$",
-          "description": "CDEvent type to emit. Multiple forms are accepted and resolve identically: (1) canonical embedded-version form 'dev.cdevents.build.started.0.1.1' (exact match); (2) colon form 'dev.cdevents.build.started:0.1.1' (exact match, equivalent); (3) no version 'dev.cdevents.build.started' (resolves to latest available); (4) colon-separated semver range 'dev.cdevents.build.started:^0.1.0' (resolves to highest matching). Standard semver range syntax applies — caret, tilde, x-ranges, and explicit ranges (the last must be quoted in YAML). Vendor-specific event extensions are referenced by their full extended type string. Detailed semver-range validation occurs at resolution time. Linters may normalize between the canonical and colon forms."
+          "description": "CDEvent type to emit. CDEvents themselves are versioned by the CDEvents specification — distinct from CDrus Expression identity, which is unversioned. Multiple forms are accepted and resolve identically: (1) canonical embedded-version form 'dev.cdevents.build.started.0.1.1' (exact match); (2) colon form 'dev.cdevents.build.started:0.1.1' (exact match, equivalent); (3) no version 'dev.cdevents.build.started' (resolves to latest available); (4) colon-separated semver range 'dev.cdevents.build.started:^0.1.0' (resolves to highest matching). Standard semver range syntax applies — caret, tilde, x-ranges, and explicit ranges (the last must be quoted in YAML). Vendor-specific event extensions are referenced by their full extended type string. Detailed semver-range validation occurs at resolution time. Linters may normalize between the canonical and colon forms."
         },
         "event_schema_uri": {
           "type": "string",
@@ -69,13 +76,13 @@
       "type": "object",
       "required": ["expression"],
       "additionalProperties": false,
-      "description": "A expression item references another CDrus Expression by name, optionally pinned by version or constrained by a semver range. The referenced expression is resolved and expanded recursively at run time. Expression items cannot carry produces or detach lists — those properties belong on the events the referenced expression itself produces, in the referenced expression's own definition.",
+      "description": "An expression item references another CDrus Expression by identity. Expressions are identified by the (group, author, expression) tuple. References use path-style notation and may be fully qualified or abbreviated when the processing service can resolve the missing components from the current processing context. The referenced Expression is resolved and expanded recursively at run time. Expression items cannot carry produces or detach lists — those properties belong on the events the referenced Expression itself produces, in the referenced Expression's own definition.",
       "properties": {
         "expression": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^[a-z][a-z0-9-]*(:[^\\s]+)?$",
-          "description": "Reference to a sub-expression by name, with optional version. Forms: 'build' (latest available), 'build:*' (latest, explicit), 'build:1.2.0' (exact pin), 'build:^1.2.0' (compatible range, >=1.2.0 <2.0.0), 'build:~1.2.0' (close range, >=1.2.0 <1.3.0), 'build:1.x' (any 1.x.x), or quoted explicit ranges like \"build:>=1.2.0 <2.0.0\". Detailed semver-range validation occurs at resolution time."
+          "pattern": "^([a-z][a-z0-9-]*/){0,2}[a-z][a-z0-9-]*$",
+          "description": "Reference to a sub-Expression by identity, in path form. Three reference forms are supported, from least to most qualified: 'build' (resolved within the current group and author context, e.g., when both referrer and referent share the same group and author); 'mchen/build' (explicit author within the current group context); 'payment-engineering/mchen/build' (fully qualified identity). The processing service resolves abbreviated references against the current processing context. All path components follow the same lowercase-hyphen pattern."
         }
       }
     }

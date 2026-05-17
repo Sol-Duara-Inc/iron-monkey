@@ -63,7 +63,7 @@ vi.mock('../../src/bus/interface.js', () => ({
 
 // ── import after mocks ────────────────────────────────────────────────────────
 
-import { runWorkflow } from '../../src/emitter/runner.js';
+import { runWorkflow, runWorkflows } from '../../src/emitter/runner.js';
 import { loadConfig, resolveBusName } from '../../src/loaders/config.loader.js';
 import { validateWorkflow } from '../../src/workflow/parser.js';
 import { buildManifest } from '../../src/manifest/builder.js';
@@ -195,5 +195,74 @@ describe('runWorkflow', () => {
     await expect(
       runWorkflow('workflow.yaml', { bus: 'nonexistent', conduit: false }),
     ).rejects.toThrow("Bus 'nonexistent' not found");
+  });
+});
+
+describe('runWorkflows', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (loadConfig as ReturnType<typeof vi.fn>).mockResolvedValue(baseConfig);
+    (resolveBusName as ReturnType<typeof vi.fn>).mockReturnValue('default');
+    (validateWorkflow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      workflow: { id: 'wf-1', name: 'test', version: 1, produces: [] },
+    });
+    mockBus.connect.mockResolvedValue(undefined);
+    mockBus.emit.mockResolvedValue(undefined);
+    mockBus.disconnect.mockResolvedValue(undefined);
+    const manifest = makeManifest([makeEvent()]);
+    (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
+    (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
+  });
+
+  it('returns an empty array when given no paths', async () => {
+    const results = await runWorkflows([], { conduit: false });
+    expect(results).toEqual([]);
+  });
+
+  it('returns fulfilled for every path when all workflows succeed', async () => {
+    const results = await runWorkflows(['a.yaml', 'b.yaml', 'c.yaml'], { conduit: false });
+
+    expect(results).toHaveLength(3);
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+    expect(results.map((r) => r.workflowPath)).toEqual(['a.yaml', 'b.yaml', 'c.yaml']);
+  });
+
+  it('preserves input order in the results array', async () => {
+    const paths = ['first.yaml', 'second.yaml', 'third.yaml'];
+    const results = await runWorkflows(paths, { conduit: false });
+
+    expect(results.map((r) => r.workflowPath)).toEqual(paths);
+  });
+
+  it('returns a rejected result for a failed workflow without aborting the others', async () => {
+    // second call to validateWorkflow rejects; first and third succeed
+    (validateWorkflow as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ workflow: { id: 'wf-1', name: 'a', version: 1, produces: [] } })
+      .mockRejectedValueOnce(new Error('bad schema'))
+      .mockResolvedValueOnce({ workflow: { id: 'wf-3', name: 'c', version: 1, produces: [] } });
+
+    const results = await runWorkflows(['a.yaml', 'bad.yaml', 'c.yaml'], { conduit: false });
+
+    expect(results[0]).toMatchObject({ workflowPath: 'a.yaml', status: 'fulfilled' });
+    expect(results[1]).toMatchObject({
+      workflowPath: 'bad.yaml',
+      status: 'rejected',
+      error: 'bad schema',
+    });
+    expect(results[2]).toMatchObject({ workflowPath: 'c.yaml', status: 'fulfilled' });
+  });
+
+  it('does not include an error field on fulfilled results', async () => {
+    const [result] = await runWorkflows(['ok.yaml'], { conduit: false });
+    expect(result.status).toBe('fulfilled');
+    expect(result.error).toBeUndefined();
+  });
+
+  it('fires all workflows simultaneously (each gets its own bus connection)', async () => {
+    await runWorkflows(['x.yaml', 'y.yaml'], { conduit: false });
+
+    // two independent runs → connect called once per workflow
+    expect(mockBus.connect).toHaveBeenCalledTimes(2);
+    expect(mockBus.disconnect).toHaveBeenCalledTimes(2);
   });
 });
