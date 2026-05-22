@@ -164,7 +164,7 @@ export interface Manifest {
   /**
    * Indicates how `chainId` was obtained:
    * - `'conduit'`     — issued by the Conduit chain-ID service
-   * - `'bus'`         — issued by the target bus (e.g. Junction Box `/api/launch` `runId`)
+   * - `'bus'`         — issued by the target bus (e.g. Junction Box `POST /api/runs/register` `runId`)
    * - `'fallback'`    — locally-generated fallback URN
    */
   chainIdSource: 'conduit' | 'bus' | 'fallback';

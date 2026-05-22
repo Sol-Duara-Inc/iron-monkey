@@ -29,7 +29,7 @@ beforeEach(() => {
     fetchCalls.push({ url, init });
     // Default sane responses by URL pattern; individual tests override via mockImplementation.
     if (url.endsWith('/health')) return mockResponse(200, 'ok');
-    if (url.endsWith('/api/launch')) return mockResponse(200, { runId: 'run-acquired' });
+    if (url.endsWith('/api/runs/register')) return mockResponse(200, { runId: 'run-acquired' });
     if (url.endsWith('/api/events')) return mockResponse(202, '');
     if (url.endsWith('/api/observatory')) return mockResponse(200, [{ workflowId: 'demo' }]);
     return mockResponse(404, '');
@@ -76,12 +76,12 @@ function makePayload(): CDEventPayload {
 // ── connect ──────────────────────────────────────────────────────────────────
 
 describe('JunctionBoxBus.connect', () => {
-  it('hits /health and /api/launch in order, capturing the runId as chainId', async () => {
+  it('hits /health and /api/runs/register in order, capturing the runId as chainId', async () => {
     const bus = new JunctionBoxBus('jb', { ...baseConfig, workflow_id: 'demo-1' });
     await bus.connect();
     expect(fetchCalls.map((c) => c.url)).toEqual([
       'http://localhost:3000/health',
-      'http://localhost:3000/api/launch',
+      'http://localhost:3000/api/runs/register',
     ]);
     expect(await bus.acquireChainId()).toBe('run-acquired');
   });
@@ -108,7 +108,7 @@ describe('JunctionBoxBus.connect', () => {
       workflow_id: 'demo-1',
     });
     await bus.connect();
-    expect(fetchCalls.map((c) => c.url)).toEqual(['http://localhost:3000/api/launch']);
+    expect(fetchCalls.map((c) => c.url)).toEqual(['http://localhost:3000/api/runs/register']);
   });
 
   it('skips the launch step when launch is false', async () => {
@@ -143,15 +143,15 @@ describe('JunctionBoxBus.connect', () => {
     await expect(bus.connect()).rejects.toThrow(/health check failed/);
   });
 
-  it('throws when /api/launch returns an error and no runId', async () => {
+  it('throws when /api/runs/register returns an error and no runId', async () => {
     fetchMock
       .mockImplementationOnce(async () => mockResponse(200, 'ok')) // health
-      .mockImplementationOnce(async () => mockResponse(500, 'boom')); // launch
+      .mockImplementationOnce(async () => mockResponse(500, 'boom')); // register
     const bus = new JunctionBoxBus('jb', { ...baseConfig, workflow_id: 'demo-1' });
-    await expect(bus.connect()).rejects.toThrow(/\/api\/launch failed/);
+    await expect(bus.connect()).rejects.toThrow(/\/api\/runs\/register failed/);
   });
 
-  it('throws when /api/launch returns 200 but no runId', async () => {
+  it('throws when /api/runs/register returns 200 but no runId', async () => {
     fetchMock
       .mockImplementationOnce(async () => mockResponse(200, 'ok'))
       .mockImplementationOnce(async () => mockResponse(200, {}));

@@ -145,7 +145,7 @@ export async function runWorkflow(workflowPath: string, options: RunOptions): Pr
   }
 
   // Connect the bus first so adapters that issue their own chainId on
-  // connection (e.g. Junction Box `/api/launch` → runId) can hand it back to
+  // connection (e.g. Junction Box `POST /api/runs/register` → runId) can hand it back to
   // the manifest builder via the `acquireChainId` hook. This keeps Conduit /
   // fallback as the path for buses that have no opinion on chain identity.
   const bus = await createBus(busName, busConfig);
