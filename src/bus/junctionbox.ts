@@ -4,8 +4,10 @@
  * interface against Junction Box's REST API:
  *
  * - `GET  /health`           — preflight reachability check
- * - `POST /api/launch`       — activate a workflow, receive a `runId`
- *                               (used as the Sympraxis chainId)
+ * - `POST /api/runs/register` — register a pipeline run, receive a `runId`
+ *                               (used as the Sympraxis chainId); also arms
+ *                               the workflow graph and starts the first-event
+ *                               breach timer
  * - `POST /api/events`       — publish a single CDEvent payload (expects 202)
  * - `GET  /api/observatory`  — diagnostic: list active workflow runs
  *
@@ -39,11 +41,11 @@ export class JunctionBoxBus implements Bus {
 
   /**
    * Performs the Junction Box preflight: optional `GET /health`, then optional
-   * `POST /api/launch` with the configured `workflow_id`. The returned `runId`
-   * is stashed and exposed via {@link acquireChainId}.
+   * `POST /api/runs/register` with the configured `workflow_id`. The returned
+   * `runId` is stashed and exposed via {@link acquireChainId}.
    *
-   * @throws {Error} If the health check fails or `/api/launch` returns no
-   *   usable `runId`.
+   * @throws {Error} If the health check fails or `/api/runs/register` returns
+   *   no usable `runId`.
    */
   async connect(): Promise<void> {
     const logger = getLogger();
@@ -64,7 +66,7 @@ export class JunctionBoxBus implements Bus {
     }
 
     if (this.config.workflow_id && this.config.launch !== false) {
-      const launchUrl = `${base}/api/launch`;
+      const launchUrl = `${base}/api/runs/register`;
       logger.info(
         { bus: this.name, url: launchUrl, workflowId: this.config.workflow_id },
         'activating workflow',
@@ -84,11 +86,13 @@ export class JunctionBoxBus implements Bus {
       }
       if (!res.ok && !body.runId) {
         throw new Error(
-          `Junction Box /api/launch failed: HTTP ${res.status} ${bodyText.slice(0, 200)}`,
+          `Junction Box /api/runs/register failed: HTTP ${res.status} ${bodyText.slice(0, 200)}`,
         );
       }
       if (!body.runId) {
-        throw new Error(`Junction Box /api/launch returned no runId: ${bodyText.slice(0, 200)}`);
+        throw new Error(
+          `Junction Box /api/runs/register returned no runId: ${bodyText.slice(0, 200)}`,
+        );
       }
       this.acquiredChainId = body.runId;
       logger.info(
@@ -103,7 +107,7 @@ export class JunctionBoxBus implements Bus {
   }
 
   /**
-   * Returns the `runId` captured from `/api/launch` so the runner can use it
+   * Returns the `runId` captured from `/api/runs/register` so the runner can use it
    * as the manifest chainId. Returns `undefined` when no launch was performed.
    */
   async acquireChainId(): Promise<string | undefined> {

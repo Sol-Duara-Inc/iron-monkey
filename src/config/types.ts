@@ -40,7 +40,7 @@ export interface KafkaBusConfig {
 
 /**
  * Connection settings for the Junction Box HTTP bus. Junction Box exposes a
- * REST API that mirrors the role of an AMQP broker — `/api/launch` activates a
+ * REST API that mirrors the role of an AMQP broker — `POST /api/runs/register` activates a
  * workflow run and returns a `runId` that becomes the Sympraxis chainId, and
  * `/api/events` accepts each individual CDEvent (responding 202 on accept).
  * This adapter is the Iron Monkey counterpart of the `fire-sequence.zsh`
@@ -52,7 +52,7 @@ export interface JunctionBoxBusConfig {
   /** Base URL of the Junction Box service, e.g. `http://localhost:3000`. */
   url: string;
   /**
-   * Workflow ID to activate via `POST /api/launch` on connect. When omitted,
+   * Workflow ID to activate via `POST /api/runs/register` on connect. When omitted,
    * the bus skips the launch step and relies on the workflow being pre-active
    * (or on an externally-supplied chainId).
    */
@@ -60,7 +60,7 @@ export interface JunctionBoxBusConfig {
   /** When `false`, skips the `GET /health` preflight. Default `true`. */
   health_check?: boolean;
   /**
-   * When `false`, skips the `POST /api/launch` step even when `workflow_id`
+   * When `false`, skips the `POST /api/runs/register` step even when `workflow_id`
    * is set. Default `true`.
    */
   launch?: boolean;
