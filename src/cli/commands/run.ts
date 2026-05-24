@@ -14,7 +14,10 @@ export function runCommand(): Command {
     if (_workflowPaths.length === 1) {
       await runWorkflow(new FileWorkflowSource(_workflowPaths[0]), _options);
     } else {
-      const results = await runWorkflows(_workflowPaths.map((p) => new FileWorkflowSource(p)), _options);
+      const results = await runWorkflows(
+        _workflowPaths.map((p) => new FileWorkflowSource(p)),
+        _options,
+      );
       const failed = results.filter((r) => r.status === 'rejected');
       if (failed.length > 0) {
         for (const r of failed) {
