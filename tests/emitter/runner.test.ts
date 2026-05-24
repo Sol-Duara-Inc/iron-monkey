@@ -171,8 +171,12 @@ describe('runWorkflow', () => {
 
     const mockDef = { workflow: { id: 'wf-1', name: 'test', version: 1, produces: [] } };
     class StubSource extends WorkflowSource {
-      get name() { return 'stub'; }
-      async getWorkflow() { return mockDef as never; }
+      get name() {
+        return 'stub';
+      }
+      async getWorkflow() {
+        return mockDef as never;
+      }
     }
 
     await runWorkflow(new StubSource(), { conduit: false });

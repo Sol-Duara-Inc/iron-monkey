@@ -59,8 +59,12 @@ describe('WorkflowSource (abstract contract)', () => {
 
   it('can be subclassed with a custom implementation', async () => {
     class StaticSource extends WorkflowSource {
-      get name() { return 'static'; }
-      async getWorkflow() { return mockWorkflow as never; }
+      get name() {
+        return 'static';
+      }
+      async getWorkflow() {
+        return mockWorkflow as never;
+      }
     }
 
     const source = new StaticSource();
@@ -70,8 +74,12 @@ describe('WorkflowSource (abstract contract)', () => {
 
   it('custom source does not call validateWorkflow', async () => {
     class StaticSource extends WorkflowSource {
-      get name() { return 'static'; }
-      async getWorkflow() { return mockWorkflow as never; }
+      get name() {
+        return 'static';
+      }
+      async getWorkflow() {
+        return mockWorkflow as never;
+      }
     }
 
     await new StaticSource().getWorkflow();
