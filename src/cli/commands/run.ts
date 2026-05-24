@@ -10,10 +10,11 @@ export function runCommand(): Command {
 
   cmd.action(async (_workflowPaths: string[], _options: Record<string, unknown>) => {
     const { runWorkflow, runWorkflows } = await import('../../emitter/runner.js');
+    const { FileWorkflowSource } = await import('../../workflow/source.js');
     if (_workflowPaths.length === 1) {
-      await runWorkflow(_workflowPaths[0], _options);
+      await runWorkflow(new FileWorkflowSource(_workflowPaths[0]), _options);
     } else {
-      const results = await runWorkflows(_workflowPaths, _options);
+      const results = await runWorkflows(_workflowPaths.map((p) => new FileWorkflowSource(p)), _options);
       const failed = results.filter((r) => r.status === 'rejected');
       if (failed.length > 0) {
         for (const r of failed) {

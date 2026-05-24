@@ -64,6 +64,7 @@ vi.mock('../../src/bus/interface.js', () => ({
 // ── import after mocks ────────────────────────────────────────────────────────
 
 import { runWorkflow, runWorkflows } from '../../src/emitter/runner.js';
+import { FileWorkflowSource, WorkflowSource } from '../../src/workflow/source.js';
 import { loadConfig, resolveBusName } from '../../src/loaders/config.loader.js';
 import { validateWorkflow } from '../../src/workflow/parser.js';
 import { buildManifest } from '../../src/manifest/builder.js';
@@ -138,7 +139,7 @@ describe('runWorkflow', () => {
     (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
     (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
 
-    await runWorkflow('workflow.yaml', { conduit: false });
+    await runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false });
 
     expect(mockBus.connect).toHaveBeenCalled();
     // one event + one END link
@@ -149,6 +150,36 @@ describe('runWorkflow', () => {
       expect.any(Object),
     );
     expect(mockBus.disconnect).toHaveBeenCalled();
+  });
+
+  it('accepts a plain string path for backward compatibility', async () => {
+    const manifest = makeManifest([makeEvent()]);
+    (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
+    (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
+
+    // string path is wrapped in FileWorkflowSource internally
+    await runWorkflow('workflow.yaml', { conduit: false });
+
+    expect(mockBus.connect).toHaveBeenCalled();
+    expect(mockBus.disconnect).toHaveBeenCalled();
+  });
+
+  it('accepts a custom WorkflowSource implementation', async () => {
+    const manifest = makeManifest([makeEvent()]);
+    (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
+    (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
+
+    const mockDef = { workflow: { id: 'wf-1', name: 'test', version: 1, produces: [] } };
+    class StubSource extends WorkflowSource {
+      get name() { return 'stub'; }
+      async getWorkflow() { return mockDef as never; }
+    }
+
+    await runWorkflow(new StubSource(), { conduit: false });
+
+    // validateWorkflow must NOT have been called — source supplies the definition directly
+    expect(validateWorkflow).not.toHaveBeenCalled();
+    expect(mockBus.connect).toHaveBeenCalled();
   });
 
   it('skips events whose emitStatus is "skipped" and does not call bus.emit for them', async () => {
@@ -162,7 +193,7 @@ describe('runWorkflow', () => {
     (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
     (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
 
-    await runWorkflow('workflow.yaml', { conduit: false });
+    await runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false });
 
     // skipped event must not appear; normal event + END link = 2 calls
     const emittedTypes = (mockBus.emit as ReturnType<typeof vi.fn>).mock.calls.map(
@@ -179,9 +210,9 @@ describe('runWorkflow', () => {
     (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
     mockBus.emit.mockRejectedValueOnce(new Error('connection lost'));
 
-    await expect(runWorkflow('workflow.yaml', { conduit: false })).rejects.toThrow(
-      'connection lost',
-    );
+    await expect(
+      runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false }),
+    ).rejects.toThrow('connection lost');
     expect(mockBus.disconnect).toHaveBeenCalled();
   });
 
@@ -193,7 +224,7 @@ describe('runWorkflow', () => {
     (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
 
     await expect(
-      runWorkflow('workflow.yaml', { bus: 'nonexistent', conduit: false }),
+      runWorkflow(new FileWorkflowSource('workflow.yaml'), { bus: 'nonexistent', conduit: false }),
     ).rejects.toThrow("Bus 'nonexistent' not found");
   });
 });
@@ -214,34 +245,53 @@ describe('runWorkflows', () => {
     (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
   });
 
-  it('returns an empty array when given no paths', async () => {
+  it('returns an empty array when given no sources', async () => {
     const results = await runWorkflows([], { conduit: false });
     expect(results).toEqual([]);
   });
 
-  it('returns fulfilled for every path when all workflows succeed', async () => {
-    const results = await runWorkflows(['a.yaml', 'b.yaml', 'c.yaml'], { conduit: false });
+  it('returns fulfilled for every source when all workflows succeed', async () => {
+    const sources = ['a.yaml', 'b.yaml', 'c.yaml'].map((p) => new FileWorkflowSource(p));
+    const results = await runWorkflows(sources, { conduit: false });
 
     expect(results).toHaveLength(3);
     expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
     expect(results.map((r) => r.workflowPath)).toEqual(['a.yaml', 'b.yaml', 'c.yaml']);
   });
 
-  it('preserves input order in the results array', async () => {
-    const paths = ['first.yaml', 'second.yaml', 'third.yaml'];
-    const results = await runWorkflows(paths, { conduit: false });
+  it('accepts plain string paths for backward compatibility', async () => {
+    const results = await runWorkflows(['a.yaml', 'b.yaml'], { conduit: false });
 
-    expect(results.map((r) => r.workflowPath)).toEqual(paths);
+    expect(results).toHaveLength(2);
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+    expect(results.map((r) => r.workflowPath)).toEqual(['a.yaml', 'b.yaml']);
   });
 
-  it('returns a rejected result for a failed workflow without aborting the others', async () => {
+  it('preserves input order in the results array', async () => {
+    const sources = ['first.yaml', 'second.yaml', 'third.yaml'].map(
+      (p) => new FileWorkflowSource(p),
+    );
+    const results = await runWorkflows(sources, { conduit: false });
+
+    expect(results.map((r) => r.workflowPath)).toEqual(['first.yaml', 'second.yaml', 'third.yaml']);
+  });
+
+  it('derives workflowPath from source.name, not the raw path', async () => {
+    const sources = [new FileWorkflowSource('/deep/path/to/my-workflow.yaml')];
+    const results = await runWorkflows(sources, { conduit: false });
+
+    expect(results[0].workflowPath).toBe('my-workflow.yaml');
+  });
+
+  it('returns a rejected result for a failed source without aborting the others', async () => {
     // second call to validateWorkflow rejects; first and third succeed
     (validateWorkflow as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ workflow: { id: 'wf-1', name: 'a', version: 1, produces: [] } })
       .mockRejectedValueOnce(new Error('bad schema'))
       .mockResolvedValueOnce({ workflow: { id: 'wf-3', name: 'c', version: 1, produces: [] } });
 
-    const results = await runWorkflows(['a.yaml', 'bad.yaml', 'c.yaml'], { conduit: false });
+    const sources = ['a.yaml', 'bad.yaml', 'c.yaml'].map((p) => new FileWorkflowSource(p));
+    const results = await runWorkflows(sources, { conduit: false });
 
     expect(results[0]).toMatchObject({ workflowPath: 'a.yaml', status: 'fulfilled' });
     expect(results[1]).toMatchObject({
@@ -253,13 +303,16 @@ describe('runWorkflows', () => {
   });
 
   it('does not include an error field on fulfilled results', async () => {
-    const [result] = await runWorkflows(['ok.yaml'], { conduit: false });
+    const [result] = await runWorkflows([new FileWorkflowSource('ok.yaml')], { conduit: false });
     expect(result.status).toBe('fulfilled');
     expect(result.error).toBeUndefined();
   });
 
   it('fires all workflows simultaneously (each gets its own bus connection)', async () => {
-    await runWorkflows(['x.yaml', 'y.yaml'], { conduit: false });
+    await runWorkflows(
+      ['x.yaml', 'y.yaml'].map((p) => new FileWorkflowSource(p)),
+      { conduit: false },
+    );
 
     // two independent runs → connect called once per workflow
     expect(mockBus.connect).toHaveBeenCalledTimes(2);
