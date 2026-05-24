@@ -15,6 +15,8 @@
  */
 
 export { validateWorkflow, resolveProduces } from './workflow/parser.js';
+export { WorkflowSource, FileWorkflowSource } from './workflow/source.js';
+export type { WorkflowDefinition } from './workflow/source.js';
 export { loadConfig, resolveBusName } from './config/loader.js';
 export { loadExpressionRegistry } from './expressions/loader.js';
 export { buildManifest } from './manifest/builder.js';

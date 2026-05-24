@@ -8,7 +8,8 @@
  */
 
 import { writeFile } from 'fs/promises';
-import { validateWorkflow, resolveProduces } from '../workflow/parser.js';
+import { resolveProduces } from '../workflow/parser.js';
+import { WorkflowSource, FileWorkflowSource } from '../workflow/source.js';
 import { loadConfig, resolveBusName } from '../loaders/config.loader.js';
 import { loadExpressionRegistry } from '../loaders/expression.loader.js';
 import { buildManifest } from '../manifest/builder.js';
@@ -65,7 +66,12 @@ export interface RunOptions {
 
 /** Result of a single workflow run within a {@link runWorkflows} call. */
 export interface WorkflowRunResult {
-  /** Filesystem path of the workflow that was run. */
+  /**
+   * Name identifying the workflow that was run, derived from
+   * {@link WorkflowSource.name}. For {@link FileWorkflowSource} this is the
+   * filename (e.g. `'my-pipeline.yaml'`); for other sources it is whatever
+   * the source returns from its `name` getter.
+   */
   workflowPath: string;
   /** `'fulfilled'` if the run completed without error, `'rejected'` otherwise. */
   status: 'fulfilled' | 'rejected';
@@ -76,24 +82,27 @@ export interface WorkflowRunResult {
 /**
  * Fires multiple workflows simultaneously — each as a fully independent run
  * with its own bus connection, chain ID, and timing. One failure does not
- * abort the others. Results are returned in the same order as `workflowPaths`.
+ * abort the others. Results are returned in the same order as `sources`.
  *
- * @param workflowPaths - Filesystem paths to the workflow YAML files to run.
+ * @param sources - Workflow sources to run. Each entry is either a
+ *   {@link WorkflowSource} instance or a plain filesystem-path string
+ *   (automatically wrapped in {@link FileWorkflowSource}).
  * @param options - Shared runtime options applied to every workflow run.
  * @returns Per-workflow results in input order.
  */
 export async function runWorkflows(
-  workflowPaths: string[],
+  sources: Array<WorkflowSource | string>,
   options: RunOptions,
 ): Promise<WorkflowRunResult[]> {
-  const settlements = await Promise.allSettled(workflowPaths.map((p) => runWorkflow(p, options)));
+  const resolved = sources.map((s) => (typeof s === 'string' ? new FileWorkflowSource(s) : s));
+  const settlements = await Promise.allSettled(resolved.map((s) => runWorkflow(s, options)));
 
   return settlements.map((result, i) => {
     if (result.status === 'fulfilled') {
-      return { workflowPath: workflowPaths[i], status: 'fulfilled' };
+      return { workflowPath: resolved[i].name, status: 'fulfilled' };
     }
     return {
-      workflowPath: workflowPaths[i],
+      workflowPath: resolved[i].name,
       status: 'rejected',
       error: (result.reason as Error)?.message ?? String(result.reason),
     };
@@ -101,18 +110,23 @@ export async function runWorkflows(
 }
 
 /**
- * Executes a complete Iron Monkey workflow: validates the YAML, builds a
- * pre-allocated event manifest, applies any failure injections, emits all
- * events to the configured message bus in order (respecting concurrency
- * groups), then emits a chain-end sentinel event.
+ * Executes a complete Iron Monkey workflow: retrieves the workflow definition
+ * from the source, builds a pre-allocated event manifest, applies any failure
+ * injections, emits all events to the configured message bus in order
+ * (respecting concurrency groups), then emits a chain-end sentinel event.
  *
- * @param workflowPath - Filesystem path to the workflow YAML file.
- * @param options - Runtime options controlling bus selection, injection, logging,
- *   and manifest output.
- * @throws {Error} If the workflow is invalid, the bus is misconfigured, any
- *   event fails schema validation, or emission fails.
+ * @param source - Workflow source supplying the definition. Accepts a
+ *   {@link WorkflowSource} instance or a plain filesystem-path string
+ *   (automatically wrapped in {@link FileWorkflowSource}).
+ * @param options - Runtime options controlling bus selection, injection,
+ *   logging, and manifest output.
+ * @throws {Error} If the workflow definition cannot be retrieved, the bus is
+ *   misconfigured, any event fails schema validation, or emission fails.
  */
-export async function runWorkflow(workflowPath: string, options: RunOptions): Promise<void> {
+export async function runWorkflow(
+  source: WorkflowSource | string,
+  options: RunOptions,
+): Promise<void> {
   const logger = createLogger({
     level: (options.logLevel ?? 'info') as 'info',
     format: (options.logFormat ?? 'json') as 'json',
@@ -124,7 +138,8 @@ export async function runWorkflow(workflowPath: string, options: RunOptions): Pr
     cliOverrides: { busName: options.bus },
   });
 
-  const workflow = await validateWorkflow(workflowPath);
+  const resolvedSource = typeof source === 'string' ? new FileWorkflowSource(source) : source;
+  const workflow = await resolvedSource.getWorkflow();
   const registry = loadExpressionRegistry();
   const events = resolveProduces(workflow, registry);
 
