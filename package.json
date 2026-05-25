@@ -27,6 +27,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
     "typecheck": "tsc --noEmit",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "keywords": ["cdevents", "cdcon", "sdlc", "chaos", "testing", "rabbitmq", "kafka"],
