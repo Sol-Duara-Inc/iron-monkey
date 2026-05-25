@@ -1,4 +1,4 @@
-<p style="text-align: center;"><a href="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml"><img src="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml/badge.svg" alt="CI"></a> <img src="https://img.shields.io/github/license/Sol-Duara-Inc/iron-monkey.svg" alt="License"> <img src="https://img.shields.io/github/v/release/Sol-Duara-Inc/iron-monkey.svg" alt="Latest Release"></p>
+<p style="text-align: center;"><a href="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml"><img src="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml/badge.svg" alt="CI"></a> <img src="https://img.shields.io/github/license/Sol-Duara-Inc/iron-monkey.svg" alt="License"> <img src="https://img.shields.io/github/v0.1.0-alpha/release/Sol-Duara-Inc/iron-monkey.svg" alt="Latest Release"></p>
 <img src="docs/iron-monkey-logo.png" alt="Iron Monkey logo" width="200" />
 
 A CDEvents pitching machine for testing SDLC orchestration platforms.
