@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: spin-dev
+author: shipwreck-sa
+expression: ticket-associate
+description: |
+  Shipwreck SA — service-account-owned audit ticket pattern. A ticket is
+  opened in the change-management system and updated to associate it with
+  downstream SDLC work. Used as both a precondition (e.g., production-deploy)
+  and as a detached observer (e.g., deploy). (Ticket events land in CDEvents
+  0.6.0-draft; the 0.5.1 pins here are placeholders.)
+produces:
+  - event: dev.cdevents.ticket.created.0.5.1
+  - event: dev.cdevents.ticket.updated.0.5.1

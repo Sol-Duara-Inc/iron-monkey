@@ -9,13 +9,25 @@
   "properties": {
     "workflow": {
       "type": "object",
-      "required": ["id", "name", "cdrus", "produces"],
+      "required": ["id", "group", "author", "name", "cdrus", "produces"],
       "additionalProperties": false,
       "properties": {
         "id": {
           "type": "string",
           "minLength": 1,
           "description": "Unique identifier for this workflow definition."
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Group component of the workflow's identity. Provides the default resolution context for abbreviated expression references in this workflow's produces list. An expression reference of the form 'build' resolves against this group and author before any fully qualified lookup is attempted."
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Author component of the workflow's identity. Provides the default resolution context for abbreviated expression references in this workflow's produces list. An expression reference of the form 'build' resolves against this group and author before any fully qualified lookup is attempted."
         },
         "name": {
           "type": "string",
@@ -100,7 +112,7 @@
           "type": "string",
           "minLength": 1,
           "pattern": "^([a-z][a-z0-9-]*/){0,2}[a-z][a-z0-9-]*$",
-          "description": "Reference to a CDrus Expression by identity, in path form. Three reference forms are supported: 'build' (resolved within current group and author context); 'mchen/build' (explicit author within current group); 'payment-engineering/mchen/build' (fully qualified identity)."
+          "description": "Reference to a CDrus Expression by identity, in path form. Three reference forms are supported: 'build' (resolved against the workflow's own group and author); 'mchen/build' (explicit author within the workflow's group); 'payment-engineering/mchen/build' (fully qualified identity)."
         },
         "tool": { "type": "string", "minLength": 1 },
         "source": { "type": "string", "format": "uri" },

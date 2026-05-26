@@ -85,15 +85,18 @@ function loadBundle(filePath: string): ExpressionBundle {
 
   const bundle = parsed as ExpressionBundle;
 
-  // Detect noun.verb collisions without explicit id disambiguation
+  // Detect noun.verb collisions without explicit id disambiguation (event items only)
   const nounVerbCount = new Map<string, number>();
   for (const ev of bundle.produces) {
+    if (!('event' in ev)) continue;
     const nv = nounVerbFromType(ev.event);
     nounVerbCount.set(nv, (nounVerbCount.get(nv) ?? 0) + 1);
   }
   for (const [nv, count] of nounVerbCount.entries()) {
     if (count > 1) {
-      const withoutId = bundle.produces.filter((ev) => nounVerbFromType(ev.event) === nv && !ev.id);
+      const withoutId = bundle.produces.filter(
+        (ev) => 'event' in ev && nounVerbFromType(ev.event) === nv && !('id' in ev && ev.id),
+      );
       if (withoutId.length > 0) {
         throw new Error(
           `Expression bundle '${bundle.expression}' at ${filePath}: ` +
@@ -117,14 +120,20 @@ export interface ExpressionRegistry {
    *
    * Three reference forms are accepted (from least to most qualified):
    * - `'build'` — matches by expression name alone (errors if ambiguous)
-   * - `'iron-monkey/build'` — matches by author + expression name
-   * - `'sol-duara/iron-monkey/build'` — fully-qualified group/author/expression
+   * - `'dsanyika/build'` — matches by author + expression name
+   * - `'sol-duara/dsanyika/build'` — fully-qualified group/author/expression
    *
    * @param ref - Path-style reference string.
    * @returns The matching {@link ExpressionBundle}.
    * @throws {Error} If no matching bundle is found or the reference is ambiguous.
    */
   resolve(ref: string): ExpressionBundle;
+
+  /**
+   * Like {@link resolve} but uses the caller's `group` and `author` as a
+   * tiebreaker when a bare expression name matches multiple bundles.
+   */
+  resolveWithContext(ref: string, context: { group: string; author: string }): ExpressionBundle;
 
   /**
    * Lists all indexed bundles as `{ name, group, author }` records, useful for
@@ -214,6 +223,35 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
       }
 
       return candidates[0].bundle;
+    },
+
+    resolveWithContext(ref: string, context: { group: string; author: string }): ExpressionBundle {
+      const parts = ref.split('/');
+      if (parts.length > 1) {
+        return this.resolve(ref);
+      }
+
+      const matches = indexed.filter((b) => b.name === ref);
+      if (matches.length === 0) {
+        throw new Error(`No expression bundle found for '${ref}'. Searched in ${expressionsDir}.`);
+      }
+      if (matches.length === 1) {
+        return matches[0].bundle;
+      }
+
+      const byAuthor = matches.filter((b) => b.author === context.author);
+      if (byAuthor.length === 1) return byAuthor[0].bundle;
+
+      const byGroupAuthor = matches.filter(
+        (b) => b.group === context.group && b.author === context.author,
+      );
+      if (byGroupAuthor.length === 1) return byGroupAuthor[0].bundle;
+
+      const identities = matches.map((b) => `${b.group}/${b.author}/${b.name}`).join(', ');
+      throw new Error(
+        `Ambiguous expression reference '${ref}': multiple bundles match — ${identities}. ` +
+          `Use a more qualified path (author/expression or group/author/expression).`,
+      );
     },
 
     list(): { name: string; group: string; author: string }[] {

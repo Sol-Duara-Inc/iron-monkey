@@ -2,11 +2,15 @@ import { describe, it, expect } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { buildManifest } from '../../src/manifest/builder.js';
+import { validateWorkflow, resolveProduces } from '../../src/workflow/parser.js';
+import { loadExpressionRegistry } from '../../src/loaders/expression.loader.js';
 import type { ResolvedEvent } from '../../src/workflow/parser.js';
 import type { IronMonkeyConfig } from '../../src/config/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMAS_DIR = path.resolve(__dirname, '../../schemas/cdevents');
+const EXPRESSIONS_DIR = path.resolve(__dirname, '../../expressions');
+const WORKFLOWS_DIR = path.resolve(__dirname, '../../examples/workflows');
 
 const singleEvent: ResolvedEvent = {
   id: 'build-started',
@@ -120,5 +124,38 @@ describe('buildManifest', () => {
     const buses = manifest.events.map((e) => e.targetBus);
     expect(new Set(buses).size).toBe(1);
     expect(buses[0]).toBe('staging');
+  });
+});
+
+describe('buildManifest — real workflow end-to-end', () => {
+  it('builds a schema-valid manifest from prod-auth-hotfix-fast-path.yaml', async () => {
+    const wf = await validateWorkflow(path.join(WORKFLOWS_DIR, 'prod-auth-hotfix-fast-path.yaml'));
+    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
+    const events = resolveProduces(wf, registry);
+
+    const cfg: IronMonkeyConfig = {
+      buses: { default: { type: 'rabbitmq', url: 'amqp://localhost' } },
+      tools: {
+        'jenkins-prod': { source: 'https://jenkins.spin-dev.io/' },
+        'gke-prod': { source: 'https://gke.spin-dev.io/auth' },
+      },
+      schemasPath: SCHEMAS_DIR,
+    };
+
+    const manifest = await buildManifest(
+      { id: wf.workflow.id, name: wf.workflow.name },
+      events,
+      cfg,
+      { noConduit: true },
+    );
+
+    expect(manifest.workflowId).toBe('prod-auth-hotfix-fast-path');
+    expect(manifest.events.length).toBeGreaterThan(5);
+    expect(manifest.events[0].payload.context.specversion).toBe('0.5.1');
+    expect(manifest.events[manifest.events.length - 1].isLast).toBe(true);
+    // Every event must have a valid payload type matching the CDEvents format
+    for (const e of manifest.events) {
+      expect(e.payload.context.type).toMatch(/^dev\.cdevents\./);
+    }
   });
 });

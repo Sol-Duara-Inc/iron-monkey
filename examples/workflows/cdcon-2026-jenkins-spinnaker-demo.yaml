@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=../src/schemas/cdrus/workflow.schema.json
+workflow:
+  id: cdcon-2026-jenkins-spinnaker-demo
+  group: sol-duara
+  author: dsanyika
+  name: cdCon 2026 — Junction Box End-to-End Demo (Jenkins → Spinnaker → GKE)
+  cdrus:
+    version: 1
+    metadata:
+      occasion: cdCon May 2026 (Minneapolis)
+      purpose: Junction Box happy-path demonstration — full CI/CD chain across Jenkins, Spinnaker, and GKE
+      owner: Sol Duara
+      tags: [demo, jenkins, spinnaker, gke]
+
+  defaults:
+    pipeline: junction-box-demo
+    timeout_ms: 300000
+    min_wait_ms: 100
+
+  produces:
+    # ── Jenkins (CI: tool 1) ──────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.started.0.5.1
+      tool: jenkins-prod
+      source: https://jenkins.example.com/
+      pipeline: junction-box-demo
+
+    # 'build' resolves to sol-duara/dsanyika/build — Sanyika's standard
+    # build pattern (build.started + testsuite bracket + build.finished).
+    - expression: build
+      tool: jenkins-prod
+      source: https://jenkins.example.com/
+
+    # 'artifact-store' has no sol-duara/dsanyika variant; falls through the
+    # resolver to example-group/user/artifact-store (the standard library).
+    - expression: artifact-store
+      tool: jenkins-prod
+      source: https://jenkins.example.com/
+
+    # ── Spinnaker (CD: tool 2) ────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.started.0.5.1
+      tool: spinnaker-prod
+      pipeline: junction-box-demo
+
+    # 'deploy' resolves to sol-duara/dsanyika/deploy. The GKE-specific
+    # events (service.deployed, service.published) are overridden to point
+    # at GKE rather than Spinnaker so observers see the real emitter.
+    - expression: deploy
+      tool: spinnaker-prod
+      source: https://spinnaker.example.com/
+      overrides:
+        service.deployed:
+          tool: gke-prod
+          source: https://gke.example.com/
+        service.published:
+          tool: gke-prod
+          source: https://gke.example.com/
+
+    # ── Terminal ──────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.finished.0.5.1
+      tool: spinnaker-prod
+      source: https://spinnaker.example.com/
+      pipeline: junction-box-demo

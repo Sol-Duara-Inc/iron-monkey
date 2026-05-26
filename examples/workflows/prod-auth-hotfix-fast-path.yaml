@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../src/schemas/cdrus/workflow.schema.json
+workflow:
+  id: prod-auth-hotfix-fast-path
+  group: spin-dev
+  author: shipwreck-sa
+  name: Auth Service — Production Hotfix Fast Path
+  cdrus:
+    version: 1
+    metadata:
+      service: auth
+      strategy: hotfix
+      tier: tier-0
+      tools: [jenkins, gke]
+      pager: sre-oncall-tier0
+      runbook: https://wiki.spin-dev.io/runbooks/auth-hotfix
+
+  defaults:
+    pipeline: auth-hotfix
+    timeout_ms: 300000
+
+  produces:
+    # ── Jenkins (CI + deploy orchestration; no Spinnaker hop on hotfix) ───
+    - event: dev.cdevents.pipelinerun.started.0.5.1
+      tool: jenkins-prod
+      source: https://jenkins.spin-dev.io/
+      pipeline: auth-hotfix
+
+    - expression: build
+      tool: jenkins-prod
+      source: https://jenkins.spin-dev.io/
+
+    # ── service-deploy is spin-dev's light variant (no taskrun bracket) ───
+    - expression: service-deploy
+      tool: jenkins-prod
+      source: https://jenkins.spin-dev.io/
+      overrides:
+        service.deployed:
+          tool: gke-prod
+          source: https://gke.spin-dev.io/auth
+        service.published:
+          tool: gke-prod
+          source: https://gke.spin-dev.io/auth
+
+    # ── Terminal ──────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.finished.0.5.1
+      tool: jenkins-prod
+      source: https://jenkins.spin-dev.io/
+      pipeline: auth-hotfix

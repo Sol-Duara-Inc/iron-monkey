@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: spin-dev
+author: shipwreck-sa
+expression: service-deploy
+description: |
+  Shipwreck SA — service-only deploy variant for in-environment changes that
+  do not involve a full taskrun. Verification is still mandatory between the
+  service being deployed and the service being published — even a "light"
+  deploy is gated.
+produces:
+  - event: dev.cdevents.service.deployed.0.5.1
+  - expression: verify
+  - event: dev.cdevents.service.published.0.5.1

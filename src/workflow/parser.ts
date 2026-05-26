@@ -16,6 +16,7 @@ import { isEventItem, isExpressionItem } from './types.js';
 import { nounVerbFromType } from '../loaders/expression.loader.js';
 import type { WorkflowFile, WorkflowDefaults } from './types.js';
 import type { ExpressionRegistry } from '../loaders/expression.loader.js';
+import type { BundleEventItem, ExpressionBundle } from '../expressions/types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AjvConstructor = (Ajv as any).default ?? Ajv;
@@ -154,6 +155,32 @@ function deepMerge(
 }
 
 /**
+ * Recursively flattens a bundle's `produces` list into a sequence of concrete
+ * {@link BundleEventItem}s by expanding any nested `expression:` references.
+ * `detach` sub-chains are intentionally skipped — they are side-chains that the
+ * main sequence does not wait on.
+ *
+ * The bundle's own `group` and `author` are used as the disambiguation context
+ * when resolving bare expression names that exist in multiple groups.
+ */
+function flattenBundleEvents(
+  bundle: ExpressionBundle,
+  registry: ExpressionRegistry,
+): BundleEventItem[] {
+  const result: BundleEventItem[] = [];
+  const context = { group: bundle.group, author: bundle.author };
+  for (const item of bundle.produces) {
+    if ('event' in item) {
+      result.push(item);
+    } else {
+      const nested = registry.resolveWithContext(item.expression, context);
+      result.push(...flattenBundleEvents(nested, registry));
+    }
+  }
+  return result;
+}
+
+/**
  * Resolves the `produces` list of a validated workflow into a flat, ordered
  * array of {@link ResolvedEvent} descriptors. Direct `event:` items are
  * converted one-to-one; `expression:` items are expanded into all CDEvents
@@ -210,9 +237,13 @@ export function resolveProduces(
         origin: 'event',
       });
     } else if (isExpressionItem(item)) {
-      const bundle = registry.resolve(item.expression);
+      const context = {
+        group: workflow.workflow.group ?? '',
+        author: workflow.workflow.author ?? '',
+      };
+      const bundle = registry.resolveWithContext(item.expression, context);
 
-      for (const bundleEvent of bundle.produces) {
+      for (const bundleEvent of flattenBundleEvents(bundle, registry)) {
         const overrideKey = bundleEvent.id ?? nounVerbFromType(bundleEvent.event);
         const override = item.overrides?.[overrideKey] ?? {};
 

@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=../src/schemas/cdrus/workflow.schema.json
+workflow:
+  id: prod-checkout-jenkins-spinnaker-canary
+  group: spin-dev
+  author: shipwreck-sa
+  name: Checkout Service — Production Canary Release
+  cdrus:
+    version: 1
+    metadata:
+      service: checkout
+      strategy: canary
+      tools: [jenkins, jfrog, spinnaker, gke]
+      runbook: https://wiki.spin-dev.io/runbooks/checkout-prod-canary
+
+  defaults:
+    pipeline: checkout-prod-release
+    timeout_ms: 600000
+
+  produces:
+    # ── Jenkins (CI) ──────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.started.0.5.1
+      tool: jenkins-prod
+      source: https://jenkins.spin-dev.io/
+      pipeline: checkout-prod-release
+
+    - expression: build
+      tool: jenkins-prod
+      source: https://jenkins.spin-dev.io/
+
+    # ── JFrog (artifact store) ────────────────────────────────────────────
+    - expression: artifact-store
+      tool: jfrog-prod
+      source: https://artifactory.spin-dev.io/
+
+    # ── Spinnaker → GKE (canary deploy) ───────────────────────────────────
+    - expression: canary-deploy
+      tool: spinnaker-prod
+      source: https://spinnaker.spin-dev.io/
+      overrides:
+        service.deployed:
+          tool: gke-prod
+          source: https://gke.spin-dev.io/checkout
+        service.published:
+          tool: gke-prod
+          source: https://gke.spin-dev.io/checkout
+
+    # ── Terminal ──────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.finished.0.5.1
+      tool: spinnaker-prod
+      source: https://spinnaker.spin-dev.io/
+      pipeline: checkout-prod-release

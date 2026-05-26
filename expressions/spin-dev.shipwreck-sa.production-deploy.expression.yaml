@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: spin-dev
+author: shipwreck-sa
+expression: production-deploy
+description: |
+  Shipwreck SA — enterprise-only intent. A production deploy is only
+  fulfilled if a ticket-association event chain has occurred prior to the
+  deploy itself, encoding the org's separation-of-duties and change-
+  management requirements. No ticket, no production deploy.
+produces:
+  - expression: ticket-associate
+  - expression: deploy

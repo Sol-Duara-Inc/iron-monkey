@@ -47,26 +47,26 @@ npm link
 
 ```bash
 # Validate a workflow without connecting to any bus
-iron-monkey validate examples/workflows/happy-path.yaml \
+iron-monkey validate examples/workflows/prod-payments-blue-green-cutover.yaml \
   --config examples/configs/local-rabbit.yaml
 
 # Dry-run: build and print the event manifest, do not emit
-iron-monkey dry-run examples/workflows/happy-path.yaml \
+iron-monkey dry-run examples/workflows/prod-payments-blue-green-cutover.yaml \
   --no-conduit --bus default
 
 # Dry-run a single expression inline
-iron-monkey dry-run examples/workflows/happy-path.yaml \
+iron-monkey dry-run examples/workflows/prod-payments-blue-green-cutover.yaml \
   --no-conduit --bus default --seed 42
 
 # Pitch a single workflow against a local RabbitMQ
-iron-monkey run examples/workflows/happy-path.yaml \
+iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
   --config examples/configs/local-rabbit.yaml \
   --no-conduit --bus default
 
 # Pitch multiple workflows simultaneously (each runs independently)
-iron-monkey run examples/workflows/happy-path.yaml \
-            examples/workflows/sample.yaml \
-            examples/workflows/canary.yaml \
+iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
+            examples/workflows/prod-checkout-jenkins-spinnaker-canary.yaml \
+            examples/workflows/prod-auth-hotfix-fast-path.yaml \
   --config examples/configs/local-rabbit.yaml \
   --no-conduit --bus default
 
@@ -75,14 +75,14 @@ iron-monkey pitch --from examples/repertoires/chaos.yaml \
   --config examples/configs/local-rabbit.yaml
 
 # Pitch with failure injection
-iron-monkey run examples/workflows/happy-path.yaml \
+iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
   --config examples/configs/local-rabbit.yaml \
   --no-conduit --bus default \
   --inject missing:build-started \
   --inject late:deployment-finished:10000
 
 # Save the manifest for auditing
-iron-monkey run examples/workflows/happy-path.yaml \
+iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
   --config examples/configs/local-rabbit.yaml \
   --no-conduit --bus default \
   --manifest-out run-$(date +%s).json
@@ -200,14 +200,16 @@ General precedence: CLI args > environment variables > config file > built-in de
 
 ## Workflow YAML
 
-See [`examples/workflows/happy-path.yaml`](examples/workflows/happy-path.yaml) for a complete 2-tool cross-tool workflow (Jenkins → Spinnaker / GKE).
+See [`examples/workflows/prod-payments-blue-green-cutover.yaml`](examples/workflows/prod-payments-blue-green-cutover.yaml) for a complete multi-tool production workflow (Jenkins → JFrog → Spinnaker / GKE).
 
-A workflow has a flat `produces[]` list. Each item is either a bare `event:` or an `expression:` reference:
+A workflow has a flat `produces[]` list. Each item is either a bare `event:` or an `expression:` reference. Workflows also carry `group` and `author` identity fields that pair with expression authorship for traceability:
 
 ```yaml
 # yaml-language-server: $schema=./schemas/cdrus/workflow.schema.json
 workflow:
   id: my-workflow
+  group: my-org
+  author: my-name
   name: my-workflow
   cdrus:
     version: 1
@@ -252,7 +254,9 @@ Key points:
 Pass more than one workflow path to `run` and Iron Monkey pitches them all simultaneously. Each workflow gets its own bus connection, chain ID, and timing. One failure does not abort the others.
 
 ```bash
-iron-monkey run happy-path.yaml sample.yaml canary.yaml \
+iron-monkey run prod-payments-blue-green-cutover.yaml \
+               prod-auth-hotfix-fast-path.yaml \
+               prod-checkout-jenkins-spinnaker-canary.yaml \
   --config local-rabbit.yaml --no-conduit --interval 1000
 ```
 
@@ -270,15 +274,15 @@ shared:
   interval: 1000
 
 pitches:
-  - workflow: examples/workflows/happy-path.yaml
+  - workflow: examples/workflows/prod-payments-blue-green-cutover.yaml
     interval: 500                 # overrides shared
 
-  - workflow: examples/workflows/sample.yaml
+  - workflow: examples/workflows/prod-auth-hotfix-fast-path.yaml
     inject:
       - missing:build-started
       - late:deployment-finished:5000
 
-  - workflow: examples/workflows/canary.yaml
+  - workflow: examples/workflows/prod-checkout-jenkins-spinnaker-canary.yaml
     interval: 100
     seed: 42
     bus: local-bus                # overrides shared
@@ -309,15 +313,56 @@ Per-pitch fields mirror the common `run` flags:
 
 Expressions are named bundles of CDEvents that represent common SDLC patterns. They live in the `expressions/` directory and are identified by a three-part tuple: `(group, author, expression)`. A change to an expression's boundary semantics requires a new expression name, not a version bump.
 
+Expression files are named `<group>.<author>.<expression>.expression.yaml`. Expressions may compose other expressions inline, and may declare **detached sub-chains** — observable side-chains that the main chain does not wait on (see _Detached sub-chains_ below).
+
 ### Bundled expressions
 
-| Expression       | Group       | Author         | Events (in order)                                                             |
-| ---------------- | ----------- | -------------- | ----------------------------------------------------------------------------- |
-| `build`          | `sol-duara` | `iron-monkey`  | build.started → testsuiterun.started → testsuiterun.finished → build.finished |
-| `artifact-store` | `sol-duara` | `iron-monkey`  | artifact.packaged → artifact.published                                        |
-| `deploy`         | `sol-duara` | `iron-monkey`  | taskrun.started → service.deployed → service.published → taskrun.finished     |
+#### sol-duara / dsanyika — core reference library
 
-The `deploy` bundle uses explicit event IDs: `deployment-started` (taskrun.started) and `deployment-finished` (taskrun.finished).
+| Expression              | Events (in order)                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `build`                 | build.started → testsuiterun.started → testsuiterun.finished → build.finished                       |
+| `artifact-store`        | artifact.packaged → artifact.published                                                              |
+| `deploy`                | taskrun.started → service.deployed → service.published → taskrun.finished                           |
+| `verify`                | testsuiterun.started → testcaserun.started → testcaserun.finished → testsuiterun.finished           |
+| `artifact-sign-publish` | artifact.packaged → artifact.signed → artifact.published                                            |
+| `artifact-distribute`   | artifact.published → artifact.downloaded                                                            |
+| `artifact-retire`       | artifact.deleted                                                                                    |
+| `blue-green-deploy`     | service.deployed → verify → service.published → service.removed                                     |
+| `canary-deploy`         | service.deployed (detach: service-rollback) → verify → service.published                            |
+| `service-deploy`        | service.deployed → service.published                                                                |
+| `build-deploy`          | build → deploy                                                                                      |
+| `build-merge`           | build → change.merged                                                                               |
+| `build-queue`           | build.queued → build.started → build.finished                                                       |
+| `build-store`           | build → artifact-store                                                                              |
+| `build-with-async-scan` | build → artifact.packaged (detach: artifact.signed → testoutput.published)                          |
+| `deploy-with-notify`    | taskrun.started (detach: ticket-associate) → service.deployed → service.published → taskrun.finished |
+| `promote-artifact`      | artifact.published → deploy → verify                                                                |
+| `ticket-associate`      | ticket.created → ticket.updated                                                                     |
+| `verify-with-output`    | verify → testoutput.published                                                                       |
+
+#### compliance / cstump — stumps (single-event observers)
+
+| Expression          | Events (in order)                         |
+| ------------------- | ----------------------------------------- |
+| `audit-evidence`    | ticket-trail → service.deployed           |
+| `change-merged`     | change.merged                             |
+| `production-deploy` | service.published                         |
+| `ticket-trail`      | ticket.created → ticket.updated           |
+
+#### spin-dev / shipwreck-sa — enterprise production patterns
+
+| Expression          | Events (in order)                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `build`             | change.merged → build.queued → build.started → verify → testoutput.published → build.finished                  |
+| `artifact-store`    | artifact.packaged → artifact.published                                                                         |
+| `canary-deploy`     | service.deployed (detach: service-rollback) → verify → service.published                                       |
+| `deploy`            | taskrun.started → service.deployed → service.published → taskrun.finished                                      |
+| `build-deploy`      | build → deploy                                                                                                 |
+| `production-deploy` | ticket-associate → deploy                                                                                      |
+| `service-deploy`    | service.deployed → service.published                                                                           |
+| `ticket-associate`  | ticket.created → ticket.updated                                                                                |
+| `verify`            | testsuiterun.started → testcaserun.started → testcaserun.finished → testsuiterun.finished                      |
 
 ### Referencing an expression
 
@@ -330,11 +375,11 @@ Expressions are referenced by path-style notation — bare name, `author/express
   source: https://jenkins.example.com/
 
 # scoped to author
-- expression: iron-monkey/build
+- expression: dsanyika/build
   tool: jenkins-prod
 
 # fully qualified
-- expression: sol-duara/iron-monkey/build
+- expression: sol-duara/dsanyika/build
   tool: jenkins-prod
 ```
 
@@ -367,15 +412,29 @@ workflow.defaults.X
 
 The `content` field deep-merges at each level; all other fields are simple replacements.
 
+### Detached sub-chains
+
+An event in an expression may declare a `detach:` list of events or sub-expressions. The detached chain is emitted as a side-chain observable to downstream consumers, but the main chain does not wait on it — the next event in the parent sequence proceeds immediately. This is used to model patterns like async security scans, audit notifications, and rollback chains that must be observable but must not block the critical path.
+
+```yaml
+produces:
+  - event: dev.cdevents.service.deployed.0.5.1
+    detach:
+      - expression: service-rollback   # rollback path is visible but non-blocking
+  - expression: verify
+  - event: dev.cdevents.service.published.0.5.1
+```
+
 ### Adding a new expression bundle
 
 Create a YAML file anywhere in the `expressions/` directory (filename does not matter) following the flat bundle format:
 
 ```yaml
-# yaml-language-server: $schema=./schemas/cdrus/expression.schema.json
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
 group: my-org
 author: my-tool
 expression: my-pattern
+description: One-line description of what this pattern represents.
 produces:
   - event: dev.cdevents.build.started.0.5.1
     timeout_ms: 30000
@@ -428,7 +487,7 @@ See [docs/INJECTION.md](docs/INJECTION.md) for full reference. Quick examples:
 --inject duplicate:build-started
 ```
 
-Event IDs used in `--inject` specs are the `workflowEventId` values visible in the manifest (e.g., from `--manifest-out`). For events without an explicit subject ID, the ID is derived from the event's `noun.verb` (e.g., `build-started`, `artifact-published`). Bundle events with explicit IDs use those (e.g., `deployment-started`, `deployment-finished`).
+Event IDs used in `--inject` specs are the `workflowEventId` values visible in the manifest (e.g., from `--manifest-out`). For events without an explicit subject ID, the ID is derived from the event's `noun.verb` (e.g., `build-started`, `artifact-published`). Bundle events with explicit IDs use those.
 
 ---
 

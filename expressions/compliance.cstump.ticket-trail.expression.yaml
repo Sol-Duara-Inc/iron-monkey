@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: compliance
+author: cstump
+expression: ticket-trail
+description: Stump — verify the ticket lifecycle (created then updated) so every workflow run can be reconciled against a ticketed change request.
+produces:
+  - event: dev.cdevents.ticket.created.0.5.1
+  - event: dev.cdevents.ticket.updated.0.5.1

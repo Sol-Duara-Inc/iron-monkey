@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: spin-dev
+author: shipwreck-sa
+expression: canary-deploy
+description: |
+  Shipwreck SA — production canary rollout. The deploy declares its rollback
+  chain as detached at deploy time so the fallback path is observable to the
+  audit pipeline. Verification gates the traffic cutover — the service is
+  not published until the canary tests have passed.
+produces:
+  - event: dev.cdevents.service.deployed.0.5.1
+    detach:
+      - expression: service-rollback
+  - expression: verify
+  - event: dev.cdevents.service.published.0.5.1

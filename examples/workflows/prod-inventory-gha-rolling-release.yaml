@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=../src/schemas/cdrus/workflow.schema.json
+workflow:
+  id: prod-inventory-gha-rolling-release
+  group: spin-dev
+  author: shipwreck-sa
+  name: Inventory Service — Production Rolling Release via GitHub Actions
+  cdrus:
+    version: 1
+    metadata:
+      service: inventory
+      strategy: rolling
+      tools: [github-actions, gke]
+      runbook: https://wiki.spin-dev.io/runbooks/inventory-prod-rolling
+
+  # All-in-one CI/CD in GHA — no Spinnaker, no Jenkins. GHA defaults apply
+  # everywhere; per-step overrides only for the actual GKE-side events.
+  defaults:
+    pipeline: inventory-prod-rolling
+    tool: github-actions
+    source: https://github.com/spin-dev/inventory/actions
+    timeout_ms: 480000
+
+  produces:
+    - event: dev.cdevents.pipelinerun.started.0.5.1
+      pipeline: inventory-prod-rolling
+
+    - expression: build
+
+    - expression: artifact-store
+
+    - expression: deploy
+      overrides:
+        service.deployed:
+          tool: gke-prod
+          source: https://gke.spin-dev.io/inventory
+        service.published:
+          tool: gke-prod
+          source: https://gke.spin-dev.io/inventory
+
+    - event: dev.cdevents.pipelinerun.finished.0.5.1
+      pipeline: inventory-prod-rolling
