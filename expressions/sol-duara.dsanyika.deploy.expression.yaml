@@ -1,21 +1,10 @@
 # yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
 group: sol-duara
-author: iron-monkey
+author: dsanyika
 expression: deploy
-description: Deployment lifecycle — taskrun brackets service operations
+description: Deployment lifecycle — taskrun brackets service operations.
 produces:
   - event: dev.cdevents.taskrun.started.0.5.1
-    timeout_ms: 30000
-    min_wait_ms: 100
-
   - event: dev.cdevents.service.deployed.0.5.1
-    timeout_ms: 30000
-    min_wait_ms: 100
-
   - event: dev.cdevents.service.published.0.5.1
-    timeout_ms: 30000
-    min_wait_ms: 100
-
   - event: dev.cdevents.taskrun.finished.0.5.1
-    timeout_ms: 30000
-    min_wait_ms: 100

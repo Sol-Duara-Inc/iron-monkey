@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: compliance
+author: cstump
+expression: change-merged
+description: Stump — watch every code merge to mainline. Compliance logs each merge as the origin of any subsequent SDLC activity for traceability.
+produces:
+  - event: dev.cdevents.change.merged.0.5.1

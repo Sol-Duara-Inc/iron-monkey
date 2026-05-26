@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=../src/schemas/cdrus/workflow.schema.json
+workflow:
+  id: prod-api-gateway-production-deploy-gated
+  group: spin-dev
+  author: shipwreck-sa
+  name: API Gateway — Gated Production Deploy with Change Ticket
+  cdrus:
+    version: 1
+    metadata:
+      service: api-gateway
+      strategy: gated-production-deploy
+      tier: tier-0
+      compliance: sox-mandatory
+      tools: [jenkins, jfrog, spinnaker, gke, servicenow]
+      runbook: https://wiki.spin-dev.io/runbooks/api-gateway-prod-gated
+
+  defaults:
+    pipeline: api-gateway-prod-gated
+    timeout_ms: 1200000
+
+  produces:
+    # ── Jenkins (CI) ──────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.started.0.5.1
+      tool: jenkins-prod
+      source: https://jenkins.spin-dev.io/
+      pipeline: api-gateway-prod-gated
+
+    - expression: build
+      tool: jenkins-prod
+      source: https://jenkins.spin-dev.io/
+
+    # ── JFrog (artifact store) ────────────────────────────────────────────
+    - expression: artifact-store
+      tool: jfrog-prod
+      source: https://artifactory.spin-dev.io/
+
+    # ── Spinnaker → ServiceNow + GKE (production-deploy = ticket-gated) ───
+    # spin-dev/shipwreck-sa/production-deploy = ticket-associate then deploy.
+    # The ticket-associate sub-expression falls through to example-group/user.
+    - expression: production-deploy
+      tool: spinnaker-prod
+      source: https://spinnaker.spin-dev.io/
+      overrides:
+        ticket.created:
+          tool: servicenow
+          source: https://servicenow.spin-dev.io/
+        ticket.updated:
+          tool: servicenow
+          source: https://servicenow.spin-dev.io/
+        service.deployed:
+          tool: gke-prod
+          source: https://gke.spin-dev.io/api-gateway
+        service.published:
+          tool: gke-prod
+          source: https://gke.spin-dev.io/api-gateway
+
+    # ── Terminal ──────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.finished.0.5.1
+      tool: spinnaker-prod
+      source: https://spinnaker.spin-dev.io/
+      pipeline: api-gateway-prod-gated

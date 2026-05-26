@@ -26,6 +26,21 @@ export const workflowSchema = {
       additionalProperties: false,
       properties: {
         id: { type: 'string', minLength: 1 },
+        group: {
+          type: 'string',
+          minLength: 1,
+          pattern: '^[a-z][a-z0-9-]*$',
+          description:
+            'Group component of the workflow identity (mirrors expression bundle authorship).',
+        },
+        author: {
+          type: 'string',
+          minLength: 1,
+          pattern: '^[a-z][a-z0-9-]*$',
+          description:
+            'Author component of the workflow identity. Used as the disambiguation context ' +
+            'when resolving bare expression names that exist in multiple groups.',
+        },
         name: { type: 'string', minLength: 1 },
         cdrus: {
           type: 'object',

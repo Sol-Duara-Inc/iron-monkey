@@ -17,44 +17,90 @@ async function makeTmpDir(): Promise<string> {
   return dir;
 }
 
-/** Minimal valid expression bundle in the new CDrus flat format. */
-function minimalBundle(name: string): string {
-  return `group: sol-duara\nauthor: iron-monkey\nexpression: ${name}\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n`;
+function minimalBundle(name: string, group = 'sol-duara', author = 'dsanyika'): string {
+  return `group: ${group}\nauthor: ${author}\nexpression: ${name}\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n`;
 }
 
+// ── bundled directory ─────────────────────────────────────────────────────────
+
 describe('loadExpressionRegistry — bundled expressions', () => {
-  it('loads all three bundled expressions', () => {
-    const registry = loadExpressionRegistry(BUNDLED_DIR);
-    const list = registry.list();
-    const names = list.map((b) => b.name);
-    expect(names).toContain('build');
-    expect(names).toContain('artifact-store');
-    expect(names).toContain('deploy');
+  it('loads all bundled expressions without error', () => {
+    // Primary staleness sentinel: any unsupported feature in an expression file
+    // causes this to throw immediately, pinpointing the offending file.
+    expect(() => loadExpressionRegistry(BUNDLED_DIR)).not.toThrow();
   });
 
-  it('resolves "build" to the build expression bundle', () => {
+  it('loads expressions from all three groups', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
-    const bundle = registry.resolve('build');
+    const groups = new Set(registry.list().map((b) => b.group));
+    expect(groups).toContain('sol-duara');
+    expect(groups).toContain('compliance');
+    expect(groups).toContain('spin-dev');
+  });
+
+  it('resolves sol-duara/dsanyika/build to a 4-event bundle', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    const bundle = registry.resolve('sol-duara/dsanyika/build');
     expect(bundle.expression).toBe('build');
+    expect(bundle.group).toBe('sol-duara');
+    expect(bundle.author).toBe('dsanyika');
     expect(bundle.produces).toHaveLength(4);
   });
 
-  it('resolves "artifact-store"', () => {
+  it('resolves sol-duara/dsanyika/artifact-store to a 2-event bundle', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
-    const bundle = registry.resolve('artifact-store');
+    const bundle = registry.resolve('sol-duara/dsanyika/artifact-store');
     expect(bundle.expression).toBe('artifact-store');
     expect(bundle.produces).toHaveLength(2);
   });
 
-  it('resolves "deploy" and includes timing extensions', () => {
+  it('resolves sol-duara/dsanyika/deploy to a 4-event bundle', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
-    const bundle = registry.resolve('deploy');
+    const bundle = registry.resolve('sol-duara/dsanyika/deploy');
     expect(bundle.expression).toBe('deploy');
     expect(bundle.produces).toHaveLength(4);
-    expect(bundle.produces[0].min_wait_ms).toStrictEqual(100);
-    expect(bundle.produces[3].timeout_ms).toStrictEqual(30000);
+  });
+
+  it('resolves using author/expression path form', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    const bundle = registry.resolve('dsanyika/build');
+    expect(bundle.expression).toBe('build');
+  });
+
+  it('resolves using group/author/expression path form', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    const bundle = registry.resolve('sol-duara/dsanyika/build');
+    expect(bundle.expression).toBe('build');
+  });
+
+  it('bare "build" is ambiguous', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    expect(() => registry.resolve('build')).toThrow('Ambiguous expression reference');
+  });
+
+  it('resolveWithContext disambiguates bare "build" by author', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    const bundle = registry.resolveWithContext('build', { group: 'sol-duara', author: 'dsanyika' });
+    expect(bundle.author).toBe('dsanyika');
+  });
+
+  it('loads composite expressions (expression refs in produces) without error', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    // build-deploy has "expression: build" and "expression: deploy" in its produces
+    expect(() => registry.resolve('dsanyika/build-deploy')).not.toThrow();
+    // audit-evidence has "expression: ticket-trail" in its produces
+    expect(() => registry.resolve('cstump/audit-evidence')).not.toThrow();
+  });
+
+  it('loads expressions with detach chains without error', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    expect(() => registry.resolve('dsanyika/canary-deploy')).not.toThrow();
+    expect(() => registry.resolve('dsanyika/build-with-async-scan')).not.toThrow();
+    expect(() => registry.resolve('dsanyika/deploy-with-notify')).not.toThrow();
   });
 });
+
+// ── error cases ───────────────────────────────────────────────────────────────
 
 describe('loadExpressionRegistry — error cases', () => {
   let tmpDir: string;
@@ -81,7 +127,6 @@ describe('loadExpressionRegistry — error cases', () => {
   });
 
   it('fails with clear error on missing required fields in bundle', async () => {
-    // old format triggers schema validation failure
     await writeTmp('bad.yaml', `expression:\n  name: bad\n  version: 1.0.0\n`);
     expect(() => loadExpressionRegistry(tmpDir)).toThrow('schema validation failed');
   });
@@ -94,11 +139,13 @@ describe('loadExpressionRegistry — error cases', () => {
   it('fails when bundle has noun.verb collision without explicit ids', async () => {
     await writeTmp(
       'collision.yaml',
-      `group: sol-duara\nauthor: iron-monkey\nexpression: collision\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n  - event: dev.cdevents.build.started.0.5.1\n`,
+      `group: sol-duara\nauthor: dsanyika\nexpression: collision\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n  - event: dev.cdevents.build.started.0.5.1\n`,
     );
     expect(() => loadExpressionRegistry(tmpDir)).toThrow("must each have an explicit 'id' field");
   });
 });
+
+// ── path-style resolution ─────────────────────────────────────────────────────
 
 describe('loadExpressionRegistry — path-style resolution', () => {
   let tmpDir: string;
@@ -127,14 +174,14 @@ describe('loadExpressionRegistry — path-style resolution', () => {
   it('resolves author/expression path form', async () => {
     await writeTmp('myexpr.yaml', minimalBundle('myexpr'));
     const registry = loadExpressionRegistry(tmpDir);
-    const bundle = registry.resolve('iron-monkey/myexpr');
+    const bundle = registry.resolve('dsanyika/myexpr');
     expect(bundle.expression).toBe('myexpr');
   });
 
   it('resolves group/author/expression fully-qualified form', async () => {
     await writeTmp('myexpr.yaml', minimalBundle('myexpr'));
     const registry = loadExpressionRegistry(tmpDir);
-    const bundle = registry.resolve('sol-duara/iron-monkey/myexpr');
+    const bundle = registry.resolve('sol-duara/dsanyika/myexpr');
     expect(bundle.expression).toBe('myexpr');
   });
 
@@ -149,5 +196,13 @@ describe('loadExpressionRegistry — path-style resolution', () => {
     );
     const registry = loadExpressionRegistry(tmpDir);
     expect(() => registry.resolve('shared')).toThrow('Ambiguous expression reference');
+  });
+
+  it('resolveWithContext prefers matching author for bare names', async () => {
+    await writeTmp('a.yaml', minimalBundle('shared', 'org-a', 'alice'));
+    await writeTmp('b.yaml', minimalBundle('shared', 'org-b', 'bob'));
+    const registry = loadExpressionRegistry(tmpDir);
+    const bundle = registry.resolveWithContext('shared', { group: 'org-a', author: 'alice' });
+    expect(bundle.author).toBe('alice');
   });
 });

@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: spin-dev
+author: shipwreck-sa
+expression: build-deploy
+description: |
+  Shipwreck SA — composite of the gated enterprise build, the signed
+  artifact-store, and the audit-observable deploy. The full path from
+  merged source to a verified, published service, with every stage
+  carrying its own enterprise rigor.
+produces:
+  - expression: build
+  - expression: artifact-store
+  - expression: deploy

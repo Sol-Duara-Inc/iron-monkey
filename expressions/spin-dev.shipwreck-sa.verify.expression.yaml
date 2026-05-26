@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: spin-dev
+author: shipwreck-sa
+expression: verify
+description: |
+  Shipwreck SA — verification runs at least two test cases under a tracked
+  suite. The suite's queue state is observable so capacity planners can see
+  backlogs. A bare single-case run does not count as verification here.
+produces:
+  - event: dev.cdevents.testsuiterun.queued.0.5.1
+  - event: dev.cdevents.testsuiterun.started.0.5.1
+  - event: dev.cdevents.testcaserun.queued.0.5.1
+    id: testcase-1-queued
+  - event: dev.cdevents.testcaserun.started.0.5.1
+    id: testcase-1-started
+  - event: dev.cdevents.testcaserun.finished.0.5.1
+    id: testcase-1-finished
+  - event: dev.cdevents.testcaserun.queued.0.5.1
+    id: testcase-2-queued
+  - event: dev.cdevents.testcaserun.started.0.5.1
+    id: testcase-2-started
+  - event: dev.cdevents.testcaserun.finished.0.5.1
+    id: testcase-2-finished
+  - event: dev.cdevents.testsuiterun.finished.0.5.1

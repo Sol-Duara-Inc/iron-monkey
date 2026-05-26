@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXPRESSIONS_DIR = path.resolve(__dirname, '../../expressions');
+const WORKFLOWS_DIR = path.resolve(__dirname, '../../examples/workflows');
 
 async function writeTmpYaml(content: string): Promise<string> {
   const dir = await mkdir(path.join(os.tmpdir(), 'iron-monkey-test'), { recursive: true }).then(
@@ -37,6 +38,26 @@ describe('validateWorkflow', () => {
     const result = await validateWorkflow(file);
     expect(result.workflow.id).toBe('test-wf');
     expect(result.workflow.produces).toHaveLength(1);
+    await unlink(file);
+  });
+
+  it('parses a workflow with group and author fields', async () => {
+    const file = await writeTmpYaml(`
+workflow:
+  id: test-wf
+  group: spin-dev
+  author: shipwreck-sa
+  name: test
+  cdrus:
+    version: 1
+  produces:
+    - event: dev.cdevents.build.started.0.5.1
+      tool: jenkins
+      source: https://jenkins.example.com/
+`);
+    const result = await validateWorkflow(file);
+    expect(result.workflow.group).toBe('spin-dev');
+    expect(result.workflow.author).toBe('shipwreck-sa');
     await unlink(file);
   });
 
@@ -156,7 +177,7 @@ workflow:
 });
 
 describe('resolveProduces — expression items', () => {
-  it('inlines expression events from the registry', async () => {
+  it('inlines expression events from the registry (dsanyika/build → 4 events)', async () => {
     const file = await writeTmpYaml(`
 workflow:
   id: test
@@ -164,7 +185,7 @@ workflow:
   cdrus:
     version: 1
   produces:
-    - expression: build
+    - expression: dsanyika/build
       tool: jenkins
 `);
     const wf = await validateWorkflow(file);
@@ -185,7 +206,7 @@ workflow:
   cdrus:
     version: 1
   produces:
-    - expression: deploy
+    - expression: dsanyika/deploy
       tool: spinnaker
       source: https://spinnaker.example.com/
       overrides:
@@ -274,5 +295,69 @@ workflow:
     expect(events[0].tool).toBe('jenkins');
     expect(events[1].tool).toBe('jfrog');
     await unlink(file);
+  });
+});
+
+describe('resolveProduces — composite expressions (expression refs in produces)', () => {
+  it('expands dsanyika/blue-green-deploy including nested verify events', async () => {
+    const file = await writeTmpYaml(`
+workflow:
+  id: test
+  group: sol-duara
+  author: dsanyika
+  name: test
+  cdrus:
+    version: 1
+  produces:
+    - expression: dsanyika/blue-green-deploy
+      tool: spinnaker
+`);
+    const wf = await validateWorkflow(file);
+    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
+    const events = resolveProduces(wf, registry);
+    // blue-green-deploy: service.deployed + verify(4) + service.published + service.removed = 7
+    expect(events.length).toBe(7);
+    expect(events[0].type).toBe('dev.cdevents.service.deployed.0.5.1');
+    expect(events[events.length - 1].type).toBe('dev.cdevents.service.removed.0.5.1');
+  });
+});
+
+describe('resolveProduces — group/author disambiguation on real prod workflows', () => {
+  it('parses and resolves prod-auth-hotfix-fast-path.yaml without error', async () => {
+    const wf = await validateWorkflow(path.join(WORKFLOWS_DIR, 'prod-auth-hotfix-fast-path.yaml'));
+    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
+    const events = resolveProduces(wf, registry);
+    // pipelinerun.started (1) + spin-dev/shipwreck-sa/build (9) + service-deploy (2) + pipelinerun.finished (1)
+    expect(events.length).toBeGreaterThan(5);
+    expect(events[0].type).toBe('dev.cdevents.pipelinerun.started.0.5.1');
+    expect(events[events.length - 1].type).toBe('dev.cdevents.pipelinerun.finished.0.5.1');
+  });
+
+  it('parses and resolves prod-payments-blue-green-cutover.yaml without error', async () => {
+    const wf = await validateWorkflow(
+      path.join(WORKFLOWS_DIR, 'prod-payments-blue-green-cutover.yaml'),
+    );
+    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
+    const events = resolveProduces(wf, registry);
+    expect(events.length).toBeGreaterThan(5);
+    expect(events[0].type).toBe('dev.cdevents.pipelinerun.started.0.5.1');
+    expect(events[events.length - 1].type).toBe('dev.cdevents.pipelinerun.finished.0.5.1');
+  });
+
+  it('parses and resolves prod-checkout-jenkins-spinnaker-canary.yaml without error', async () => {
+    const wf = await validateWorkflow(
+      path.join(WORKFLOWS_DIR, 'prod-checkout-jenkins-spinnaker-canary.yaml'),
+    );
+    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
+    expect(() => resolveProduces(wf, registry)).not.toThrow();
+  });
+
+  it('prod-auth workflow disambiguates bare "build" to spin-dev/shipwreck-sa/build', async () => {
+    const wf = await validateWorkflow(path.join(WORKFLOWS_DIR, 'prod-auth-hotfix-fast-path.yaml'));
+    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
+    const events = resolveProduces(wf, registry);
+    // spin-dev/shipwreck-sa/build starts with change.merged (not build.started)
+    const first = events.find((e) => e.expressionRef !== undefined);
+    expect(first?.type).toBe('dev.cdevents.change.merged.0.5.1');
   });
 });

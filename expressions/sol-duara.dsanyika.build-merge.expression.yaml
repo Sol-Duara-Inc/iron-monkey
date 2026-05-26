@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: sol-duara
+author: dsanyika
+expression: build-merge
+description: Composite CI pattern — build a change, then merge it into the target branch.
+produces:
+  - expression: build
+  - event: dev.cdevents.change.merged.0.5.1

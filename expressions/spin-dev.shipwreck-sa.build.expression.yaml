@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: spin-dev
+author: shipwreck-sa
+expression: build
+description: |
+  Shipwreck SA — gated, queue-tracked, verification-bracketed build. Only
+  merged code is built (no ad-hoc builds), the build is queued so capacity is
+  observable, verification runs inside the build envelope, and the build is
+  not finished until test output has been published.
+produces:
+  - event: dev.cdevents.change.merged.0.5.1
+  - event: dev.cdevents.build.queued.0.5.1
+  - event: dev.cdevents.build.started.0.5.1
+  - expression: verify
+  - event: dev.cdevents.testoutput.published.0.5.1
+  - event: dev.cdevents.build.finished.0.5.1

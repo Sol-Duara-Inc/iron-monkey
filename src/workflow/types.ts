@@ -142,6 +142,19 @@ export type ProducesItem = EventItem | ExpressionItem;
 export interface WorkflowDef {
   /** Unique stable identifier for this workflow, used in the manifest and chain ID generation. */
   id: string;
+  /**
+   * Group component of the workflow's CDrus identity (e.g. `'spin-dev'`).
+   * When present, used as the disambiguation context for bare expression name
+   * resolution when multiple bundles share the same expression name.
+   */
+  group?: string;
+  /**
+   * Author component of the workflow's CDrus identity (e.g. `'shipwreck-sa'`).
+   * When present, used as the primary disambiguation key: a bare `expression: build`
+   * in a workflow with `author: shipwreck-sa` resolves to
+   * `spin-dev/shipwreck-sa/build` ahead of bundles by other authors.
+   */
+  author?: string;
   /** Human-readable name displayed in logs and used for fallback chain ID slugs. */
   name: string;
   /**

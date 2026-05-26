@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: sol-duara
+author: dsanyika
+expression: canary-deploy
+description: Canary rollout — deployed, verified, then published, with a detached rollback chain so consumers can observe the fallback path without the parent waiting on it.
+produces:
+  - event: dev.cdevents.service.deployed.0.5.1
+    detach:
+      - expression: service-rollback
+  - expression: verify
+  - event: dev.cdevents.service.published.0.5.1

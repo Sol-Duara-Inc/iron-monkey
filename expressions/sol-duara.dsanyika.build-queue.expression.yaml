@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: sol-duara
+author: dsanyika
+expression: build-queue
+description: Queue-aware build pattern — queued, started, finished.
+produces:
+  - event: dev.cdevents.build.queued.0.5.1
+  - event: dev.cdevents.build.started.0.5.1
+  - event: dev.cdevents.build.finished.0.5.1
