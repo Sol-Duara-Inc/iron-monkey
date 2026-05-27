@@ -99,11 +99,14 @@ describe('buildManifest', () => {
     expect(manifest.events[0].payload.context.specversion).toBe('0.5.1');
   });
 
-  it('emits links as a plain array (not a wrapper object)', async () => {
+  it('emits CDEvents-spec PATH links on the second-and-later events', async () => {
     const manifest = await buildManifest(meta, twoEvents, config, { noConduit: true });
     const links = manifest.events[1].payload.context.links;
     expect(Array.isArray(links)).toBe(true);
-    expect((links as unknown[])[0]).toMatchObject({ type: 'PATH' });
+    expect((links as unknown[])[0]).toMatchObject({ linkType: 'PATH' });
+    expect((links as unknown[])[0]).toMatchObject({
+      from: { contextId: manifest.events[0].eventId },
+    });
   });
 
   it('throws when schema is not found', async () => {

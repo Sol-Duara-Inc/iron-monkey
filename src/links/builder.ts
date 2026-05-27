@@ -1,89 +1,53 @@
 /**
  * @module links/builder
  * Factory functions for CDEvents link entries that wire individual events into
- * a Sympraxis chain. Links are embedded in the `context.links` array of each
- * CDEvent payload and allow downstream consumers to traverse the causal chain
- * of a workflow run.
+ * a directed chain. Links are embedded in the `context.links` array of each
+ * CDEvent payload and allow downstream consumers to traverse causal order.
+ *
+ * Shape follows the CDEvents 0.6.0 links spec:
+ * https://github.com/cdevents/spec/blob/main/links.md
+ *
+ * Three link types are embeddable: `PATH`, `END`, `RELATION`. `START` is
+ * intentionally absent — per the spec, `START` is a stand-alone link sent
+ * separately, never embedded; chain start is inferred from context.
  */
 
-import type { CDEventPayload, LinkEntry } from '../manifest/types.js';
+import type { EndLink, PathLink, RelationLink } from '../manifest/types.js';
 
 /**
- * Creates a `PATH` link pointing to the immediately preceding event, indicating
- * direct causal succession within a Sympraxis chain.
+ * Creates an embedded `PATH` link pointing back to the immediately preceding
+ * event in the chain. The event carrying this link is the implicit `to`.
  *
- * @param previousEventId - The `eventId` (CDEvents `context.id`) of the
- *   preceding event in the chain.
- * @returns A {@link LinkEntry} of type `'PATH'`.
+ * @param previousEventId - `context.id` (UUID) of the preceding event.
+ * @returns A spec-shaped `PATH` link.
  */
-export function buildPathLink(previousEventId: string): LinkEntry {
-  return { type: 'PATH', target: previousEventId };
+export function buildPathLink(previousEventId: string): PathLink {
+  return { linkType: 'PATH', from: { contextId: previousEventId } };
 }
 
 /**
- * Creates an `END` link marking the last event before a chain-end sentinel.
- * Typically embedded in the standalone end-link payload rather than in the
- * final manifest event itself.
+ * Creates an embedded `END` link marking the carrying event as the chain's
+ * terminator. Per the CDEvents spec, `end.contextId` references the event
+ * id of the chain-ending event — i.e. the very event the link is embedded
+ * in (self-reference).
  *
- * @param lastEventId - The `eventId` of the final substantive event in the
- *   chain.
- * @returns A {@link LinkEntry} of type `'END'`.
+ * @param endingEventId - `context.id` (UUID) of the event carrying this link
+ *   (= the event that ends the chain).
+ * @returns A spec-shaped `END` link.
  */
-export function buildEndLink(lastEventId: string): LinkEntry {
-  return { type: 'END', target: lastEventId };
+export function buildEndLink(endingEventId: string): EndLink {
+  return { linkType: 'END', end: { contextId: endingEventId } };
 }
 
 /**
- * Creates a `START` link marking the first event of a Sympraxis chain.
- * Can be embedded in subsequent events to allow consumers to jump directly to
- * the chain origin.
+ * Creates an embedded `RELATION` link referencing a related event, tagged
+ * with a `linkKind` (e.g. `'TRIGGER'`, `'ARTIFACT'`). The carrying event is
+ * the implicit `source` per the spec.
  *
- * @param firstEventId - The `eventId` of the first event in the chain.
- * @returns A {@link LinkEntry} of type `'START'`.
+ * @param linkKind - Relation discriminator, e.g. `'TRIGGER'`.
+ * @param targetEventId - `context.id` of the related event.
+ * @returns A spec-shaped `RELATION` link.
  */
-export function buildStartLink(firstEventId: string): LinkEntry {
-  return { type: 'START', target: firstEventId };
-}
-
-/**
- * Builds the `dev.cdevents.chain.end` sentinel as a fully-structured CDEvent
- * envelope (context + subject), so HTTP consumers like Junction Box that
- * validate every body against the base CDEvent shape will accept it.
- *
- * Semantics:
- * - `context.type` is the reserved sentinel discriminant `dev.cdevents.chain.end`.
- * - `context.links` carries a single `END` link pointing at the last
- *   substantive event in the chain — this is where the closure information
- *   lives, mirroring how `PATH` links thread the rest of the chain.
- * - `subject.id` is the chain ID itself (the chain is the subject of its own
- *   closure event), and `subject.content.lastEventId` repeats the END target
- *   for consumers that ignore `links` and only look at `subject.content`.
- *
- * @param opts - Fields needed to build the sentinel payload.
- * @returns A fully populated chain-end CDEvent payload.
- */
-export function buildStandaloneEndLink(opts: {
-  id: string;
-  source: string;
-  chainId: string;
-  lastEventId: string;
-  timestamp: string;
-}): CDEventPayload {
-  return {
-    context: {
-      specversion: '0.5.1',
-      id: opts.id,
-      source: opts.source,
-      type: 'dev.cdevents.chain.end',
-      timestamp: opts.timestamp,
-      chainId: opts.chainId,
-      links: [{ type: 'END', target: opts.lastEventId }],
-    },
-    subject: {
-      id: opts.chainId,
-      content: {
-        lastEventId: opts.lastEventId,
-      },
-    },
-  };
+export function buildRelationLink(linkKind: string, targetEventId: string): RelationLink {
+  return { linkType: 'RELATION', linkKind, target: { contextId: targetEventId } };
 }

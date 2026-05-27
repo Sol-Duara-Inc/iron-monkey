@@ -1,80 +1,61 @@
+/**
+ * @file tests/links/builder.test.ts
+ * Unit tests for the CDEvents-spec-compliant embedded link builders.
+ * Spec reference: https://github.com/cdevents/spec/blob/main/links.md
+ *
+ * `START` links are intentionally not buildable here — per the spec, START
+ * is a stand-alone link sent separately and is never embedded.
+ */
 import { describe, it, expect } from 'vitest';
-import {
-  buildPathLink,
-  buildEndLink,
-  buildStartLink,
-  buildStandaloneEndLink,
-} from '../../src/links/builder.js';
+import { buildPathLink, buildEndLink, buildRelationLink } from '../../src/links/builder.js';
 
 describe('buildPathLink', () => {
-  it('returns a PATH link pointing to the given event id', () => {
+  it('returns a CDEvents 0.6.0-shape PATH link with from.contextId', () => {
     const link = buildPathLink('prev-evt-123');
-    expect(link).toEqual({ type: 'PATH', target: 'prev-evt-123' });
+    expect(link).toEqual({
+      linkType: 'PATH',
+      from: { contextId: 'prev-evt-123' },
+    });
+  });
+
+  it('does not include any legacy `type` or `target` fields', () => {
+    const link = buildPathLink('prev-evt-123') as Record<string, unknown>;
+    expect(link.type).toBeUndefined();
+    expect(link.target).toBeUndefined();
   });
 });
 
 describe('buildEndLink', () => {
-  it('returns an END link pointing to the last event id', () => {
-    const link = buildEndLink('last-evt-456');
-    expect(link).toEqual({ type: 'END', target: 'last-evt-456' });
-  });
-});
-
-describe('buildStartLink', () => {
-  it('returns a START link pointing to the first event id', () => {
-    const link = buildStartLink('first-evt-789');
-    expect(link).toEqual({ type: 'START', target: 'first-evt-789' });
-  });
-});
-
-describe('buildStandaloneEndLink', () => {
-  const opts = {
-    id: 'end-link-uuid',
-    source: 'https://spinnaker.example.com/',
-    chainId: 'chain-uuid',
-    lastEventId: 'last-event-uuid',
-    timestamp: '2026-05-08T00:00:00.000Z',
-  };
-
-  it('returns a chain-end CDEvent envelope with context and subject', () => {
-    const link = buildStandaloneEndLink(opts);
+  it('returns a CDEvents 0.6.0-shape END link with end.contextId (self-reference)', () => {
+    // The argument is the id of the chain-ending event — i.e. the event the
+    // link is embedded in. The spec self-references rather than pointing at
+    // a separate event.
+    const link = buildEndLink('ending-evt-456');
     expect(link).toEqual({
-      context: {
-        specversion: '0.5.1',
-        id: 'end-link-uuid',
-        source: 'https://spinnaker.example.com/',
-        type: 'dev.cdevents.chain.end',
-        timestamp: '2026-05-08T00:00:00.000Z',
-        chainId: 'chain-uuid',
-        links: [{ type: 'END', target: 'last-event-uuid' }],
-      },
-      subject: {
-        id: 'chain-uuid',
-        content: { lastEventId: 'last-event-uuid' },
-      },
+      linkType: 'END',
+      end: { contextId: 'ending-evt-456' },
     });
   });
 
-  it('sets context.specversion to 0.5.1', () => {
-    expect(buildStandaloneEndLink(opts).context.specversion).toBe('0.5.1');
+  it('does not include any legacy `type` or `target` fields', () => {
+    const link = buildEndLink('ending-evt-456') as Record<string, unknown>;
+    expect(link.type).toBeUndefined();
+    expect(link.target).toBeUndefined();
   });
+});
 
-  it('sets context.type to dev.cdevents.chain.end', () => {
-    expect(buildStandaloneEndLink(opts).context.type).toBe('dev.cdevents.chain.end');
-  });
-
-  it('uses the chainId as the subject id', () => {
-    expect(buildStandaloneEndLink(opts).subject.id).toBe('chain-uuid');
-  });
-
-  it('embeds an END link in context.links pointing at the last event', () => {
-    const links = buildStandaloneEndLink(opts).context.links;
-    expect(links).toEqual([{ type: 'END', target: 'last-event-uuid' }]);
-  });
-
-  it('mirrors lastEventId in subject.content for content-only consumers', () => {
-    expect(buildStandaloneEndLink(opts).subject.content).toEqual({
-      lastEventId: 'last-event-uuid',
+describe('buildRelationLink', () => {
+  it('returns a CDEvents 0.6.0-shape RELATION link with linkKind + target.contextId', () => {
+    const link = buildRelationLink('TRIGGER', 'related-evt-789');
+    expect(link).toEqual({
+      linkType: 'RELATION',
+      linkKind: 'TRIGGER',
+      target: { contextId: 'related-evt-789' },
     });
+  });
+
+  it('passes the supplied linkKind through verbatim', () => {
+    expect(buildRelationLink('ARTIFACT', 'evt-1').linkKind).toBe('ARTIFACT');
+    expect(buildRelationLink('TRIGGER', 'evt-1').linkKind).toBe('TRIGGER');
   });
 });
