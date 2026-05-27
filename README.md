@@ -202,7 +202,7 @@ General precedence: CLI args > environment variables > config file > built-in de
 
 See [`examples/workflows/prod-payments-blue-green-cutover.yaml`](examples/workflows/prod-payments-blue-green-cutover.yaml) for a complete multi-tool production workflow (Jenkins → JFrog → Spinnaker / GKE).
 
-A workflow has a flat `produces[]` list. Each item is either a bare `event:` or an `expression:` reference. Workflows also carry `group` and `author` identity fields that pair with expression authorship for traceability:
+A workflow has a flat `produces[]` list. Each item is either a bare `event:` or an `expression:` reference. Workflows also carry `group` and `author` identity fields that pair with expression authorship for traceability **and drive the resolver** — bare `expression:` references resolve under `(workflow.group, workflow.author, name)` first, falling through to the `example-group / user` standard library when no team-owned bundle exists (see _Referencing an expression_ below):
 
 ```yaml
 # yaml-language-server: $schema=./schemas/cdrus/workflow.schema.json
@@ -317,6 +317,22 @@ Expression files are named `<group>.<author>.<expression>.expression.yaml`. Expr
 
 ### Bundled expressions
 
+#### example-group / user — standard-library fallback
+
+The resolver consults this catalog whenever a bare `expression:` reference does not resolve under the calling workflow's own `(group, author)`. Every other group is, in effect, layered on top of this one. The catalog is organised by intent:
+
+| Category                       | Expressions                                                                                                                       |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Core CI / CD                   | `build`, `deploy`, `verify`, `service-deploy`, `artifact-store`, `pipeline-run`, `ci-pipeline`                                    |
+| Composition / orchestration    | `build-deploy`, `build-store`, `build-merge`, `build-queue`, `promote-artifact`, `full-release`, `hotfix`, `task-execute`         |
+| Deployment strategies          | `blue-green-deploy`, `canary-deploy`, `service-rollback`, `service-remove`, `service-upgrade`, `deploy-with-notify`               |
+| Test patterns                  | `test-case`, `test-case-skipped`, `test-output-publish`, `regression-suite`, `verify-with-output`                                 |
+| Artifact lifecycle             | `artifact-sign-publish`, `artifact-distribute`, `artifact-retire`, `build-with-async-scan`                                        |
+| Environments                   | `environment-provision`, `environment-update`, `environment-teardown`, `ephemeral-environment`                                    |
+| Change management              | `change-request`, `review-change-request`, `merge-change-request`, `abandon-change-request`, `branch-lifecycle`, `ticket-associate`, `pull-request-ci` |
+
+See `expressions/example-group.user.*.expression.yaml` for the full definitions.
+
 #### sol-duara / dsanyika — core reference library
 
 | Expression              | Events (in order)                                                                                   |
@@ -366,19 +382,28 @@ Expression files are named `<group>.<author>.<expression>.expression.yaml`. Expr
 
 ### Referencing an expression
 
-Expressions are referenced by path-style notation — bare name, `author/expression`, or `group/author/expression`. Use the longer form when multiple bundles share the same expression name and Iron Monkey cannot resolve the reference unambiguously.
+Expressions are referenced by path-style notation — bare name, `author/expression`, or `group/author/expression`. Resolution uses the calling workflow's own `group` and `author` as context:
+
+| Form                       | Resolution attempt order                                                          | Fallback?         |
+| -------------------------- | --------------------------------------------------------------------------------- | ----------------- |
+| `build`                    | 1. `(workflow.group, workflow.author, build)` 2. `(example-group, user, build)`   | Yes — std-lib     |
+| `dsanyika/build`           | `(workflow.group, dsanyika, build)`                                               | No                |
+| `sol-duara/dsanyika/build` | `(sol-duara, dsanyika, build)`                                                    | No                |
+
+A bare reference first tries the calling workflow's own identity; if no bundle exists there, it falls through to the `example-group / user` standard-library catalog (see _Bundled expressions_ below). Author-qualified and fully-qualified forms do not fall through — they're an explicit opt-out of the std-lib search.
 
 ```yaml
-# bare name (unambiguous)
+# bare name — resolves under workflow.group/workflow.author first,
+# then under example-group/user
 - expression: build
   tool: jenkins-prod
   source: https://jenkins.example.com/
 
-# scoped to author
+# scoped to author within the workflow's group
 - expression: dsanyika/build
   tool: jenkins-prod
 
-# fully qualified
+# fully qualified — no fallback
 - expression: sol-duara/dsanyika/build
   tool: jenkins-prod
 ```
@@ -446,7 +471,7 @@ produces:
 
 Reference it in your workflow as `expression: my-pattern` (or `my-tool/my-pattern` / `my-org/my-tool/my-pattern` if disambiguation is needed).
 
-If two events in a bundle share the same `noun.verb`, each must have a unique explicit `id` field or the bundle will fail to load.
+Two events in a bundle may share the same `noun.verb` (e.g. two `testcaserun.queued` events to model a two-case suite). Position in `produces` disambiguates them, and unique downstream ids are allocated automatically (`noun-verb`, `noun-verb-1`, `noun-verb-2`, …). Supply an explicit `id` on an event when you want a stable handle for `overrides:` keys or `--inject` spec strings; otherwise the positional default suffices.
 
 ---
 
