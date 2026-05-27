@@ -17,21 +17,63 @@ const ajv = new AjvConstructor({ allErrors: true, strict: false });
 const addFormatsFunc = (addFormats as any).default ?? addFormats;
 addFormatsFunc(ajv);
 
-// The CDEvent schemas reference this via $ref; define it here so AJV resolves it.
-// Iron Monkey uses a simplified link format (type + target) rather than the full
-// 0.5.1 embeddedlink spec (linkType + from.contextId); this registration validates
-// that simplified shape while matching the $id the event schemas resolve to.
+// The CDEvent schemas reference this via $ref; define it here so AJV resolves
+// it. Iron Monkey emits links in the CDEvents 0.6.0 embedded-link shape — a
+// discriminated union by `linkType`, with per-type fields. `START` is never
+// embedded (it's a stand-alone link only); only `PATH`, `END`, and `RELATION`
+// are accepted here. Spec: https://github.com/cdevents/spec/blob/main/links.md
 ajv.addSchema({
   $id: 'https://cdevents.dev/0.5.1/schema/links/embeddedlinksarray',
   type: 'array',
   items: {
-    type: 'object',
-    required: ['type', 'target'],
-    additionalProperties: false,
-    properties: {
-      type: { type: 'string', enum: ['PATH', 'START', 'END', 'RELATION'] },
-      target: { type: 'string', minLength: 1 },
-    },
+    oneOf: [
+      {
+        // PATH — points back to the previous event.
+        type: 'object',
+        required: ['linkType', 'from'],
+        additionalProperties: false,
+        properties: {
+          linkType: { type: 'string', const: 'PATH' },
+          from: {
+            type: 'object',
+            required: ['contextId'],
+            additionalProperties: false,
+            properties: { contextId: { type: 'string', minLength: 1 } },
+          },
+        },
+      },
+      {
+        // END — marks the carrying event as the chain's terminator.
+        type: 'object',
+        required: ['linkType', 'end'],
+        additionalProperties: false,
+        properties: {
+          linkType: { type: 'string', const: 'END' },
+          end: {
+            type: 'object',
+            required: ['contextId'],
+            additionalProperties: false,
+            properties: { contextId: { type: 'string', minLength: 1 } },
+          },
+        },
+      },
+      {
+        // RELATION — discriminated by `linkKind`, points at the related event.
+        type: 'object',
+        required: ['linkType', 'linkKind', 'target'],
+        additionalProperties: false,
+        properties: {
+          linkType: { type: 'string', const: 'RELATION' },
+          linkKind: { type: 'string', minLength: 1 },
+          target: {
+            type: 'object',
+            required: ['contextId'],
+            additionalProperties: false,
+            properties: { contextId: { type: 'string', minLength: 1 } },
+          },
+        },
+      },
+    ],
   },
 });
 

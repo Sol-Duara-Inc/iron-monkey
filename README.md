@@ -542,7 +542,19 @@ Every event Iron Monkey emits follows the CDEvents 0.5.1 envelope:
 
 `context.specversion` is always `"0.5.1"`. The type suffix is also `.0.5.1` for all 45 event types bundled with Iron Monkey.
 
-`context.links` is a plain array of link objects. The first event in a chain has no `links` entry. After the last event, Iron Monkey emits a `dev.cdevents.chain.end` sentinel as a fully-structured CDEvent envelope: `context` carries the type and a single `END` link pointing at the last substantive event, and `subject.id` is the chain ID itself (the chain is the subject of its own closure), with `subject.content.lastEventId` mirroring the END target for consumers that only inspect `subject.content`. This makes the sentinel acceptable to consumers that validate every body against the base CDEvent shape.
+`context.links` is a plain array of link objects following the [CDEvents 0.6.0 embedded-link spec](https://github.com/cdevents/spec/blob/main/links.md). The first event in a chain has no `links` entry. Subsequent events carry a `PATH` link pointing back to the immediately preceding event:
+
+```json
+{ "linkType": "PATH", "from": { "contextId": "<previous-event-id>" } }
+```
+
+The chain has no separate closing sentinel event. Instead, the **last manifest event** (typically `pipelineRun.finished`) carries an embedded `END` link that self-references its own `context.id`, marking it as the chain's terminator:
+
+```json
+{ "linkType": "END", "end": { "contextId": "<this-event-id>" } }
+```
+
+Consumers can iterate the events of a chain by walking `PATH.from.contextId` backwards from any point, and they can detect chain closure by looking for an event whose `links` array contains a self-referencing `END`. `START` is intentionally not embeddable per the spec — chain start is inferred from event context.
 
 The fallback chainId (used when `--no-conduit` is set and no Conduit is reachable) takes the form `urn:sol-duara:fallback:<slug>:<timestamp>:<nonce>` — intentionally non-UUID so downstream UUID validators will flag it.
 

@@ -3,8 +3,10 @@
  * Top-level orchestrator for a single Iron Monkey workflow run. Wires together
  * config loading, workflow validation, expression resolution, manifest
  * building, failure injection, and event emission over the configured bus.
- * After all events are emitted it sends a `dev.cdevents.chain.end` sentinel to
- * close the Sympraxis chain.
+ *
+ * Chain closure is expressed as an embedded `END` link on the LAST manifest
+ * event (per the CDEvents links spec), not as a separate `chain.end`
+ * sentinel event. The chain ends when its last substantive event arrives.
  */
 
 import { writeFile } from 'fs/promises';
@@ -16,9 +18,8 @@ import { buildManifest } from '../manifest/builder.js';
 import { parseInjections } from '../injection/parser.js';
 import { applyInjections } from '../injection/apply.js';
 import { createBus } from '../bus/interface.js';
-import { buildStandaloneEndLink } from '../links/builder.js';
+import { buildEndLink } from '../links/builder.js';
 import { createLogger, setLogger } from '../logger/index.js';
-import { v4 as uuidv4 } from 'uuid';
 import type { Manifest, ManifestEvent } from '../manifest/types.js';
 
 /** Options accepted by {@link runWorkflow} from the CLI or programmatic callers. */
@@ -112,8 +113,10 @@ export async function runWorkflows(
 /**
  * Executes a complete Iron Monkey workflow: retrieves the workflow definition
  * from the source, builds a pre-allocated event manifest, applies any failure
- * injections, emits all events to the configured message bus in order
- * (respecting concurrency groups), then emits a chain-end sentinel event.
+ * injections, decorates the last event with an `END` link, then emits every
+ * event to the configured message bus in order (respecting concurrency
+ * groups). No separate chain-end sentinel is emitted — the chain ends with
+ * its last substantive event.
  *
  * @param source - Workflow source supplying the definition. Accepts a
  *   {@link WorkflowSource} instance or a plain filesystem-path string
@@ -190,6 +193,26 @@ export async function runWorkflow(
 
   const injected = applyInjections(manifest, injections);
 
+  // Decorate the last manifest event with an embedded END link before any
+  // emission happens. The chain's terminator is the last substantive event
+  // itself; no separate sentinel is sent. Per CDEvents spec, `end.contextId`
+  // self-references the event id of the chain-ending event.
+  //
+  // Mutates the payload in place — applyInjections may have already
+  // rewritten this event's payload (for malformed/late/etc.), but the END
+  // link belongs on whatever envelope ultimately ships.
+  const lastEvent = injected.events[injected.events.length - 1];
+  if (lastEvent) {
+    const ctx = lastEvent.payload.context as { id: string; links?: unknown[] };
+    const links = (Array.isArray(ctx.links) ? ctx.links : []).slice();
+    links.push(buildEndLink(ctx.id));
+    ctx.links = links;
+    logger.info(
+      { chainId: injected.chainId, endingEventId: ctx.id, endingEventType: lastEvent.type },
+      'attached END link to last manifest event',
+    );
+  }
+
   if (options.manifestOut) {
     await writeFile(options.manifestOut, JSON.stringify(injected, null, 2), 'utf-8');
     logger.info({ path: options.manifestOut }, 'manifest written');
@@ -197,17 +220,6 @@ export async function runWorkflow(
 
   try {
     await executeManifest(injected, bus, logger);
-
-    const lastEvent = injected.events[injected.events.length - 1];
-    const endPayload = buildStandaloneEndLink({
-      id: uuidv4(),
-      source: lastEvent.source,
-      chainId: injected.chainId,
-      lastEventId: lastEvent.eventId,
-      timestamp: new Date().toISOString(),
-    });
-    await bus.emit('dev.cdevents.chain.end', endPayload.context.id, endPayload);
-    logger.info({ chainId: injected.chainId }, 'emitted END link');
   } finally {
     await bus.disconnect();
   }

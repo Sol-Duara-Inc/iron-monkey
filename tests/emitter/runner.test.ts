@@ -39,23 +39,9 @@ vi.mock('../../src/injection/apply.js', () => ({
   applyInjections: vi.fn((m: Manifest) => m),
 }));
 
-vi.mock('../../src/links/builder.js', () => ({
-  buildStandaloneEndLink: vi.fn().mockReturnValue({
-    context: {
-      specversion: '0.5.1',
-      id: 'end-link-id',
-      source: 'https://example.com/',
-      type: 'dev.cdevents.chain.end',
-      timestamp: new Date().toISOString(),
-      chainId: 'chain-1',
-      links: [{ type: 'END', target: 'last-evt' }],
-    },
-    subject: {
-      id: 'chain-1',
-      content: { lastEventId: 'last-evt' },
-    },
-  }),
-}));
+// Note: src/links/builder.js is NOT mocked. The runner now decorates the last
+// manifest event with an END link in-process; we let the real buildEndLink
+// run so we can assert the exact spec-compliant shape on the emitted payload.
 
 vi.mock('../../src/bus/interface.js', () => ({
   createBus: vi.fn().mockResolvedValue(mockBus),
@@ -134,7 +120,7 @@ describe('runWorkflow', () => {
     mockBus.disconnect.mockResolvedValue(undefined);
   });
 
-  it('connects to the bus, emits all events, emits the END link, then disconnects', async () => {
+  it('connects to the bus, emits all events with END link on the last, then disconnects', async () => {
     const manifest = makeManifest([makeEvent()]);
     (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
     (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
@@ -142,14 +128,65 @@ describe('runWorkflow', () => {
     await runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false });
 
     expect(mockBus.connect).toHaveBeenCalled();
-    // one event + one END link
-    expect(mockBus.emit).toHaveBeenCalledTimes(2);
-    expect(mockBus.emit).toHaveBeenLastCalledWith(
-      'dev.cdevents.chain.end',
-      expect.any(String),
-      expect.any(Object),
-    );
+    // exactly N events — NO separate chain.end sentinel
+    expect(mockBus.emit).toHaveBeenCalledTimes(1);
+    const [, , payload] = (mockBus.emit as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect((payload as { context: { links?: unknown[] } }).context.links).toContainEqual({
+      linkType: 'END',
+      end: { contextId: manifest.events[0].eventId },
+    });
     expect(mockBus.disconnect).toHaveBeenCalled();
+  });
+
+  it('does not emit a separate dev.cdevents.chain.end sentinel', async () => {
+    const manifest = makeManifest([makeEvent()]);
+    (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
+    (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
+
+    await runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false });
+
+    const emittedTypes = (mockBus.emit as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: unknown[]) => c[0],
+    );
+    expect(emittedTypes).not.toContain('dev.cdevents.chain.end');
+  });
+
+  it('decorates only the LAST event with an END link, not intermediate events', async () => {
+    const first = makeEvent({ eventId: 'evt-1' });
+    const second = makeEvent({
+      eventId: 'evt-2',
+      workflowEventId: 'build-finished',
+      type: 'dev.cdevents.build.finished.0.5.1',
+      payload: {
+        ...makeEvent({ eventId: 'evt-2' }).payload,
+        context: {
+          ...makeEvent({ eventId: 'evt-2' }).payload.context,
+          id: 'evt-2',
+        },
+      },
+    });
+    const manifest = makeManifest([first, second]);
+    (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
+    (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
+
+    await runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false });
+
+    expect(mockBus.emit).toHaveBeenCalledTimes(2);
+    const calls = (mockBus.emit as ReturnType<typeof vi.fn>).mock.calls;
+    const firstPayload = calls[0][2] as { context: { links?: unknown[] } };
+    const lastPayload = calls[1][2] as { context: { links?: unknown[] } };
+
+    // first event has no END link
+    expect(
+      (firstPayload.context.links ?? []).some(
+        (l) => (l as { linkType?: string }).linkType === 'END',
+      ),
+    ).toBe(false);
+    // last event carries the END link, self-referencing its own context.id
+    expect(lastPayload.context.links).toContainEqual({
+      linkType: 'END',
+      end: { contextId: 'evt-2' },
+    });
   });
 
   it('accepts a plain string path for backward compatibility', async () => {
@@ -199,13 +236,14 @@ describe('runWorkflow', () => {
 
     await runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false });
 
-    // skipped event must not appear; normal event + END link = 2 calls
+    // skipped event must not appear; only the normal event is emitted (no
+    // separate chain.end either — END link rides on the last manifest event)
     const emittedTypes = (mockBus.emit as ReturnType<typeof vi.fn>).mock.calls.map(
       (c: unknown[]) => c[0],
     );
     expect(emittedTypes).not.toContain(skipped.type);
     expect(emittedTypes).toContain('dev.cdevents.build.finished.0.5.1');
-    expect(mockBus.emit).toHaveBeenCalledTimes(2); // normal event + END link
+    expect(mockBus.emit).toHaveBeenCalledTimes(1);
   });
 
   it('disconnects the bus even when emission throws', async () => {

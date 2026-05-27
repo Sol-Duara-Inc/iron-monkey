@@ -118,20 +118,44 @@ export interface LoadConfigOptions {
 
 /**
  * A single CDEvents link embedded in `context.links`. Links wire events into
- * a directed Sympraxis chain so consumers can reconstruct causal order.
+ * a directed CDEvents chain so consumers can reconstruct causal order.
+ * Shape follows the CDEvents 0.6.0 links spec
+ * (https://github.com/cdevents/spec/blob/main/links.md). `START` links are
+ * intentionally not representable here — per the spec, `START` is a
+ * stand-alone link sent separately and is never embedded.
  */
-export interface LinkEntry {
-  /**
-   * Semantic role of this link:
-   * - `PATH` — the target is the immediately preceding event.
-   * - `START` — the target is the first event in the chain.
-   * - `END` — the target is the last substantive event before the chain-end
-   *   sentinel.
-   * - `RELATION` — a non-sequential reference to a related event.
-   */
-  type: 'PATH' | 'START' | 'END' | 'RELATION';
-  /** The `context.id` (UUID) of the linked CDEvent. */
-  target: string;
+export type LinkEntry = PathLink | EndLink | RelationLink;
+
+/**
+ * Embedded `PATH` link — points BACK to the immediately preceding event in
+ * the chain. The carrying event is the implicit `to`.
+ */
+export interface PathLink {
+  linkType: 'PATH';
+  /** The previous event in the chain. */
+  from: { contextId: string };
+}
+
+/**
+ * Embedded `END` link — marks the carrying event as the chain's terminator.
+ * Per the spec, `end.contextId` is the event id of the chain-ending event
+ * (i.e. the `context.id` of the very event the link is embedded in).
+ */
+export interface EndLink {
+  linkType: 'END';
+  end: { contextId: string };
+}
+
+/**
+ * Embedded `RELATION` link — non-sequential reference to a related event,
+ * tagged with `linkKind` (e.g. `TRIGGER`, `ARTIFACT`).
+ */
+export interface RelationLink {
+  linkType: 'RELATION';
+  /** Relation discriminator, e.g. `'TRIGGER'`, `'ARTIFACT'`. */
+  linkKind: string;
+  /** The related event. */
+  target: { contextId: string };
 }
 
 /**

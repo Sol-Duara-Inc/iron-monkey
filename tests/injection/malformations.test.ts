@@ -10,7 +10,7 @@ function makePayload(): Record<string, unknown> {
       type: 'dev.cdevents.build.started.0.5.1',
       timestamp: new Date().toISOString(),
       chainId: 'chain-uuid',
-      links: [{ type: 'PATH', target: 'prev-evt-id' }],
+      links: [{ linkType: 'PATH', from: { contextId: 'prev-evt-id' } }],
     },
     subject: {
       id: 'sub-1',

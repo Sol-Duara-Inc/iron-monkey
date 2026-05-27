@@ -121,9 +121,17 @@ describe('integration: full runWorkflow against bundled JB-style catalog', () =>
       const firstEmitArgs = mockBus.emit.mock.calls[0];
       expect(firstEmitArgs[0]).toMatch(/^dev\.cdevents\./);
 
-      // Last emit is the chain.end sentinel runWorkflow synthesises.
+      // No separate chain.end sentinel is emitted; the chain ends with its
+      // last substantive event (typically pipelineRun.finished). That event
+      // must carry an embedded END link self-referencing its own context.id.
+      const emittedTypes = mockBus.emit.mock.calls.map((c) => c[0]);
+      expect(emittedTypes).not.toContain('dev.cdevents.chain.end');
       const lastEmitArgs = mockBus.emit.mock.calls[mockBus.emit.mock.calls.length - 1];
-      expect(lastEmitArgs[0]).toBe('dev.cdevents.chain.end');
+      const lastPayload = lastEmitArgs[2] as { context: { id: string; links?: unknown[] } };
+      expect(lastPayload.context.links).toContainEqual({
+        linkType: 'END',
+        end: { contextId: lastPayload.context.id },
+      });
     });
   }
 
@@ -151,6 +159,8 @@ describe('integration: full runWorkflow against bundled JB-style catalog', () =>
     expect(emittedTypes).toContain('dev.cdevents.build.started.0.5.1');
     expect(emittedTypes).toContain('dev.cdevents.build.finished.0.5.1');
     expect(emittedTypes).toContain('dev.cdevents.service.deployed.0.5.1');
-    expect(emittedTypes).toContain('dev.cdevents.chain.end');
+    // No chain.end sentinel — the chain end is expressed as an END link on
+    // the last manifest event (typically pipelineRun.finished).
+    expect(emittedTypes).not.toContain('dev.cdevents.chain.end');
   });
 });
