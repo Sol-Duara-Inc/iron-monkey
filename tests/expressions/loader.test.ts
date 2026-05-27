@@ -159,14 +159,19 @@ describe('loadExpressionRegistry — error cases', () => {
     expect(() => loadExpressionRegistry(dir)).toThrow('Failed to parse expression bundle YAML');
   });
 
-  it('fails when bundle has noun.verb collision without explicit ids', async () => {
+  it('accepts duplicate noun.verb events without explicit ids', async () => {
+    // Position is identity. Downstream code allocates unique positional ids at
+    // expansion time — see resolveProduces in src/workflow/parser.ts.
     const dir = await makeTmpDir();
     await writeFile(
       path.join(dir, 'collision.yaml'),
       `group: sol-duara\nauthor: dsanyika\nexpression: collision\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n  - event: dev.cdevents.build.started.0.5.1\n`,
       'utf-8',
     );
-    expect(() => loadExpressionRegistry(dir)).toThrow("must each have an explicit 'id' field");
+    expect(() => loadExpressionRegistry(dir)).not.toThrow();
+    const registry = loadExpressionRegistry(dir);
+    const bundle = registry.resolve('collision');
+    expect(bundle.produces).toHaveLength(2);
   });
 
   it('fails with a clear error for an overly-qualified path reference', () => {

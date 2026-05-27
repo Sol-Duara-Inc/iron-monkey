@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: regression-suite
+description: Test suite run wrapping multiple test cases and a published output report.
+produces:
+  - event: dev.cdevents.testsuiterun.queued.0.5.1
+  - event: dev.cdevents.testsuiterun.started.0.5.1
+  - expression: test-case
+  - expression: test-case
+  - event: dev.cdevents.testoutput.published.0.5.1
+  - event: dev.cdevents.testsuiterun.finished.0.5.1

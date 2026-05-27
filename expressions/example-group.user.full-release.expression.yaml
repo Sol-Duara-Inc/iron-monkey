@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: full-release
+description: End-to-end release arc — change request, review, build-store, deploy, verify.
+produces:
+  - expression: change-request
+  - expression: review-change-request
+  - expression: build-store
+  - expression: deploy
+  - expression: verify

@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: service-remove
+description: Service decommissioned within a taskrun.
+produces:
+  - event: dev.cdevents.taskrun.started.0.5.1
+  - event: dev.cdevents.service.removed.0.5.1
+  - event: dev.cdevents.taskrun.finished.0.5.1

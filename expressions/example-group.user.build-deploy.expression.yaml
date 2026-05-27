@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: build-deploy
+description: Composite CI/CD pattern — build, then deploy the resulting service.
+produces:
+  - expression: build
+  - expression: deploy

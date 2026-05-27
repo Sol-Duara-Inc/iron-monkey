@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: ticket-associate
+description: Operations pattern — a ticket is created and associated with downstream SDLC work via an update. References ticket events landing in CDEvents 0.6.0-draft; the 0.5.1 version pins are placeholders until the upstream catalog ships.
+produces:
+  - event: dev.cdevents.ticket.created.0.5.1
+  - event: dev.cdevents.ticket.updated.0.5.1

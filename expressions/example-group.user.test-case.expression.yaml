@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: test-case
+description: Single test case fully bracketed — queued, started, finished.
+produces:
+  - event: dev.cdevents.testcaserun.queued.0.5.1
+  - event: dev.cdevents.testcaserun.started.0.5.1
+  - event: dev.cdevents.testcaserun.finished.0.5.1

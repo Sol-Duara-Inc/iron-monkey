@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: verify-with-output
+description: Verification followed by a published test output report.
+produces:
+  - expression: verify
+  - event: dev.cdevents.testoutput.published.0.5.1

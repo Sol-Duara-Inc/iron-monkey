@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: environment-provision
+description: New environment is provisioned.
+produces:
+  - event: dev.cdevents.environment.created.0.5.1

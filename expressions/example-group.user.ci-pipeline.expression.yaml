@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: ci-pipeline
+description: Canonical CI pipeline — pipelinerun bracketing build, verify, and artifact-store.
+produces:
+  - event: dev.cdevents.pipelinerun.started.0.5.1
+  - expression: build
+  - expression: verify
+  - expression: artifact-store
+  - event: dev.cdevents.pipelinerun.finished.0.5.1

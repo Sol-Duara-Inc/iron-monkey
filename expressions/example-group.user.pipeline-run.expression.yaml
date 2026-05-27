@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: pipeline-run
+description: Generic CI pipeline run envelope — queued through finished.
+produces:
+  - event: dev.cdevents.pipelinerun.queued.0.5.1
+  - event: dev.cdevents.pipelinerun.started.0.5.1
+  - event: dev.cdevents.pipelinerun.finished.0.5.1

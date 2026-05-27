@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: service-rollback
+description: Negative deploy path — service rolled back within a taskrun.
+produces:
+  - event: dev.cdevents.taskrun.started.0.5.1
+  - event: dev.cdevents.service.rolledback.0.5.1
+  - event: dev.cdevents.taskrun.finished.0.5.1
