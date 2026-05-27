@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: service-deploy
+description: Service-only deployment pattern — the service is deployed and published without a surrounding taskrun.
+produces:
+  - event: dev.cdevents.service.deployed.0.5.1
+  - event: dev.cdevents.service.published.0.5.1

@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: abandon-change-request
+description: Change request opened, iterated, and abandoned without merge.
+produces:
+  - event: dev.cdevents.change.created.0.5.1
+  - event: dev.cdevents.change.updated.0.5.1
+  - event: dev.cdevents.change.abandoned.0.5.1

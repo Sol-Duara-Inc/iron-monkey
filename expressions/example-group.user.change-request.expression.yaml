@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: change-request
+description: SCM change-request lifecycle — a change is created and updated as work progresses.
+produces:
+  - event: dev.cdevents.change.created.0.5.1
+  - event: dev.cdevents.change.updated.0.5.1

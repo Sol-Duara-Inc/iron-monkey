@@ -100,6 +100,108 @@ describe('loadExpressionRegistry — bundled expressions', () => {
   });
 });
 
+// ── resolveWithContext — CDrus workflow-scoped resolution ────────────────────
+//
+// Spec: bare refs try (ctx.group, ctx.author, name) first, then fall through
+// to (example-group, user, name). Author-qualified and fully-qualified refs
+// do not fall through. Mirrors Junction Box's resolver behaviour.
+
+describe('resolveWithContext — workflow-scoped resolution', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function writeTmp(name: string, content: string): Promise<void> {
+    await writeFile(path.join(tmpDir, name), content, 'utf-8');
+  }
+
+  it('resolves bare ref under (ctx.group, ctx.author) when present', async () => {
+    await writeTmp('a.yaml', minimalBundle('build', 'org-a', 'alice'));
+    await writeTmp('b.yaml', minimalBundle('build', 'org-b', 'bob'));
+    const registry = loadExpressionRegistry(tmpDir);
+    const bundle = registry.resolveWithContext('build', { group: 'org-a', author: 'alice' });
+    expect(bundle.group).toBe('org-a');
+    expect(bundle.author).toBe('alice');
+  });
+
+  it('falls through to (example-group, user) when ctx identity has no bundle', async () => {
+    await writeTmp('a.yaml', minimalBundle('build', 'org-a', 'alice'));
+    await writeTmp('std.yaml', minimalBundle('build', 'example-group', 'user'));
+    const registry = loadExpressionRegistry(tmpDir);
+    // ctx is org-b/bob — no (org-b, bob, build); fall through to (example-group, user, build).
+    const bundle = registry.resolveWithContext('build', { group: 'org-b', author: 'bob' });
+    expect(bundle.group).toBe('example-group');
+    expect(bundle.author).toBe('user');
+  });
+
+  it('throws when neither ctx nor std-lib resolves a bare ref', async () => {
+    await writeTmp('a.yaml', minimalBundle('build', 'org-a', 'alice'));
+    const registry = loadExpressionRegistry(tmpDir);
+    // No (org-b, bob, build) and no (example-group, user, build) — must throw,
+    // even though (org-a, alice, build) exists. Strict semantics.
+    expect(() => registry.resolveWithContext('build', { group: 'org-b', author: 'bob' })).toThrow(
+      /No expression bundle resolved/,
+    );
+  });
+
+  it('author-qualified ref resolves under (ctx.group, author, name); no fallback', async () => {
+    await writeTmp('a.yaml', minimalBundle('build', 'org-a', 'alice'));
+    await writeTmp('std.yaml', minimalBundle('build', 'example-group', 'user'));
+    const registry = loadExpressionRegistry(tmpDir);
+    const bundle = registry.resolveWithContext('alice/build', { group: 'org-a', author: 'bob' });
+    expect(bundle.group).toBe('org-a');
+    expect(bundle.author).toBe('alice');
+  });
+
+  it('author-qualified ref does not fall through to std-lib', async () => {
+    await writeTmp('std.yaml', minimalBundle('build', 'example-group', 'user'));
+    const registry = loadExpressionRegistry(tmpDir);
+    // ctx is org-x; ref is alice/build; no (org-x, alice, build) exists. Even
+    // though (example-group, user, build) exists, author-qualified does NOT
+    // fall through.
+    expect(() =>
+      registry.resolveWithContext('alice/build', { group: 'org-x', author: 'whoever' }),
+    ).toThrow(/No expression bundle resolved/);
+  });
+
+  it('fully-qualified ref resolves exactly; ignores context entirely', async () => {
+    await writeTmp('a.yaml', minimalBundle('build', 'org-a', 'alice'));
+    await writeTmp('b.yaml', minimalBundle('build', 'org-b', 'bob'));
+    const registry = loadExpressionRegistry(tmpDir);
+    const bundle = registry.resolveWithContext('org-b/bob/build', {
+      group: 'org-a',
+      author: 'alice',
+    });
+    expect(bundle.group).toBe('org-b');
+    expect(bundle.author).toBe('bob');
+  });
+
+  it('throws on a malformed reference with too many segments', async () => {
+    await writeTmp('a.yaml', minimalBundle('build', 'org-a', 'alice'));
+    const registry = loadExpressionRegistry(tmpDir);
+    expect(() =>
+      registry.resolveWithContext('a/b/c/d', { group: 'org-a', author: 'alice' }),
+    ).toThrow(/Invalid expression reference/);
+  });
+
+  it('returns the same bundle as resolve() for unambiguous refs (parity)', async () => {
+    await writeTmp('only.yaml', minimalBundle('lonely', 'org-a', 'alice'));
+    const registry = loadExpressionRegistry(tmpDir);
+    const viaResolve = registry.resolve('org-a/alice/lonely');
+    const viaContext = registry.resolveWithContext('org-a/alice/lonely', {
+      group: 'anything',
+      author: 'irrelevant',
+    });
+    expect(viaContext).toBe(viaResolve);
+  });
+});
+
 // ── error cases ───────────────────────────────────────────────────────────────
 
 describe('loadExpressionRegistry — error cases', () => {
@@ -136,12 +238,17 @@ describe('loadExpressionRegistry — error cases', () => {
     expect(() => loadExpressionRegistry(tmpDir)).toThrow('Failed to parse expression bundle YAML');
   });
 
-  it('fails when bundle has noun.verb collision without explicit ids', async () => {
+  it('accepts duplicate noun.verb events without explicit ids', async () => {
+    // Position is identity. Downstream code allocates unique positional ids at
+    // expansion time — see resolveProduces in src/workflow/parser.ts.
     await writeTmp(
       'collision.yaml',
       `group: sol-duara\nauthor: dsanyika\nexpression: collision\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n  - event: dev.cdevents.build.started.0.5.1\n`,
     );
-    expect(() => loadExpressionRegistry(tmpDir)).toThrow("must each have an explicit 'id' field");
+    expect(() => loadExpressionRegistry(tmpDir)).not.toThrow();
+    const registry = loadExpressionRegistry(tmpDir);
+    const bundle = registry.resolve('collision');
+    expect(bundle.produces).toHaveLength(2);
   });
 });
 

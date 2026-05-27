@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: ephemeral-environment
+description: Preview/PR environment lifecycle — provision, deploy, verify, tear down.
+produces:
+  - event: dev.cdevents.environment.created.0.5.1
+  - expression: deploy
+  - expression: verify
+  - event: dev.cdevents.environment.deleted.0.5.1

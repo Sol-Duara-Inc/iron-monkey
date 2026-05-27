@@ -178,9 +178,16 @@ workflow:
 
 describe('resolveProduces — expression items', () => {
   it('inlines expression events from the registry (dsanyika/build → 4 events)', async () => {
+    // Author-qualified ref `dsanyika/build` resolves under the workflow's
+    // own group (sol-duara) to (sol-duara, dsanyika, build). Without the
+    // workflow's group set, the candidate identity would be ('', 'dsanyika',
+    // 'build') which never resolves — author-qualified refs do not fall
+    // through to the std-lib by design.
     const file = await writeTmpYaml(`
 workflow:
   id: test
+  group: sol-duara
+  author: dsanyika
   name: test
   cdrus:
     version: 1
@@ -202,6 +209,8 @@ workflow:
     const file = await writeTmpYaml(`
 workflow:
   id: test
+  group: sol-duara
+  author: dsanyika
   name: test
   cdrus:
     version: 1
@@ -239,7 +248,7 @@ workflow:
     const wf = await validateWorkflow(file);
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
     expect(() => resolveProduces(wf, registry)).toThrow(
-      "No expression bundle found for 'nonexistent'",
+      "No expression bundle resolved for 'nonexistent'",
     );
     await unlink(file);
   });

@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: pull-request-ci
+description: PR feedback loop — change opened, CI pipeline run, review issued.
+produces:
+  - event: dev.cdevents.change.created.0.5.1
+  - expression: ci-pipeline
+  - event: dev.cdevents.change.reviewed.0.5.1

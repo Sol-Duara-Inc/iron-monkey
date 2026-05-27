@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: hotfix
+description: Hotfix path — change request, build, in-place service upgrade. Skips full release ceremony.
+produces:
+  - expression: change-request
+  - expression: build
+  - expression: service-upgrade

@@ -15,12 +15,24 @@ import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 import Ajv from 'ajv';
 import { expressionBundleSchema } from '../expressions/schema.js';
-import type { ExpressionBundle, BundleEventItem } from '../expressions/types.js';
+import type { ExpressionBundle } from '../expressions/types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AjvConstructor = (Ajv as any).default ?? Ajv;
 const ajv = new AjvConstructor({ allErrors: true });
 const validateBundleSchema = ajv.compile(expressionBundleSchema);
+
+/**
+ * Standard-library fallback identity used by {@link ExpressionRegistry.resolveWithContext}
+ * when a bare expression reference does not resolve under the caller's own
+ * (group, author) identity. This is a runtime resolution convention, not a
+ * schema constraint — it can evolve without touching the schema.
+ *
+ * Matches Junction Box's CDrus resolver behaviour (see
+ * `junction-box/src/workflow-definition/expression-index.ts`).
+ */
+export const STD_LIB_GROUP = 'example-group';
+export const STD_LIB_AUTHOR = 'user';
 
 /** Returns the default `expressions/` directory relative to the compiled output. */
 function defaultExpressionsDir(): string {
@@ -49,11 +61,17 @@ export function nounVerbFromType(eventType: string): string {
 /**
  * Reads and validates a single expression bundle YAML file.
  *
+ * Duplicate `noun.verb` events without explicit `id` fields are **accepted**
+ * — position in the `produces` array disambiguates them, and downstream code
+ * (`resolveProduces` in the workflow parser) allocates unique positional ids
+ * (`noun-verb`, `noun-verb-1`, `noun-verb-2`, …) at expansion time. Authors who
+ * want explicit handles can still supply an `id` and that wins over the
+ * positional default.
+ *
  * @param filePath - Absolute path to the `.yaml` bundle file.
  * @returns The parsed and validated {@link ExpressionBundle}.
- * @throws {Error} If the file cannot be read, fails YAML parsing, fails schema
- *   validation, or contains duplicate `noun.verb` events without explicit `id`
- *   fields.
+ * @throws {Error} If the file cannot be read, fails YAML parsing, or fails
+ *   schema validation.
  */
 function loadBundle(filePath: string): ExpressionBundle {
   let raw: string;
@@ -83,30 +101,7 @@ function loadBundle(filePath: string): ExpressionBundle {
     throw new Error(`Expression bundle schema validation failed at ${filePath}:\n${errors}`);
   }
 
-  const bundle = parsed as ExpressionBundle;
-
-  // Detect noun.verb collisions without explicit id disambiguation (event items only)
-  const nounVerbCount = new Map<string, number>();
-  for (const ev of bundle.produces) {
-    if (!('event' in ev)) continue;
-    const nv = nounVerbFromType(ev.event);
-    nounVerbCount.set(nv, (nounVerbCount.get(nv) ?? 0) + 1);
-  }
-  for (const [nv, count] of nounVerbCount.entries()) {
-    if (count > 1) {
-      const withoutId = bundle.produces.filter(
-        (ev): ev is BundleEventItem => 'event' in ev && nounVerbFromType(ev.event) === nv && !ev.id,
-      );
-      if (withoutId.length > 0) {
-        throw new Error(
-          `Expression bundle '${bundle.expression}' at ${filePath}: ` +
-            `events with duplicate noun.verb '${nv}' must each have an explicit 'id' field.`,
-        );
-      }
-    }
-  }
-
-  return bundle;
+  return parsed as ExpressionBundle;
 }
 
 /**
@@ -130,19 +125,24 @@ export interface ExpressionRegistry {
   resolve(ref: string): ExpressionBundle;
 
   /**
-   * Like {@link resolve} but uses the caller's `group` and `author` as a
-   * tiebreaker when a bare expression name matches multiple bundles. The lookup
-   * order for bare names is:
-   *   1. Exact single match (no ambiguity) — used as-is.
-   *   2. Filter to bundles whose `author` equals `context.author`.
-   *   3. Filter to bundles whose `group` and `author` both match.
-   *   4. Throw an ambiguity error if still unresolved.
+   * Resolves a bundle reference using the caller's `(group, author)` as the
+   * resolution context. The reference shape determines the candidate set:
    *
-   * Already-qualified refs (two- or three-part) bypass context entirely.
+   * | Form | Candidates tried, in order | Fallback? |
+   * |---|---|---|
+   * | `'build'` | `(ctx.group, ctx.author, build)`, `(example-group, user, build)` | Yes — std-lib |
+   * | `'dsanyika/build'` | `(ctx.group, dsanyika, build)` | No |
+   * | `'sol-duara/dsanyika/build'` | `(sol-duara, dsanyika, build)` | No |
    *
-   * @param ref - Path-style reference string.
-   * @param context - The calling bundle's or workflow's identity.
-   * @returns The matching {@link ExpressionBundle}.
+   * The first candidate that exists in the registry wins. If no candidate
+   * resolves, an error is thrown — matches Junction Box's CDrus resolver
+   * semantics. See `STD_LIB_GROUP` / `STD_LIB_AUTHOR` for the fallback identity.
+   *
+   * @param ref - Path-style reference.
+   * @param context - The calling workflow's or expression's identity.
+   * @returns The matching bundle.
+   * @throws {Error} If the reference is malformed (4+ slash-separated parts)
+   *   or no candidate identity resolves.
    */
   resolveWithContext(ref: string, context: { group: string; author: string }): ExpressionBundle;
 
@@ -238,32 +238,43 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
 
     resolveWithContext(ref: string, context: { group: string; author: string }): ExpressionBundle {
       const parts = ref.split('/');
-      if (parts.length > 1) {
-        // Already qualified — delegate to resolve()
-        return this.resolve(ref);
+      // Build the ordered candidate identity list per CDrus resolution rules.
+      // Position in this list is significant: first match wins.
+      let candidates: { group: string; author: string; name: string }[];
+
+      if (parts.length === 1) {
+        // Bare ref: caller's identity first, std-lib fallback second.
+        candidates = [
+          { group: context.group, author: context.author, name: parts[0] },
+          { group: STD_LIB_GROUP, author: STD_LIB_AUTHOR, name: parts[0] },
+        ];
+      } else if (parts.length === 2) {
+        // Author-qualified within the caller's group. No fallback — explicit
+        // author means the caller is opting out of the std-lib search.
+        candidates = [{ group: context.group, author: parts[0], name: parts[1] }];
+      } else if (parts.length === 3) {
+        // Fully qualified. Exact match only.
+        candidates = [{ group: parts[0], author: parts[1], name: parts[2] }];
+      } else {
+        throw new Error(
+          `Invalid expression reference '${ref}': expected 'expression', 'author/expression', ` +
+            `or 'group/author/expression'.`,
+        );
       }
 
-      const matches = indexed.filter((b) => b.name === ref);
-      if (matches.length === 0) {
-        throw new Error(`No expression bundle found for '${ref}'. Searched in ${expressionsDir}.`);
+      for (const c of candidates) {
+        const match = indexed.find(
+          (b) => b.group === c.group && b.author === c.author && b.name === c.name,
+        );
+        if (match) return match.bundle;
       }
-      if (matches.length === 1) {
-        return matches[0].bundle;
-      }
 
-      // Ambiguous — prefer same author first, then same group + author
-      const byAuthor = matches.filter((b) => b.author === context.author);
-      if (byAuthor.length === 1) return byAuthor[0].bundle;
-
-      const byGroupAuthor = matches.filter(
-        (b) => b.group === context.group && b.author === context.author,
-      );
-      if (byGroupAuthor.length === 1) return byGroupAuthor[0].bundle;
-
-      const identities = matches.map((b) => `${b.group}/${b.author}/${b.name}`).join(', ');
+      // No candidate resolved. Surface the candidates we tried so the error
+      // points the caller at what was searched, not just what wasn't found.
+      const tried = candidates.map((c) => `${c.group}/${c.author}/${c.name}`).join(', ');
       throw new Error(
-        `Ambiguous expression reference '${ref}': multiple bundles match — ${identities}. ` +
-          `Use a more qualified path (author/expression or group/author/expression).`,
+        `No expression bundle resolved for '${ref}' under context ` +
+          `${context.group}/${context.author}. Tried: ${tried}. Searched in ${expressionsDir}.`,
       );
     },
 

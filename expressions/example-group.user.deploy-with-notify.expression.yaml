@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+group: example-group
+author: user
+expression: deploy-with-notify
+description: Deploy with a detached ticket-association notification chain. The deploy proceeds without waiting on the notification, but the chain is observable.
+produces:
+  - event: dev.cdevents.taskrun.started.0.5.1
+    detach:
+      - expression: ticket-associate
+  - event: dev.cdevents.service.deployed.0.5.1
+  - event: dev.cdevents.service.published.0.5.1
+  - event: dev.cdevents.taskrun.finished.0.5.1
