@@ -128,6 +128,29 @@ describe('buildManifest', () => {
     expect(new Set(buses).size).toBe(1);
     expect(buses[0]).toBe('staging');
   });
+
+  it('spaces events by an exact interval when the interval override is set', async () => {
+    // interval override => precise cadence, no jitter. Verify the timestamp
+    // deltas across the manifest equal exactly the requested interval.
+    const manifest = await buildManifest(meta, twoEvents, config, {
+      noConduit: true,
+      interval: 2000,
+    });
+    const ts = manifest.events.map((e) => Date.parse(e.payload.context.timestamp as string));
+    expect(ts[1] - ts[0]).toBe(2000);
+  });
+
+  it('uses the jittered default cadence (>= 900ms) when no interval is set', async () => {
+    // twoEvents declares min_wait=100/timeout=1000 then min_wait=0/timeout=100.
+    // With the default policy every inter-event delay is floored at 900ms, so
+    // a fixed seed yields a deterministic delta of at least the floor.
+    const manifest = await buildManifest(meta, twoEvents, config, {
+      noConduit: true,
+      seed: 42,
+    });
+    const ts = manifest.events.map((e) => Date.parse(e.payload.context.timestamp as string));
+    expect(ts[1] - ts[0]).toBeGreaterThanOrEqual(900);
+  });
 });
 
 describe('buildManifest — real workflow end-to-end', () => {

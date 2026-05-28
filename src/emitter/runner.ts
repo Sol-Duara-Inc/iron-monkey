@@ -146,12 +146,11 @@ export async function runWorkflow(
   const registry = loadExpressionRegistry();
   const events = resolveProduces(workflow, registry);
 
-  if (typeof options.interval === 'number' && options.interval >= 0) {
-    for (const e of events) {
-      e.min_wait_ms = options.interval;
-      e.timeout_ms = options.interval;
-    }
-  }
+  // NOTE: the interval override is applied at scheduling time by the manifest
+  // builder (via BuildManifestOptions.interval → TimingAllocator), not by
+  // rewriting each event's min_wait_ms/timeout_ms here. That keeps the
+  // resolved events truthful to the workflow definition and lets the builder
+  // distinguish "exact cadence requested" from the jittered default cadence.
 
   const injections = parseInjections(options.inject ?? []);
   const noConduit = options.conduit === false;
@@ -188,6 +187,7 @@ export async function runWorkflow(
       synth: options.synth !== false,
       chainId: busChainId,
       chainIdSource: busChainId ? 'bus' : undefined,
+      interval: options.interval,
     },
   );
 
