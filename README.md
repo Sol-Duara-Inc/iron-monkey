@@ -110,8 +110,9 @@ iron-monkey version                   Print version and exit
 --no-conduit            Skip chainId acquisition; use fallback URN (no warning)
 --no-synth              Disable simulated-data synthesis; fail validation on
                         any schema-required field the workflow did not supply
---interval <ms>         Override min_wait_ms and timeout_ms on every event for
-                        fixed-cadence emission (e.g. 1000 = one event per second)
+--interval <ms>         Emit every event exactly this far apart, overriding the
+                        default cadence with fixed, jitter-free spacing
+                        (e.g. 1000 = one event per second)
 --seed <int>            Seed for deterministic IDs and timing
 --inject <spec>         Failure injection spec (repeatable)
 --manifest-out <path>   Write the manifest to file as JSON
@@ -244,6 +245,7 @@ Key points:
 - Event type strings use CDEvents 0.5.1 versioning — the suffix is always `.0.5.1` for all event types bundled with Iron Monkey (e.g. `dev.cdevents.build.started.0.5.1`).
 - **You do not need to spell out every required `subject.content` field.** Iron Monkey synthesizes anything the schema marks `required` but the workflow/bundle omits (see _Payload synthesis_ below). Use `content:` on an event item if you want to pin specific values; everything else is filled in for you.
 - The schema version lives under `workflow.cdrus.version`, not at the top level.
+- **Emission cadence is derived, not uniform.** By default each event's delay is `min(10 × base, mean(base, timeout_ms))` where `base = max(min_wait_ms, 100)`, displaced by ±10% jitter and floored at 900ms — so a run is watchable by default without firing past a consumer before it can subscribe. `min_wait_ms` defaults to `100` and acts as a debounce floor (sub-100 values clamp up to 100); `timeout_ms` defaults to `5000`. Pass `--interval <ms>` for exact, jitter-free spacing instead.
 
 ---
 

@@ -49,6 +49,14 @@ export interface BuildManifestOptions {
    * supply. Default `true`.
    */
   synth?: boolean;
+  /**
+   * Exact per-event emission interval in ms. When set (>= 0), every event is
+   * scheduled exactly this far apart with no jitter — the operator asked for a
+   * precise cadence (the `--interval` flag / playground interval input). When
+   * unset, each event's delay is derived from its `min_wait_ms` / `timeout_ms`
+   * budget with ±10% jitter (see {@link TimingAllocator.nextEmitTime}).
+   */
+  interval?: number;
 }
 
 /**
@@ -112,7 +120,12 @@ export async function buildManifest(
   for (let i = 0; i < events.length; i++) {
     const re = events[i];
     const eventId = idAlloc.nextId();
-    const targetEmitTime = timingAlloc.nextEmitTime(re.min_wait_ms, re.timeout_ms);
+    // Exact spacing when an interval override is supplied; otherwise the
+    // jittered default cadence derived from the event's wait/timeout budget.
+    const targetEmitTime =
+      typeof opts.interval === 'number' && opts.interval >= 0
+        ? timingAlloc.nextExactEmitTime(opts.interval)
+        : timingAlloc.nextEmitTime(re.min_wait_ms, re.timeout_ms);
     const timestamp = new Date(targetEmitTime).toISOString();
 
     // Config tool source overrides blank workflow source; workflow source overrides config when set
