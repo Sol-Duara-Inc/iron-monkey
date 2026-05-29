@@ -585,6 +585,8 @@ npm test                  # unit tests
 npm run test:coverage     # unit tests with coverage report (80% global threshold)
 npm run test:integration  # integration tests (requires RabbitMQ on localhost:5672;
                           # honours IRON_MONKEY_BUS_URL, e.g. amqp://admin:admin@localhost:5672)
+npm run test:contract     # Sympraxis chain-protocol conformance suite (hand-off to the
+                          # control-plane engineer; skips unless SYMPRAXIS_BASE_URL is set)
 npm run lint
 npm run typecheck
 npm run format:check      # Prettier — CI runs this; use `format` to fix in place
