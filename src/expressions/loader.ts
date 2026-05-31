@@ -13,14 +13,11 @@ import { readFileSync, readdirSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
-import Ajv from 'ajv';
+import { createAjv } from '../util/ajv.js';
 import { expressionBundleSchema } from './schema.js';
 import type { ExpressionBundle } from './types.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const AjvConstructor = (Ajv as any).default ?? Ajv;
-const ajv = new AjvConstructor({ allErrors: true });
-const validateBundleSchema = ajv.compile(expressionBundleSchema);
+const validateBundleSchema = createAjv().compile(expressionBundleSchema);
 
 /**
  * Standard-library fallback identity used by {@link ExpressionRegistry.resolveWithContext}

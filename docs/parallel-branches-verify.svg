@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 600" font-family="ui-sans-serif, system-ui, sans-serif">
+  <title>Concurrent branches (Shipwreck SA verify) — two branches run at once, monitored under the suite (breach rolls up)</title>
+  <desc>testsuiterun.started forks into two test-case branch chains (b axis), each role=concurrent with its own chainId. Two event streams are emitted simultaneously — one token per branch, moving in lockstep — so both branches genuinely run in parallel. The emitter does not join or block. The receiver (Sympraxis, holding the same YAML) monitors each branch UNDER the suite: a branch's breach rolls up to the suite, and the suite reaches complete when both branches complete.</desc>
+  <style>
+    .bg{fill:#0f1420}.title{fill:#e8eef7;font-size:21px;font-weight:700}.sub{fill:#8aa0bd;font-size:12.5px}
+    .lbl{fill:#cdd9e8;font-size:11px}.lblb{fill:#e8eef7;font-size:11.5px;font-weight:600}
+    .mono{fill:#8fb6d8;font-size:10px;font-family:ui-monospace,Menlo,monospace}
+    .muted{fill:#8aa0bd;font-size:11px}.gold{fill:#c89a4e;font-size:11px}
+    .nbase{fill:#182336;stroke:#3a4a66;stroke-width:2.5}
+    .wire{stroke:#2a3550;stroke-width:3}.susp{stroke:#2a3550;stroke-width:2;stroke-dasharray:6 6}
+
+    /* main spine */
+    @keyframes m0{0%,7.9%{fill:#182336;stroke:#3a4a66}8%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    @keyframes m1{0%,15.9%{fill:#182336;stroke:#3a4a66}16%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    @keyframes m2{0%,49.9%{fill:#182336;stroke:#3a4a66}50%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    .m0{animation:m0 10s infinite}.m1{animation:m1 10s infinite}.m2{animation:m2 10s infinite}
+
+    /* BOTH branches light at the SAME instants (bn0 @22%, bn1 @30%, bn2 @38%) — true simultaneity */
+    @keyframes bn0{0%,21.9%{fill:#161d2b;stroke:#46566f}22%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#161d2b;stroke:#46566f}}
+    @keyframes bn1{0%,29.9%{fill:#161d2b;stroke:#46566f}30%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#161d2b;stroke:#46566f}}
+    @keyframes bn2{0%,37.9%{fill:#161d2b;stroke:#46566f}38%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#161d2b;stroke:#46566f}}
+    .bn0{animation:bn0 10s infinite}.bn1{animation:bn1 10s infinite}.bn2{animation:bn2 10s infinite}
+
+    /* the two thrown tokens — IDENTICAL horizontal timing, one per branch (dy differs) = parallel shown */
+    @keyframes runA{
+      0%,15%{opacity:0;transform:translate(0px,0px)}
+      16%{opacity:1;transform:translate(0px,0px)}
+      21%{transform:translate(120px,140px)} 22%{transform:translate(120px,140px)}
+      30%{transform:translate(260px,140px)} 38%{transform:translate(400px,140px)}
+      41%{opacity:1;transform:translate(400px,140px)} 44%,100%{opacity:0;transform:translate(400px,140px)}
+    }
+    @keyframes runB{
+      0%,15%{opacity:0;transform:translate(0px,0px)}
+      16%{opacity:1;transform:translate(0px,0px)}
+      21%{transform:translate(120px,260px)} 22%{transform:translate(120px,260px)}
+      30%{transform:translate(260px,260px)} 38%{transform:translate(400px,260px)}
+      41%{opacity:1;transform:translate(400px,260px)} 44%,100%{opacity:0;transform:translate(400px,260px)}
+    }
+    .runA{animation:runA 10s infinite ease-in-out}
+    .runB{animation:runB 10s infinite ease-in-out}
+
+    /* a faint vertical "same-instant" sweep tying the two branches together as the tokens advance */
+    @keyframes sweep{
+      0%,21%{opacity:0;transform:translateX(0px)}
+      22%{opacity:.45;transform:translateX(0px)}
+      30%{transform:translateX(140px)} 38%{opacity:.45;transform:translateX(280px)}
+      41%,100%{opacity:0;transform:translateX(280px)}
+    }
+    .sweep{animation:sweep 10s infinite ease-in-out}
+
+    @keyframes flow{to{stroke-dashoffset:-16}}
+    @keyframes relShow{0%,15%{opacity:0}16%,40%{opacity:1}41%,100%{opacity:0}}
+    .rel{stroke:#c89a4e;stroke-width:2.5;fill:none;stroke-dasharray:7 5;animation:flow 1s linear infinite, relShow 10s infinite}
+    @keyframes feed{0%,39%{opacity:0}42%,90%{opacity:.75}92%,100%{opacity:0}}
+    .feed{stroke:#34d27f;stroke-width:1.5;fill:none;stroke-dasharray:3 4;opacity:0;animation:feed 10s infinite}
+    @keyframes gate{0%,41%{fill:#2a2012;stroke:#c89a4e}42%,90%{fill:#103225;stroke:#34d27f}91%,100%{fill:#2a2012;stroke:#c89a4e}}
+    .gate{animation:gate 10s infinite}
+    @keyframes banner{0%,55%{opacity:0}58%,89%{opacity:1}93%,100%{opacity:0}}
+    .banner{opacity:0;animation:banner 10s infinite}
+  </style>
+
+  <rect class="bg" width="1040" height="600"/>
+  <text class="title" x="40" y="42">Concurrent branches — two streams run at once, breach rolls up to the suite</text>
+  <text class="sub" x="40" y="66">Shipwreck SA `verify`: testsuiterun.started forks into two test-case branches (role=concurrent), each its OWN chainId. Iron Monkey</text>
+  <text class="sub" x="40" y="84">emits BOTH streams together — watch the two tokens move in lockstep. A branch's breach rolls up to the suite; the suite completes when both do.</text>
+
+  <defs>
+    <marker id="rel" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 z" fill="#c89a4e"/></marker>
+  </defs>
+
+  <text x="44" y="186" class="muted" fill="#8aa0bd">Iron</text>
+  <text x="44" y="200" class="muted" fill="#8aa0bd">Monkey</text>
+  <text x="44" y="214" class="muted" fill="#6f7e96" font-size="9.5">(emits)</text>
+
+  <!-- MAIN SPINE -->
+  <text class="lblb" x="110" y="150">main chain · <tspan class="mono">chainRef root</tspan> <tspan class="muted">· own chainId</tspan></text>
+  <line class="wire" x1="170" y1="190" x2="380" y2="190"/>
+  <line class="susp" x1="400" y1="190" x2="835" y2="190"/>
+  <text class="mono" x="600" y="182" text-anchor="middle" fill="#6f7e96">suite open until both concurrent branches resolve (breach rolls up)</text>
+  <g text-anchor="middle">
+    <text class="lbl" x="170" y="232">ts.queued</text><text class="mono" x="170" y="248">p0</text>
+    <text class="lbl" x="380" y="232">ts.started</text><text class="mono" x="380" y="248">p1</text>
+    <text class="lbl" x="900" y="232">ts.finished</text><text class="mono" x="900" y="248">p2</text>
+  </g>
+  <circle class="nbase m0" cx="170" cy="190" r="20"/>
+  <circle class="nbase m1" cx="380" cy="190" r="20"/>
+  <circle class="nbase m2" cx="900" cy="190" r="20"/>
+  <text x="380" y="196" text-anchor="middle" fill="#c89a4e" font-size="12">⋔</text>
+
+  <!-- rollup point just before p2 (receiver-side) -->
+  <rect class="gate" x="845" y="176" width="16" height="28" rx="3"/>
+  <text class="gold" x="853" y="166" text-anchor="middle" font-size="9.5">rolls up</text>
+  <text class="gold" x="853" y="220" text-anchor="middle" font-size="9.5">to suite</text>
+
+  <!-- RELATION: fork event → first event of each branch -->
+  <path class="rel" d="M380 212 C380 270, 470 280, 500 318" marker-end="url(#rel)"/>
+  <path class="rel" d="M380 212 C380 360, 460 410, 500 438" marker-end="url(#rel)"/>
+  <text class="gold" x="250" y="300">RELATION · TRIGGER (parent → each branch's first event)</text>
+
+  <!-- BRANCH 0 -->
+  <text class="lblb" x="392" y="334">branch · <tspan class="mono">chainRef p1.b0</tspan> <tspan class="muted">· own chainId</tspan></text>
+  <line x1="500" y1="330" x2="780" y2="330" stroke="#244a36" stroke-width="2.5"/>
+  <g text-anchor="middle">
+    <circle class="nbase bn0" cx="500" cy="330" r="16"/><circle class="nbase bn1" cx="640" cy="330" r="16"/><circle class="nbase bn2" cx="780" cy="330" r="16"/>
+    <text class="mono" x="500" y="360">p1.b0.p0</text><text class="mono" x="640" y="360">p1.b0.p1</text><text class="mono" x="780" y="360">p1.b0.p2</text>
+    <text class="lbl" x="500" y="316" font-size="9.5">tc.queued</text><text class="lbl" x="640" y="316" font-size="9.5">tc.started</text><text class="lbl" x="780" y="316" font-size="9.5">tc.finished</text>
+  </g>
+
+  <!-- BRANCH 1 -->
+  <text class="lblb" x="392" y="454">branch · <tspan class="mono">chainRef p1.b1</tspan> <tspan class="muted">· own chainId</tspan></text>
+  <line x1="500" y1="450" x2="780" y2="450" stroke="#244a36" stroke-width="2.5"/>
+  <g text-anchor="middle">
+    <circle class="nbase bn0" cx="500" cy="450" r="16"/><circle class="nbase bn1" cx="640" cy="450" r="16"/><circle class="nbase bn2" cx="780" cy="450" r="16"/>
+    <text class="mono" x="500" y="480">p1.b1.p0</text><text class="mono" x="640" y="480">p1.b1.p1</text><text class="mono" x="780" y="480">p1.b1.p2</text>
+    <text class="lbl" x="500" y="436" font-size="9.5">tc.queued</text><text class="lbl" x="640" y="436" font-size="9.5">tc.started</text><text class="lbl" x="780" y="436" font-size="9.5">tc.finished</text>
+  </g>
+
+  <!-- same-instant sweep: proves both branches advance together -->
+  <g class="sweep">
+    <line x1="500" y1="312" x2="500" y2="468" stroke="#34d27f" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text class="mono" x="500" y="306" text-anchor="middle" fill="#5ee29a" font-size="8.5">same instant</text>
+  </g>
+
+  <!-- the two thrown tokens, launched together from the fork (380,190) -->
+  <g transform="translate(380,190)"><g class="runA"><circle r="7.5" fill="#eafff3" stroke="#34d27f" stroke-width="2"/></g></g>
+  <g transform="translate(380,190)"><g class="runB"><circle r="7.5" fill="#eafff3" stroke="#34d27f" stroke-width="2"/></g></g>
+
+  <!-- branch outcomes roll up to the suite (receiver-side, not emitter) -->
+  <path class="feed" d="M796 330 C850 330, 853 260, 853 206"/>
+  <path class="feed" d="M796 450 C850 450, 853 280, 853 206"/>
+
+  <!-- suite complete -->
+  <g class="banner" transform="translate(836,250)">
+    <rect x="-4" y="-16" width="130" height="24" rx="12" fill="#103225" stroke="#34d27f"/>
+    <text x="61" y="1" text-anchor="middle" fill="#5ee29a" font-size="12" font-weight="700">suite complete ✓</text>
+  </g>
+
+  <!-- footnote -->
+  <text class="muted" x="40" y="556" fill="#cdd9e8" font-size="12" font-weight="600">Emitter's job:</text>
+  <text class="muted" x="128" y="556">resolve the chains, get a chainId per chain from Sympraxis, emit BOTH streams at once — each event stamped with its chainId.</text>
+  <text class="muted" x="40" y="578" fill="#5a6478" font-size="10.5">No join/block on the emitter side. The two tokens run in lockstep = parallel. The rollup is the RECEIVER's: a concurrent branch's breach rolls up to the suite (and the suite completes when both branches do). As Chaos Monkey, Iron Monkey can withhold a branch event to drive that breach rollup.</text>
+</svg>

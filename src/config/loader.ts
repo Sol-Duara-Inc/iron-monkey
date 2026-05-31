@@ -10,18 +10,11 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
+import { createAjv } from '../util/ajv.js';
 import { configSchema } from './schema.js';
 import type { IronMonkeyConfig, LoadConfigOptions } from './types.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const AjvConstructor = (Ajv as any).default ?? Ajv;
-const ajv = new AjvConstructor({ allErrors: true });
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const addFormatsFunc = (addFormats as any).default ?? addFormats;
-addFormatsFunc(ajv);
-const validateConfigSchema = ajv.compile(configSchema);
+const validateConfigSchema = createAjv({ formats: true }).compile(configSchema);
 
 const ENV_VAR_PATTERN = /\$\{([^}]+)\}/g;
 

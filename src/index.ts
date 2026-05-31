@@ -15,6 +15,7 @@
  */
 
 export { validateWorkflow, resolveProduces } from './workflow/parser.js';
+export { resolveChainTree } from './workflow/chain-tree.js';
 export { WorkflowSource, FileWorkflowSource } from './workflow/source.js';
 export type { WorkflowDefinition } from './workflow/source.js';
 export { loadConfig, resolveBusName } from './config/loader.js';
@@ -42,8 +43,14 @@ export type {
   ProducesItem,
 } from './workflow/types.js';
 export type { ResolvedEvent } from './workflow/parser.js';
+export type { ResolvedChain, ResolvedChainEvent } from './workflow/chain-tree.js';
 export type { ExpressionBundle, ExpressionEvent } from './expressions/types.js';
 export type { ExpressionRegistry } from './expressions/loader.js';
 export type { IronMonkeyConfig, BusConfig, ToolConfig, ConduitConfig } from './config/types.js';
-export type { Manifest, ManifestEvent, CDEventPayload } from './manifest/types.js';
+export type {
+  Manifest,
+  ManifestEvent,
+  DetachedManifestChain,
+  CDEventPayload,
+} from './manifest/types.js';
 export type { Injection } from './injection/parser.js';

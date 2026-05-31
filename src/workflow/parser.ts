@@ -10,18 +10,16 @@
 
 import { readFile } from 'fs/promises';
 import yaml from 'js-yaml';
-import Ajv from 'ajv';
+import { createAjv } from '../util/ajv.js';
 import { workflowSchema } from './schema.js';
 import { isEventItem, isExpressionItem } from './types.js';
-import { nounVerbFromType } from '../loaders/expression.loader.js';
+import { nounVerbFromType } from '../expressions/loader.js';
+import { deepMerge } from '../util/deep-merge.js';
 import type { WorkflowFile, WorkflowDefaults } from './types.js';
-import type { ExpressionRegistry } from '../loaders/expression.loader.js';
+import type { ExpressionRegistry } from '../expressions/loader.js';
 import type { BundleEventItem, ExpressionBundle } from '../expressions/types.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const AjvConstructor = (Ajv as any).default ?? Ajv;
-const ajv = new AjvConstructor({ allErrors: true });
-const validateWorkflowSchema = ajv.compile(workflowSchema);
+const validateWorkflowSchema = createAjv().compile(workflowSchema);
 
 /**
  * Reads, YAML-parses, and schema-validates a workflow file. Provides
@@ -120,38 +118,6 @@ export interface ResolvedEvent {
    * direct event items.
    */
   expressionRef?: string;
-}
-
-/**
- * Recursively deep-merges two plain objects. Values from `override` win over
- * `base` at every level; nested objects are merged rather than replaced.
- * Arrays and primitives in `override` fully replace the corresponding `base`
- * value.
- */
-function deepMerge(
-  base: Record<string, unknown>,
-  override: Record<string, unknown>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(override)) {
-    if (
-      value !== null &&
-      value !== undefined &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      typeof result[key] === 'object' &&
-      result[key] !== null &&
-      !Array.isArray(result[key])
-    ) {
-      result[key] = deepMerge(
-        result[key] as Record<string, unknown>,
-        value as Record<string, unknown>,
-      );
-    } else if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-  return result;
 }
 
 /**

@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 600" font-family="ui-sans-serif, system-ui, sans-serif">
+  <title>Test run + child detach + compliance detach — as coded (animated)</title>
+  <desc>How chain-tree.ts actually resolves and Iron Monkey emits: the test cases are a sequential produces chain (not parallel); one test spawns a detached chain; the compliance notification is a detach anchored on the terminal event. Iron Monkey throws every event with its chain's chainId; the two detached chains resolve fire-and-forget without the main chain waiting.</desc>
+  <style>
+    .bg{fill:#0f1420}.title{fill:#e8eef7;font-size:21px;font-weight:700}.sub{fill:#8aa0bd;font-size:12.5px}
+    .lbl{fill:#cdd9e8;font-size:11px}.mono{fill:#8fb6d8;font-size:10px;font-family:ui-monospace,Menlo,monospace}
+    .muted{fill:#8aa0bd;font-size:11px}.gap{fill:#e0934a;font-size:11px}
+    .wire{stroke:#2a3550;stroke-width:3}
+    .mnode{fill:#182336;stroke:#3a4a66;stroke-width:2.5}
+    .dnode{fill:#161d2b;stroke:#46566f;stroke-width:2;stroke-dasharray:5 4}
+
+    /* main chain — sequential fills (10s loop) */
+    @keyframes m0{0%,5.9%{fill:#182336;stroke:#3a4a66}6%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    @keyframes m1{0%,12.9%{fill:#182336;stroke:#3a4a66}13%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    @keyframes m2{0%,19.9%{fill:#182336;stroke:#3a4a66}20%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    @keyframes m3{0%,26.9%{fill:#182336;stroke:#3a4a66}27%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    @keyframes m4{0%,33.9%{fill:#182336;stroke:#3a4a66}34%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    @keyframes m5{0%,40.9%{fill:#182336;stroke:#3a4a66}41%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    @keyframes m6{0%,47.9%{fill:#182336;stroke:#3a4a66}48%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#182336;stroke:#3a4a66}}
+    .m0{animation:m0 10s infinite}.m1{animation:m1 10s infinite}.m2{animation:m2 10s infinite}.m3{animation:m3 10s infinite}
+    .m4{animation:m4 10s infinite}.m5{animation:m5 10s infinite}.m6{animation:m6 10s infinite}
+
+    /* detach 1 (off tc#1 @27%) and detach 2 (off terminal @48%) — fire-and-forget, resolve in parallel */
+    @keyframes e0{0%,30.9%{fill:#161d2b;stroke:#46566f}31%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#161d2b;stroke:#46566f}}
+    @keyframes e1{0%,36.9%{fill:#161d2b;stroke:#46566f}37%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#161d2b;stroke:#46566f}}
+    @keyframes f0{0%,51.9%{fill:#161d2b;stroke:#46566f}52%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#161d2b;stroke:#46566f}}
+    @keyframes f1{0%,57.9%{fill:#161d2b;stroke:#46566f}58%,90%{fill:#1f7a4d;stroke:#34d27f}91%,100%{fill:#161d2b;stroke:#46566f}}
+    .e0{animation:e0 10s infinite}.e1{animation:e1 10s infinite}.f0{animation:f0 10s infinite}.f1{animation:f1 10s infinite}
+
+    /* RELATION links reveal when their anchor event fires, then flow */
+    @keyframes flow{to{stroke-dashoffset:-16}}
+    @keyframes rel1{0%,26%{opacity:0}27%,90%{opacity:1}92%,100%{opacity:0}}
+    @keyframes rel2{0%,47%{opacity:0}48%,90%{opacity:1}92%,100%{opacity:0}}
+    .rel{stroke:#c89a4e;stroke-width:2.5;fill:none;stroke-dasharray:7 5}
+    .rel1{animation:flow 1s linear infinite, rel1 10s infinite}
+    .rel2{animation:flow 1s linear infinite, rel2 10s infinite}
+
+    /* thrown event token hops the main chain */
+    @keyframes pitch{
+      0%{transform:translateX(0);opacity:0}5%{opacity:1;transform:translateX(0)}
+      13%{transform:translateX(155px)}20%{transform:translateX(310px)}27%{transform:translateX(465px)}
+      34%{transform:translateX(620px)}41%{transform:translateX(775px)}48%{transform:translateX(930px);opacity:1}
+      54%{transform:translateX(930px);opacity:0}100%{transform:translateX(930px);opacity:0}
+    }
+    .token{animation:pitch 10s infinite ease-in-out}
+  </style>
+  <defs>
+    <marker id="rel" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 z" fill="#c89a4e"/></marker>
+  </defs>
+  <rect class="bg" width="1080" height="600"/>
+  <text class="title" x="40" y="42">Test run + two detaches — what the code resolves &amp; emits</text>
+  <text class="sub" x="40" y="66">Iron Monkey throws each event with its chain's chainId. Both detaches fire-and-forget — the main chain never waits. Gaps vs. your ask in amber.</text>
+
+  <!-- MAIN CHAIN -->
+  <text class="lbl" x="40" y="150" font-weight="700">main chain · <tspan class="mono">chainRef root</tspan> (sequential produces)</text>
+  <line class="wire" x1="70" y1="210" x2="1000" y2="210"/>
+  <g text-anchor="middle">
+    <text class="lbl" x="70"   y="194">pr.started</text>  <text class="mono" x="70"   y="248">p0</text>
+    <text class="lbl" x="225"  y="194">ts.started</text>  <text class="mono" x="225"  y="248">p1</text>
+    <text class="lbl" x="380"  y="194">tc.run #0</text>   <text class="mono" x="380"  y="248">p1.p0</text>
+    <text class="lbl" x="535"  y="194">tc.run #1</text>   <text class="mono" x="535"  y="248">p1.p1</text>
+    <text class="lbl" x="690"  y="194">tc.run #2</text>   <text class="mono" x="690"  y="248">p1.p2</text>
+    <text class="lbl" x="845"  y="194">ts.finished</text> <text class="mono" x="845"  y="248">p2</text>
+    <text class="lbl" x="1000" y="194">pr.finished</text> <text class="mono" x="1000" y="248">p3</text>
+  </g>
+  <circle class="mnode m0" cx="70"   cy="210" r="18"/><circle class="mnode m1" cx="225"  cy="210" r="18"/>
+  <circle class="mnode m2" cx="380"  cy="210" r="18"/><circle class="mnode m3" cx="535"  cy="210" r="18"/>
+  <circle class="mnode m4" cx="690"  cy="210" r="18"/><circle class="mnode m5" cx="845"  cy="210" r="18"/>
+  <circle class="mnode m6" cx="1000" cy="210" r="18"/>
+  <text x="535"  y="216" text-anchor="middle" fill="#c89a4e" font-size="13">★</text>
+  <text x="1000" y="216" text-anchor="middle" fill="#c89a4e" font-size="13">★</text>
+  <g class="token" transform="translate(70,210)"><circle r="8" fill="#eafff3" stroke="#34d27f" stroke-width="2"/></g>
+
+  <!-- GAP: the three tests are sequential, not parallel -->
+  <path d="M362 174 L362 166 L708 166 L708 174" fill="none" stroke="#7a5a30" stroke-width="1.5"/>
+  <text class="gap" x="535" y="158" text-anchor="middle">3 test cases — requested parallel → CODED sequential (produces siblings p1.p0 / p1.p1 / p1.p2)</text>
+
+  <!-- DETACH 1: off a test child -->
+  <path class="rel rel1" d="M535 232 C535 290, 470 300, 470 332" marker-end="url(#rel)"/>
+  <text class="lbl" x="40" y="372" font-weight="700">detached chain · <tspan class="mono">chainRef p1.p1.d</tspan> <tspan class="muted">— spawned by a test child · own chainId · parent does not wait</tspan></text>
+  <line x1="470" y1="392" x2="590" y2="392" stroke="#33405a" stroke-width="2.5"/>
+  <circle class="dnode e0" cx="470" cy="392" r="16"/><circle class="dnode e1" cx="590" cy="392" r="16"/>
+  <g text-anchor="middle">
+    <text class="lbl" x="470" y="426">testoutput.published</text><text class="mono" x="470" y="442">p1.p1.d0.p0</text>
+    <text class="lbl" x="590" y="426">ticket.created</text>      <text class="mono" x="590" y="442">p1.p1.d0.p1</text>
+  </g>
+
+  <!-- DETACH 2: compliance, off the terminal event -->
+  <path class="rel rel2" d="M1000 232 C1000 300, 905 300, 905 462" marker-end="url(#rel)"/>
+  <text class="lbl" x="620" y="494" font-weight="700" text-anchor="end">compliance notify · <tspan class="mono">chainRef p3.d</tspan></text>
+  <text class="muted" x="628" y="494">— detach on the TERMINAL event</text>
+  <line x1="905" y1="510" x2="1010" y2="510" stroke="#33405a" stroke-width="2.5"/>
+  <circle class="dnode f0" cx="905"  cy="510" r="16"/><circle class="dnode f1" cx="1010" cy="510" r="16"/>
+  <g text-anchor="middle">
+    <text class="lbl" x="905"  y="544">ticket.created</text><text class="mono" x="905"  y="560">p3.d0.p0</text>
+    <text class="lbl" x="1010" y="544">ticket.updated</text><text class="mono" x="1010" y="560">p3.d0.p1</text>
+  </g>
+  <text class="gap" x="628" y="512">fires fire-and-forget when p3 is thrown — there is NO "after the run completes" trigger; anchoring on the final event is the closest the code gets.</text>
+
+  <!-- footnote -->
+  <text class="muted" x="40" y="588" fill="#5a6478" font-size="10.5">Faithful to chain-tree.ts: produces = sequential (the tests), detach = own-chainId fire-and-forget side-chains (RELATION parent→first detached event). No parallel-blocking; no run-completion hook.</text>
+</svg>

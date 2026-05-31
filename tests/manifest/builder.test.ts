@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { buildManifest } from '../../src/manifest/builder.js';
 import { validateWorkflow, resolveProduces } from '../../src/workflow/parser.js';
-import { loadExpressionRegistry } from '../../src/loaders/expression.loader.js';
+import { loadExpressionRegistry } from '../../src/expressions/loader.js';
 import type { ResolvedEvent } from '../../src/workflow/parser.js';
 import type { IronMonkeyConfig } from '../../src/config/types.js';
 

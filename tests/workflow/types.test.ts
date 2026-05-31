@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isEventItem, isExpressionItem } from '../src/types.js';
+import { isEventItem, isExpressionItem } from '../../src/workflow/types.js';
 
 describe('isEventItem', () => {
   it('returns true for an object with an event key', () => {

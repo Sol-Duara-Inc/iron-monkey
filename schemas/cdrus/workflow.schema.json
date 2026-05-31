@@ -64,7 +64,7 @@
         "produces": {
           "type": "array",
           "minItems": 1,
-          "description": "Ordered list of CDEvents and/or CDrus Expression references.",
+          "description": "Ordered list of CDEvents and/or CDrus Expression references. A list element may also be a concurrent branch (a nested list): sibling branches run concurrently and the parent does not complete until every branch has completed.",
           "items": { "$ref": "#/definitions/produce_item" }
         }
       }
@@ -72,8 +72,18 @@
   },
   "definitions": {
     "produce_item": {
-      "description": "A workflow produce item is either a CDEvent or a reference to a CDrus Expression by identity.",
-      "oneOf": [{ "$ref": "#/definitions/event_item" }, { "$ref": "#/definitions/expression_item" }]
+      "description": "A workflow produce item is one of three mutually exclusive forms: (1) a CDEvent; (2) a reference to a CDrus Expression by identity; or (3) a concurrent branch — a nested list of produce items that runs in PARALLEL with its sibling branches in the same list (see 'concurrent_branch'). An event item and an expression item are objects; a concurrent branch is an array.",
+      "oneOf": [
+        { "$ref": "#/definitions/event_item" },
+        { "$ref": "#/definitions/expression_item" },
+        { "$ref": "#/definitions/concurrent_branch" }
+      ]
+    },
+    "concurrent_branch": {
+      "type": "array",
+      "minItems": 1,
+      "description": "A concurrent branch: an ordered sub-sequence of produce items (events, Expression references, or further nested branches) written as a nested YAML list. Like a detached branch (an event's `detach` entry), a concurrent branch is its own chain with its own chainId, linked to the spawning event by a RELATION link; the only difference is one bit — the parent WAITS on a concurrent branch. Sibling concurrent branches run concurrently; their events are the output — there is no join, merge, or synthetic join event — and the parent chain does not reach COMPLETE until every concurrent branch has completed (a branch that never completes leaves the parent incomplete). Sibling concurrent branches whose event sequences are identical are legal and expected (e.g. parallel test-case runs under one suite) and are disambiguated by their distinct chainIds, not by content.",
+      "items": { "$ref": "#/definitions/produce_item" }
     },
     "event_item": {
       "type": "object",

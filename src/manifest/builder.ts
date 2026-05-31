@@ -1,22 +1,39 @@
 /**
  * @module manifest/builder
- * Constructs the pre-allocated event manifest from a resolved workflow. For
+ * Constructs the pre-allocated event manifest from a resolved chain tree. For
  * each event the builder assigns a unique `eventId`, schedules a `targetEmitTime`,
  * builds the CDEvent payload with chain-link wiring, and validates the payload
  * against its CDEvent JSON schema. The resulting manifest is a complete,
  * immutable description of what Iron Monkey will emit — injections are applied
  * separately before emission.
+ *
+ * The main chain is the workflow spine. `detach` and concurrent-branch
+ * sub-chains (see {@link module:workflow/chain-tree}) are modelled as
+ * {@link DetachedManifestChain} entries: each gets its own `chainId`, its own
+ * internal `PATH`/`END` links, and a `RELATION` link from the spawning event in
+ * the parent chain to this sub-chain's first event. The emitter (Slice 3) is
+ * what actually throws them; this builder only describes them.
  */
 
 import { v4 as uuidv4 } from 'uuid';
 import { IdAllocator } from './id-allocator.js';
 import { TimingAllocator } from './timing.js';
-import { buildPathLink } from '../links/builder.js';
+import { buildPathLink, buildEndLink, buildRelationLink } from '../links/builder.js';
+import { acquireChainId, acquireChainIds } from '../chain/acquire.js';
+import { generateFallbackChainId } from '../chain/fallback.js';
 import { loadSchemas, validateEvent } from '../schema/validator.js';
 import { synthesize } from '../synth/synthesizer.js';
 import type { ResolvedEvent } from '../workflow/parser.js';
+import type { ResolvedChain, ResolvedChainEvent } from '../workflow/chain-tree.js';
+import type { ChainAcquisitionRequest, ChainIdResult } from '../chain/acquire.js';
 import type { IronMonkeyConfig } from '../config/types.js';
-import type { Manifest, ManifestEvent, CDEventPayload } from './types.js';
+import type {
+  Manifest,
+  ManifestEvent,
+  DetachedManifestChain,
+  CDEventPayload,
+  LinkEntry,
+} from './types.js';
 
 /** Options controlling manifest construction behaviour. */
 export interface BuildManifestOptions {
@@ -33,7 +50,7 @@ export interface BuildManifestOptions {
   seed?: number;
   /**
    * Pre-acquired chain ID. When supplied the builder bypasses Conduit and
-   * fallback generation and uses this value directly.
+   * fallback generation and uses this value directly for the MAIN chain.
    */
   chainId?: string;
   /** Source of the pre-acquired `chainId`, stamped on the manifest. */
@@ -59,23 +76,254 @@ export interface BuildManifestOptions {
   interval?: number;
 }
 
+/** Shared, run-scoped construction state passed to the per-chain builders. */
+interface BuildContext {
+  config: IronMonkeyConfig;
+  schemas: Awaited<ReturnType<typeof loadSchemas>>;
+  targetBus: string;
+  /** Single allocator: the main chain drains it first (ids stay stable), then sub-chains. */
+  idAlloc: IdAllocator;
+  /** Pre-acquired `chainRef` → chain ID map for every sub-chain (Conduit or fallback). */
+  chainIds: Map<string, ChainIdResult>;
+  synth: boolean;
+  interval?: number;
+  workflowName: string;
+  seed?: number;
+}
+
+/** Collects an acquisition request for every sub-chain in the tree (depth-first). */
+function collectChainRequests(chain: ResolvedChain, out: ChainAcquisitionRequest[]): void {
+  for (const spawn of chain.spawns) {
+    out.push({
+      chainRef: spawn.chainRef,
+      parentChainRef: spawn.parentChainRef ?? chain.chainRef,
+      linkKind: spawn.linkKind ?? 'TRIGGER',
+    });
+    collectChainRequests(spawn, out);
+  }
+}
+
+/** A built chain's events plus the lookups needed to wire RELATION links from it. */
+interface BuiltChain {
+  events: ManifestEvent[];
+  /** treePath → the built event, so a spawning event can be found by its anchor path. */
+  byTreePath: Map<string, ManifestEvent>;
+  /** `eventId` of this chain's first event (the RELATION target), or undefined when empty. */
+  firstEventId: string | undefined;
+}
+
+/** Maps a legacy flat {@link ResolvedEvent} list into a main {@link ResolvedChain}. */
+function eventsToMainChain(events: ResolvedEvent[]): ResolvedChain {
+  return {
+    role: 'main',
+    chainRef: 'root',
+    events: events.map((e, i) => ({
+      treePath: `p${i}`,
+      order: i,
+      workflowEventId: e.id,
+      type: e.type,
+      tool: e.tool,
+      source: e.source,
+      pipeline: e.pipeline,
+      timeout_ms: e.timeout_ms,
+      min_wait_ms: e.min_wait_ms,
+      subject: e.subject,
+      origin: e.origin,
+      expressionRef: e.expressionRef,
+    })),
+    spawns: [],
+  };
+}
+
+/**
+ * Builds a single manifest event: allocates its id, schedules its emit time,
+ * constructs and schema-validates the payload, and wires its `PATH` (predecessor)
+ * and — when it ends a sub-chain — `END` links.
+ */
+function buildEvent(
+  re: ResolvedChainEvent,
+  chainId: string,
+  prevEventId: string | undefined,
+  isLastInChain: boolean,
+  addEndLink: boolean,
+  timingAlloc: TimingAllocator,
+  ctx: BuildContext,
+): ManifestEvent {
+  const eventId = ctx.idAlloc.nextId();
+  const targetEmitTime =
+    typeof ctx.interval === 'number' && ctx.interval >= 0
+      ? timingAlloc.nextExactEmitTime(ctx.interval)
+      : timingAlloc.nextEmitTime(re.min_wait_ms, re.timeout_ms);
+  const timestamp = new Date(targetEmitTime).toISOString();
+
+  // Config tool source overrides blank workflow source; workflow source overrides config when set.
+  const toolSource = re.source || ctx.config.tools[re.tool]?.source || re.tool;
+
+  const links: LinkEntry[] = [];
+  if (prevEventId) links.push(buildPathLink(prevEventId));
+  // `isLast` is positional (always marks the chain's final event); the END link
+  // is attached here only for sub-chains — the main chain's END is added by the
+  // runner after injections, so `addEndLink` is false for it.
+  if (isLastInChain && addEndLink) links.push(buildEndLink(eventId));
+
+  const schema = ctx.schemas.get(re.type);
+  if (!schema) {
+    throw new Error(
+      `No schema found for event type '${re.type}'. ` +
+        `Place the schema at ${ctx.config.schemasPath ?? 'schemas/cdevents'}/${re.type}.json or set IRON_MONKEY_SCHEMAS.`,
+    );
+  }
+
+  let content = re.subject.content ?? {};
+  let synthesized: string[] = [];
+  if (ctx.synth !== false) {
+    const result = synthesize(content, schema, {
+      toolSource,
+      chainId,
+      eventType: re.type,
+      workflowName: ctx.workflowName,
+      subjectId: re.subject.id,
+      timestamp,
+    });
+    content = result.content;
+    synthesized = result.synthesized;
+  }
+
+  const payload: CDEventPayload = {
+    context: {
+      specversion: '0.5.1',
+      id: eventId,
+      source: toolSource,
+      type: re.type,
+      timestamp,
+      chainId,
+      links: links.length > 0 ? links : undefined,
+    },
+    subject: { id: re.subject.id, content },
+  };
+
+  const validationResult = validateEvent(payload, schema);
+  if (!validationResult.valid) {
+    throw new Error(
+      `Event '${re.workflowEventId}' (type: ${re.type}) failed schema validation:\n${validationResult.errors?.join('\n')}`,
+    );
+  }
+
+  return {
+    eventId,
+    workflowEventId: re.workflowEventId,
+    treePath: re.treePath,
+    type: re.type,
+    stageId: re.pipeline,
+    stageTool: re.tool,
+    concurrent: false,
+    source: toolSource,
+    chainId,
+    targetBus: ctx.targetBus,
+    targetEmitTime,
+    payload,
+    injections: [],
+    isLast: isLastInChain,
+    emitStatus: 'pending',
+    synthesized,
+  };
+}
+
+/**
+ * Builds every event of one chain in order, wiring internal `PATH` links. When
+ * `endLast` is true the final event also gets an `END` link (used for
+ * sub-chains; the main chain's `END` is attached by the runner post-injection).
+ */
+function buildChain(
+  chain: ResolvedChain,
+  chainId: string,
+  endLast: boolean,
+  timingAlloc: TimingAllocator,
+  ctx: BuildContext,
+): BuiltChain {
+  const events: ManifestEvent[] = [];
+  const byTreePath = new Map<string, ManifestEvent>();
+  for (let i = 0; i < chain.events.length; i++) {
+    const re = chain.events[i];
+    const isLast = i === chain.events.length - 1;
+    const prevEventId = i > 0 ? events[i - 1].eventId : undefined;
+    const me = buildEvent(re, chainId, prevEventId, isLast, endLast, timingAlloc, ctx);
+    events.push(me);
+    byTreePath.set(re.treePath, me);
+  }
+  return { events, byTreePath, firstEventId: events[0]?.eventId };
+}
+
+/**
+ * Recursively builds the detached / branch sub-chains spawned by `parentChain`,
+ * appending each as a {@link DetachedManifestChain} to `out` and wiring a
+ * `RELATION` link from the spawning event in `parentBuilt` to the sub-chain's
+ * first event. Nested spawns recurse with their own parentage.
+ */
+function buildSpawns(
+  parentChain: ResolvedChain,
+  parentBuilt: BuiltChain,
+  parentChainId: string,
+  spawnIndexBase: number,
+  ctx: BuildContext,
+  out: DetachedManifestChain[],
+): void {
+  let spawnIndex = spawnIndexBase;
+  for (const spawn of parentChain.spawns) {
+    // Each sub-chain's id is acquired up front (Conduit → fallback cascade) and
+    // looked up here by chainRef. A missing entry should not happen (all spawns
+    // are collected before acquisition) but is handled defensively as fallback.
+    const acquired = ctx.chainIds.get(spawn.chainRef);
+    const subChainId =
+      acquired?.chainId ?? generateFallbackChainId(`${ctx.workflowName}:${spawn.chainRef}`);
+    const subChainIdSource = acquired?.source ?? 'fallback';
+    const subTiming = new TimingAllocator(
+      ctx.seed === undefined ? undefined : ctx.seed + spawnIndex + 1,
+    );
+    spawnIndex += 1;
+
+    const built = buildChain(spawn, subChainId, true, subTiming, ctx);
+
+    // RELATION: the spawning event (at spawn.anchorPath in the parent chain) →
+    // this sub-chain's first event. Append to the parent event's link list.
+    const parentEvent = spawn.anchorPath ? parentBuilt.byTreePath.get(spawn.anchorPath) : undefined;
+    if (parentEvent && built.firstEventId) {
+      const ctxObj = parentEvent.payload.context;
+      const existing = Array.isArray(ctxObj.links) ? ctxObj.links : [];
+      ctxObj.links = [
+        ...existing,
+        buildRelationLink(spawn.linkKind ?? 'TRIGGER', built.firstEventId),
+      ];
+    }
+
+    out.push({
+      role: spawn.role === 'concurrent' ? 'concurrent' : 'detached',
+      chainRef: spawn.chainRef,
+      chainId: subChainId,
+      chainIdSource: subChainIdSource,
+      parentChainId,
+      parentChainRef: spawn.parentChainRef ?? parentChain.chainRef,
+      parentEventId: parentEvent?.eventId ?? '',
+      linkKind: spawn.linkKind ?? 'TRIGGER',
+      events: built.events,
+    });
+
+    // Nested detach/branch within this sub-chain.
+    buildSpawns(spawn, built, subChainId, 0, ctx, out);
+  }
+}
+
 /**
  * Builds a fully pre-allocated event manifest for the given workflow run.
  *
- * Responsibilities:
- * 1. Acquires or generates a Sympraxis chain ID.
- * 2. Loads CDEvent JSON schemas for validation.
- * 3. Allocates deterministic-or-random UUIDs and emission timestamps for every
- *    event.
- * 4. Constructs CDEvent payloads with context (id, source, type, timestamp,
- *    chainId) and subject content, merging tool-source defaults from config.
- * 5. Wires `PATH` links from each event to its predecessor.
- * 6. Schema-validates every payload and throws if any fails.
+ * Accepts either the resolved main {@link ResolvedChain} (from
+ * {@link resolveChainTree}) — in which case `detach` / concurrent-branch
+ * sub-chains are modelled — or a flat {@link ResolvedEvent} list (legacy /
+ * test callers), treated as a main chain with no sub-chains.
  *
  * @param workflowMeta - The workflow `id` and `name` used for chain ID
  *   acquisition and manifest metadata.
- * @param events - Flat ordered list of resolved events from
- *   {@link resolveProduces}.
+ * @param input - The resolved main chain, or a flat list of resolved events.
  * @param config - Merged Iron Monkey configuration supplying bus, tool, and
  *   schema-path settings.
  * @param opts - Build-time options controlling conduit bypass, seeding, and
@@ -86,11 +334,11 @@ export interface BuildManifestOptions {
  */
 export async function buildManifest(
   workflowMeta: { id: string; name: string },
-  events: ResolvedEvent[],
+  input: ResolvedChain | ResolvedEvent[],
   config: IronMonkeyConfig,
   opts: BuildManifestOptions,
 ): Promise<Manifest> {
-  const { acquireChainId } = await import('../chain/acquire.js');
+  const mainChain = Array.isArray(input) ? eventsToMainChain(input) : input;
 
   let chainId: string;
   let chainIdSource: 'conduit' | 'bus' | 'fallback';
@@ -99,7 +347,6 @@ export async function buildManifest(
     chainId = opts.chainId;
     chainIdSource = opts.chainIdSource ?? 'fallback';
   } else if (opts.noConduit) {
-    const { generateFallbackChainId } = await import('../chain/fallback.js');
     chainId = generateFallbackChainId(workflowMeta.name);
     chainIdSource = 'fallback';
   } else {
@@ -108,98 +355,42 @@ export async function buildManifest(
     chainIdSource = result.source;
   }
 
+  // Acquire a chainId for every sub-chain up front (Conduit → fallback cascade),
+  // keyed by chainRef, so the synchronous build can simply look each one up.
+  const chainRequests: ChainAcquisitionRequest[] = [];
+  collectChainRequests(mainChain, chainRequests);
+  const chainIds = await acquireChainIds(
+    workflowMeta.name,
+    chainRequests,
+    { noConduit: opts.noConduit },
+    config.conduit,
+  );
+
   const schemas = await loadSchemas(config.schemasPath);
   const targetBus = opts.busName ?? process.env.IRON_MONKEY_BUS_NAME ?? 'default';
 
-  const idAlloc = new IdAllocator(opts.seed);
-  const timingAlloc = new TimingAllocator(opts.seed);
+  const ctx: BuildContext = {
+    config,
+    schemas,
+    targetBus,
+    idAlloc: new IdAllocator(opts.seed),
+    chainIds,
+    synth: opts.synth !== false,
+    interval: opts.interval,
+    workflowName: workflowMeta.name,
+    seed: opts.seed,
+  };
 
   const runId = uuidv4();
-  const manifestEvents: ManifestEvent[] = [];
 
-  for (let i = 0; i < events.length; i++) {
-    const re = events[i];
-    const eventId = idAlloc.nextId();
-    // Exact spacing when an interval override is supplied; otherwise the
-    // jittered default cadence derived from the event's wait/timeout budget.
-    const targetEmitTime =
-      typeof opts.interval === 'number' && opts.interval >= 0
-        ? timingAlloc.nextExactEmitTime(opts.interval)
-        : timingAlloc.nextEmitTime(re.min_wait_ms, re.timeout_ms);
-    const timestamp = new Date(targetEmitTime).toISOString();
+  // Main chain first: drains the shared id allocator before any sub-chain, so
+  // main event ids are identical to the pre-sub-chain behaviour. Its END link
+  // is attached by the runner after injections, so endLast is false here.
+  const mainTiming = new TimingAllocator(opts.seed);
+  const mainBuilt = buildChain(mainChain, chainId, false, mainTiming, ctx);
 
-    // Config tool source overrides blank workflow source; workflow source overrides config when set
-    const toolSource = re.source || config.tools[re.tool]?.source || re.tool;
-
-    const links = [];
-    if (i > 0) {
-      links.push(buildPathLink(manifestEvents[i - 1].eventId));
-    }
-
-    const schema = schemas.get(re.type);
-    if (!schema) {
-      throw new Error(
-        `No schema found for event type '${re.type}'. ` +
-          `Place the schema at ${config.schemasPath ?? 'schemas/cdevents'}/${re.type}.json or set IRON_MONKEY_SCHEMAS.`,
-      );
-    }
-
-    let content = re.subject.content ?? {};
-    let synthesized: string[] = [];
-    if (opts.synth !== false) {
-      const result = synthesize(content, schema, {
-        toolSource,
-        chainId,
-        eventType: re.type,
-        workflowName: workflowMeta.name,
-        subjectId: re.subject.id,
-        timestamp,
-      });
-      content = result.content;
-      synthesized = result.synthesized;
-    }
-
-    const payload: CDEventPayload = {
-      context: {
-        specversion: '0.5.1',
-        id: eventId,
-        source: toolSource,
-        type: re.type,
-        timestamp,
-        chainId,
-        links: links.length > 0 ? links : undefined,
-      },
-      subject: {
-        id: re.subject.id,
-        content,
-      },
-    };
-
-    const validationResult = validateEvent(payload, schema);
-    if (!validationResult.valid) {
-      throw new Error(
-        `Event '${re.id}' (type: ${re.type}) failed schema validation:\n${validationResult.errors?.join('\n')}`,
-      );
-    }
-
-    manifestEvents.push({
-      eventId,
-      workflowEventId: re.id,
-      type: re.type,
-      stageId: re.pipeline,
-      stageTool: re.tool,
-      concurrent: false,
-      source: toolSource,
-      chainId,
-      targetBus,
-      targetEmitTime,
-      payload,
-      injections: [],
-      isLast: i === events.length - 1,
-      emitStatus: 'pending',
-      synthesized,
-    });
-  }
+  const detachedChains: DetachedManifestChain[] = [];
+  buildSpawns(mainChain, mainBuilt, chainId, 0, ctx, detachedChains);
 
   return {
     runId,
@@ -208,6 +399,7 @@ export async function buildManifest(
     chainId,
     chainIdSource,
     createdAt: new Date().toISOString(),
-    events: manifestEvents,
+    events: mainBuilt.events,
+    detachedChains: detachedChains.length > 0 ? detachedChains : undefined,
   };
 }

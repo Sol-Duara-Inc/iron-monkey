@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveChainTree } from '../../src/workflow/chain-tree.js';
-import type { ExpressionRegistry } from '../../src/loaders/expression.loader.js';
+import type { ExpressionRegistry } from '../../src/expressions/loader.js';
 import type { ExpressionBundle } from '../../src/expressions/types.js';
 import type { WorkflowFile } from '../../src/workflow/types.js';
 
@@ -196,7 +196,7 @@ describe('resolveChainTree — produces/detach grammar → chain tree', () => {
     // Two branch chains, each its own chain on the `b` axis, forked at p1.
     expect(main.spawns).toHaveLength(2);
     const [b0, b1] = main.spawns;
-    expect([b0.role, b1.role]).toEqual(['branch', 'branch']);
+    expect([b0.role, b1.role]).toEqual(['concurrent', 'concurrent']);
     expect(b0.chainRef).toBe('p1.b0');
     expect(b1.chainRef).toBe('p1.b1');
     expect(b0.anchorPath).toBe('p1'); // forked by testsuiterun.started

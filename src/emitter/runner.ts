@@ -10,17 +10,17 @@
  */
 
 import { writeFile } from 'fs/promises';
-import { resolveProduces } from '../workflow/parser.js';
+import { resolveChainTree } from '../workflow/chain-tree.js';
 import { WorkflowSource, FileWorkflowSource } from '../workflow/source.js';
-import { loadConfig, resolveBusName } from '../loaders/config.loader.js';
-import { loadExpressionRegistry } from '../loaders/expression.loader.js';
+import { loadConfig, resolveBusName } from '../config/loader.js';
+import { loadExpressionRegistry } from '../expressions/loader.js';
 import { buildManifest } from '../manifest/builder.js';
 import { parseInjections } from '../injection/parser.js';
 import { applyInjections } from '../injection/apply.js';
 import { createBus } from '../bus/interface.js';
 import { buildEndLink } from '../links/builder.js';
 import { createLogger, setLogger } from '../logger/index.js';
-import type { Manifest, ManifestEvent } from '../manifest/types.js';
+import type { Manifest, ManifestEvent, DetachedManifestChain } from '../manifest/types.js';
 
 /** Options accepted by {@link runWorkflow} from the CLI or programmatic callers. */
 export interface RunOptions {
@@ -144,7 +144,7 @@ export async function runWorkflow(
   const resolvedSource = typeof source === 'string' ? new FileWorkflowSource(source) : source;
   const workflow = await resolvedSource.getWorkflow();
   const registry = loadExpressionRegistry();
-  const events = resolveProduces(workflow, registry);
+  const mainChain = resolveChainTree(workflow, registry);
 
   // NOTE: the interval override is applied at scheduling time by the manifest
   // builder (via BuildManifestOptions.interval → TimingAllocator), not by
@@ -178,7 +178,7 @@ export async function runWorkflow(
 
   const manifest = await buildManifest(
     { id: workflow.workflow.id, name: workflow.workflow.name },
-    events,
+    mainChain,
     config,
     {
       noConduit,
@@ -230,26 +230,74 @@ export async function runWorkflow(
 }
 
 /**
- * Iterates the manifest events grouped by concurrency flag, emitting each
- * group either in parallel (`concurrent: true`) or serially.
+ * Emits a full run: the main chain in order (honouring concurrency groups),
+ * plus every detached / concurrent-branch sub-chain.
+ *
+ * Sub-chains are **fire-and-forget**: when the emitter reaches a spawning event
+ * it captures that instant as the sub-chain's T-0 (a sub-chain can have no
+ * timestamp before the event that triggers it), emits the parent, then launches
+ * the sub-chain WITHOUT awaiting it — the main chain proceeds immediately. Each
+ * sub-chain runs on its own rebased timeline and may itself spawn further
+ * chains. All launched chains (and their descendants) are drained before the
+ * run returns, so failures surface and the process exits cleanly.
+ *
+ * Detached and concurrent chains are emitted IDENTICALLY here — the emitter
+ * never joins, blocks, or rolls anything up. The role only tells the receiver
+ * how to MONITOR the chain: a `concurrent` child's breach rolls up to its
+ * parent; a `detached` child's does not. That distinction is the receiver's job.
  */
-async function executeManifest(
+export async function executeManifest(
   manifest: Manifest,
   bus: Awaited<ReturnType<typeof createBus>>,
   logger: ReturnType<typeof createLogger>,
 ): Promise<void> {
-  const now = Date.now();
-  const groups = groupByConcurrency(manifest.events);
+  // Index sub-chains by the eventId of their spawning (parent) event.
+  const spawnsByParent = new Map<string, DetachedManifestChain[]>();
+  for (const sub of manifest.detachedChains ?? []) {
+    const list = spawnsByParent.get(sub.parentEventId) ?? [];
+    list.push(sub);
+    spawnsByParent.set(sub.parentEventId, list);
+  }
 
-  for (const group of groups) {
+  /**
+   * Launches (does not await) every sub-chain spawned by `eventId`, rebased so
+   * its first event fires at `spawnInstant`. Returns the launched tasks so the
+   * caller can drain them; each task internally drains its own descendants.
+   */
+  const launchSpawns = (eventId: string, spawnInstant: number): Promise<void>[] =>
+    (spawnsByParent.get(eventId) ?? []).map((sub) => emitSubChain(sub, spawnInstant));
+
+  async function emitSubChain(sub: DetachedManifestChain, spawnInstant: number): Promise<void> {
+    // Rebase: anchor the sub-chain's first event at the spawn instant; every
+    // later event keeps its relative gap. The chain cannot begin before its
+    // parent event was reached.
+    const firstTarget = sub.events[0]?.targetEmitTime ?? spawnInstant;
+    const offset = spawnInstant - firstTarget;
+    const descendants: Promise<void>[] = [];
+    for (const ev of sub.events) {
+      await emitEvent(ev, bus, logger, ev.targetEmitTime + offset);
+      descendants.push(...launchSpawns(ev.eventId, Date.now()));
+    }
+    await Promise.allSettled(descendants);
+  }
+
+  const tasks: Promise<void>[] = [];
+  for (const group of groupByConcurrency(manifest.events)) {
     if (group.concurrent) {
-      await Promise.all(group.events.map((e) => emitEvent(e, bus, logger, now, manifest.chainId)));
+      const spawnInstant = Date.now();
+      await Promise.all(group.events.map((e) => emitEvent(e, bus, logger)));
+      for (const e of group.events) tasks.push(...launchSpawns(e.eventId, spawnInstant));
     } else {
       for (const event of group.events) {
-        await emitEvent(event, bus, logger, now, manifest.chainId);
+        const spawnInstant = Date.now(); // reached the parent, before it is sent
+        await emitEvent(event, bus, logger);
+        tasks.push(...launchSpawns(event.eventId, spawnInstant));
       }
     }
   }
+
+  // Drain all detached / branch chains (and their descendants) before returning.
+  await Promise.allSettled(tasks);
 }
 
 /** A run of consecutive manifest events that share the same `concurrent` flag. */
@@ -281,26 +329,26 @@ function groupByConcurrency(events: ManifestEvent[]): EventGroup[] {
 }
 
 /**
- * Emits a single manifest event to the bus, honouring the pre-allocated
- * `targetEmitTime` by sleeping if necessary. Updates `emitStatus` and
- * `actualEmitTime` in-place so the manifest reflects final state.
+ * Emits a single manifest event to the bus, sleeping until its scheduled time.
+ * Updates `emitStatus` and `actualEmitTime` in-place so the manifest reflects
+ * final state. Each event carries its own chain's `chainId` (main or sub-chain),
+ * which is logged for correlation.
  *
  * @param event - The manifest event to emit (mutated in-place after emission).
  * @param bus - Connected bus instance.
  * @param logger - Logger for structured emission logs.
- * @param startTime - Epoch ms captured at the start of the manifest run, used
- *   to compute relative delays.
- * @param chainId - Chain ID shared across all events in this run, logged for
- *   correlation.
+ * @param emitAt - Absolute epoch-ms to emit at. Defaults to the event's
+ *   pre-allocated `targetEmitTime`; sub-chains pass a value rebased to their
+ *   spawn instant.
  * @throws {Error} Re-throws any bus emission error after recording it on the event.
  */
 async function emitEvent(
   event: ManifestEvent,
   bus: Awaited<ReturnType<typeof createBus>>,
   logger: ReturnType<typeof createLogger>,
-  startTime: number,
-  chainId: string,
+  emitAt: number = event.targetEmitTime,
 ): Promise<void> {
+  const chainId = event.chainId;
   if (event.emitStatus === 'skipped') {
     logger.info(
       { chainId, eventId: event.eventId, workflowEventId: event.workflowEventId },
@@ -309,12 +357,10 @@ async function emitEvent(
     return;
   }
 
-  // `targetEmitTime` is an absolute epoch-ms scheduled by the manifest builder.
-  // Sleep until that wall-clock instant, not until "startTime + offset" — using
-  // startTime would re-include the time already burned by previous sleeps and
-  // make inter-event gaps grow linearly (1s, 2s, 3s, …).
-  void startTime;
-  const delay = event.targetEmitTime - Date.now();
+  // `emitAt` is an absolute wall-clock instant. Sleep until it, not until
+  // "start + offset" — that would re-include time already burned and make
+  // inter-event gaps grow linearly.
+  const delay = emitAt - Date.now();
   if (delay > 0) {
     await sleep(delay);
   }

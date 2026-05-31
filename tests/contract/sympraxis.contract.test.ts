@@ -172,7 +172,7 @@ function mainChain(chains: ChainEntry[]): ChainEntry | undefined {
   return chains.find((c) => c.role === 'main');
 }
 
-/** First non-main chain spawned from somewhere (detached/parallel side-chain). */
+/** First non-main chain spawned from somewhere (detached/concurrent side-chain). */
 function aDetachedChain(chains: ChainEntry[]): ChainEntry | undefined {
   return chains.find((c) => c.role !== 'main');
 }
@@ -234,7 +234,7 @@ function assertValidChainSet(body: Record<string, unknown>): {
   expect(new Set(ids).size, 'chainIds distinct').toBe(ids.length);
 
   for (const c of chains) {
-    expect(['main', 'tool', 'parallel', 'detached'], `unknown role '${c.role}'`).toContain(c.role);
+    expect(['main', 'detached', 'concurrent'], `unknown role '${c.role}'`).toContain(c.role);
     for (const e of c.expectedEvents) {
       expect(typeof e.type).toBe('string');
       expect(typeof e.order).toBe('number');

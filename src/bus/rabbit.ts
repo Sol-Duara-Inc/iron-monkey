@@ -9,6 +9,7 @@
 
 import amqp from 'amqplib';
 import { getLogger } from '../logger/index.js';
+import { registerBusShutdown } from './shutdown.js';
 import type { RabbitMQBusConfig } from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
 import type { Bus, BusInspectResult, BusPurgeOptions } from './interface.js';
@@ -51,8 +52,7 @@ export class RabbitMQBus implements Bus {
       logger.warn({ bus: this.name }, 'RabbitMQ connection closed');
     });
 
-    process.on('SIGINT', () => void this.disconnect());
-    process.on('SIGTERM', () => void this.disconnect());
+    registerBusShutdown(() => this.disconnect());
 
     logger.info({ bus: this.name }, 'connected to RabbitMQ');
   }

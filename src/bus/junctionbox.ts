@@ -18,6 +18,7 @@
  */
 
 import { getLogger } from '../logger/index.js';
+import { registerBusShutdown } from './shutdown.js';
 import type { JunctionBoxBusConfig } from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
 import type { Bus, BusInspectResult, BusPurgeOptions } from './interface.js';
@@ -102,8 +103,7 @@ export class JunctionBoxBus implements Bus {
     }
 
     this.connected = true;
-    process.on('SIGINT', () => void this.disconnect());
-    process.on('SIGTERM', () => void this.disconnect());
+    registerBusShutdown(() => this.disconnect());
   }
 
   /**

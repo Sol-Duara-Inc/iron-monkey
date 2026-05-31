@@ -1,5 +1,6 @@
 import { Kafka, type Producer } from 'kafkajs';
 import { getLogger } from '../logger/index.js';
+import { registerBusShutdown } from './shutdown.js';
 import type { KafkaBusConfig } from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
 import type { Bus, BusInspectResult, BusPurgeOptions } from './interface.js';
@@ -27,8 +28,7 @@ export class KafkaBus implements Bus {
     this.producer = this.kafka.producer();
     await this.producer.connect();
 
-    process.on('SIGINT', () => this.disconnect());
-    process.on('SIGTERM', () => this.disconnect());
+    registerBusShutdown(() => this.disconnect());
 
     logger.info({ bus: this.name }, 'connected to Kafka');
   }

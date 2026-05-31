@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../src/schemas/cdrus/workflow.schema.json
+# yaml-language-server: $schema=../../schemas/cdrus/workflow.schema.json
 workflow:
   id: prod-inventory-gha-rolling-release
   group: spin-dev

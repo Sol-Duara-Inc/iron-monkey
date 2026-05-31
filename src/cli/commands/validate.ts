@@ -9,9 +9,10 @@ export function validateCommand(): Command {
   addCommonFlags(cmd);
 
   cmd.action(async (workflowPath: string, options: Record<string, unknown>) => {
-    const { validateWorkflow, resolveProduces } = await import('../../workflow/parser.js');
-    const { loadConfig, resolveBusName } = await import('../../loaders/config.loader.js');
-    const { loadExpressionRegistry } = await import('../../loaders/expression.loader.js');
+    const { validateWorkflow } = await import('../../workflow/parser.js');
+    const { resolveChainTree } = await import('../../workflow/chain-tree.js');
+    const { loadConfig, resolveBusName } = await import('../../config/loader.js');
+    const { loadExpressionRegistry } = await import('../../expressions/loader.js');
     const { buildManifest } = await import('../../manifest/builder.js');
     const { createLogger, setLogger } = await import('../../logger/index.js');
 
@@ -30,18 +31,26 @@ export function validateCommand(): Command {
     logger.info({ workflowId: workflow.workflow.id }, 'workflow is valid');
 
     const registry = loadExpressionRegistry();
-    const events = resolveProduces(workflow, registry);
+    const mainChain = resolveChainTree(workflow, registry);
     const busName = resolveBusName(config, options.bus as string | undefined);
 
     const manifest = await buildManifest(
       { id: workflow.workflow.id, name: workflow.workflow.name },
-      events,
+      mainChain,
       config,
       { noConduit: true, seed: options.seed as number | undefined, busName },
     );
 
+    const detachedEventCount = (manifest.detachedChains ?? []).reduce(
+      (n, c) => n + c.events.length,
+      0,
+    );
     logger.info(
-      { eventCount: manifest.events.length },
+      {
+        eventCount: manifest.events.length,
+        detachedChainCount: manifest.detachedChains?.length ?? 0,
+        detachedEventCount,
+      },
       'manifest built and validated successfully',
     );
     console.log('✓ Workflow and all planned events are valid');
