@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 670" font-family="ui-sans-serif, system-ui, sans-serif">
+  <title>How `detach` becomes its own Sympraxis chain (and Iron Monkey emits it)</title>
+  <desc>Iron Monkey resolves a workflow's produces/detach grammar into a main chain (p-axis) plus detached chains (d-axis), each with its own chainId. It throws BOTH: the main chain runs to its terminal while the detached chain is emitted fire-and-forget on its own chainId and resolves in parallel — the main run never waits on it.</desc>
+
+  <style>
+    .bg    { fill: #0f1420; }
+    .title { fill: #e8eef7; font-size: 22px; font-weight: 700; }
+    .sub   { fill: #8aa0bd; font-size: 13px; }
+    .lbl   { fill: #cdd9e8; font-size: 12px; }
+    .lblb  { fill: #e8eef7; font-size: 12px; font-weight: 600; }
+    .mono  { fill: #8fb6d8; font-size: 10.5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+    .muted { fill: #6f7e96; font-size: 11px; }
+    .wire  { stroke: #2a3550; stroke-width: 3; }
+    .nbase { fill: #182336; stroke: #3a4a66; stroke-width: 2.5; }
+
+    /* main chain: seven nodes light green in sequence (10s loop) */
+    @keyframes lit1 { 0%,7.9%{fill:#182336;stroke:#3a4a66} 8%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#182336;stroke:#3a4a66} }
+    @keyframes lit2 { 0%,14.9%{fill:#182336;stroke:#3a4a66} 15%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#182336;stroke:#3a4a66} }
+    @keyframes lit3 { 0%,21.9%{fill:#182336;stroke:#3a4a66} 22%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#182336;stroke:#3a4a66} }
+    @keyframes lit4 { 0%,28.9%{fill:#182336;stroke:#3a4a66} 29%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#182336;stroke:#3a4a66} }
+    @keyframes lit5 { 0%,35.9%{fill:#182336;stroke:#3a4a66} 36%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#182336;stroke:#3a4a66} }
+    @keyframes lit6 { 0%,42.9%{fill:#182336;stroke:#3a4a66} 43%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#182336;stroke:#3a4a66} }
+    @keyframes lit7 { 0%,49.9%{fill:#182336;stroke:#3a4a66} 50%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#182336;stroke:#3a4a66} }
+    .n1{animation:lit1 10s infinite}.n2{animation:lit2 10s infinite}.n3{animation:lit3 10s infinite}
+    .n4{animation:lit4 10s infinite}.n5{animation:lit5 10s infinite}.n6{animation:lit6 10s infinite}.n7{animation:lit7 10s infinite}
+
+    /* detached chain: ALSO thrown — its two nodes resolve in parallel (after the spawn at 29%) */
+    @keyframes litD1 { 0%,33.9%{fill:#161d2b;stroke:#46566f} 34%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#161d2b;stroke:#46566f} }
+    @keyframes litD2 { 0%,39.9%{fill:#161d2b;stroke:#46566f} 40%,90%{fill:#1f7a4d;stroke:#34d27f} 91%,100%{fill:#161d2b;stroke:#46566f} }
+    .dn1{stroke-dasharray:5 4;animation:litD1 10s infinite}.dn2{stroke-dasharray:5 4;animation:litD2 10s infinite}
+
+    /* thrown event tokens */
+    @keyframes pitch {
+      0%{transform:translateX(0);opacity:0}6%{opacity:1;transform:translateX(0)}
+      15%{transform:translateX(130px)}22%{transform:translateX(260px)}29%{transform:translateX(390px)}
+      36%{transform:translateX(520px)}43%{transform:translateX(650px)}50%{transform:translateX(780px);opacity:1}
+      57%{transform:translateX(780px);opacity:0}100%{transform:translateX(780px);opacity:0}
+    }
+    .token{animation:pitch 10s infinite ease-in-out}
+    @keyframes pitchD {
+      0%,29%{opacity:0;transform:translate(470px,448px)}30%{opacity:1;transform:translate(470px,470px)}
+      34%{transform:translate(470px,500px)}40%{transform:translate(600px,500px)}
+      45%{opacity:1;transform:translate(600px,500px)}48%,100%{opacity:0;transform:translate(600px,500px)}
+    }
+    .tokenD{animation:pitchD 10s infinite ease-in-out}
+
+    /* RELATION fires when the spawning event lands (29%), then flows */
+    @keyframes flow { to { stroke-dashoffset:-16; } }
+    @keyframes relShow { 0%,28%{opacity:0}29%,90%{opacity:1}92%,100%{opacity:0} }
+    .relation{stroke:#c89a4e;stroke-width:2.5;fill:none;stroke-dasharray:7 5;animation:flow 1s linear infinite, relShow 10s infinite}
+
+    /* completion banners */
+    @keyframes banner  { 0%,51%{opacity:0}56%,89%{opacity:1}93%,100%{opacity:0} }
+    @keyframes dbanner { 0%,39%{opacity:0}42%,89%{opacity:1}93%,100%{opacity:0} }
+    .banner{opacity:0;animation:banner 10s infinite}
+    .dbanner{opacity:0;animation:dbanner 10s infinite}
+  </style>
+
+  <rect class="bg" x="0" y="0" width="980" height="670"/>
+
+  <text class="title" x="40" y="46">Iron Monkey emits both chains — <tspan font-family="ui-monospace,Menlo,monospace" fill="#c89a4e">detach</tspan> resolves in parallel</text>
+  <text class="sub" x="40" y="70">resolveChainTree() → main chain (p&#8209;axis) + detached chain (d&#8209;axis), each its own chainId. Iron Monkey throws BOTH;</text>
+  <text class="sub" x="40" y="88">the detached stream is fire&#8209;and&#8209;forget — it resolves on its own, and the main run never waits on it.</text>
+
+  <!-- workflow source -->
+  <g transform="translate(40,118)">
+    <rect x="0" y="0" width="300" height="92" rx="8" fill="#121a28" stroke="#26324a"/>
+    <text class="mono" x="14" y="22" fill="#6f7e96">produces:</text>
+    <text class="mono" x="14" y="40">- event: pipelinerun.started</text>
+    <text class="mono" x="14" y="56">- expression: production-deploy</text>
+    <text class="mono" x="28" y="72" fill="#c89a4e">  ↳ taskrun.started  detach: [ticket-associate]</text>
+    <text class="mono" x="14" y="88">- event: pipelinerun.finished</text>
+  </g>
+  <text class="muted" x="360" y="150">resolveChainTree()</text>
+  <path d="M360 158 L460 158" stroke="#3a4a66" stroke-width="2" marker-end="url(#arrow)"/>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 z" fill="#3a4a66"/></marker>
+    <marker id="rel" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 z" fill="#c89a4e"/></marker>
+  </defs>
+
+  <!-- MAIN CHAIN -->
+  <text class="lblb" x="40" y="252">main chain · <tspan class="mono" fill="#8fb6d8">chainRef root</tspan></text>
+  <line class="wire" x1="80" y1="300" x2="860" y2="300"/>
+  <g text-anchor="middle">
+    <text class="lbl" x="80"  y="284">pipelinerun.started</text><text class="mono" x="80"  y="338">p0</text>
+    <text class="lbl" x="210" y="284">ticket.created</text>      <text class="mono" x="210" y="338">p1.p0.p0</text>
+    <text class="lbl" x="340" y="284">ticket.updated</text>      <text class="mono" x="340" y="338">p1.p0.p1</text>
+    <text class="lbl" x="470" y="284">taskrun.started</text>     <text class="mono" x="470" y="338">p1.p1.p0</text>
+    <text class="lbl" x="600" y="284">service.deployed</text>    <text class="mono" x="600" y="338">p1.p1.p1</text>
+    <text class="lbl" x="730" y="284">taskrun.finished</text>    <text class="mono" x="730" y="338">p1.p1.p2</text>
+    <text class="lbl" x="860" y="284">pipelinerun.finished</text><text class="mono" x="860" y="338">p2</text>
+  </g>
+  <circle class="nbase n1" cx="80"  cy="300" r="20"/><circle class="nbase n2" cx="210" cy="300" r="20"/>
+  <circle class="nbase n3" cx="340" cy="300" r="20"/><circle class="nbase n4" cx="470" cy="300" r="20"/>
+  <circle class="nbase n5" cx="600" cy="300" r="20"/><circle class="nbase n6" cx="730" cy="300" r="20"/>
+  <circle class="nbase n7" cx="860" cy="300" r="20"/>
+  <text x="470" y="306" text-anchor="middle" fill="#c89a4e" font-size="13">★</text>
+
+  <text x="40" y="296" fill="#8aa0bd" font-size="11">Iron</text>
+  <text x="40" y="310" fill="#8aa0bd" font-size="11">Monkey</text>
+  <g class="token" transform="translate(80,300)"><circle r="8.5" fill="#eafff3" stroke="#34d27f" stroke-width="2"/></g>
+
+  <g class="banner" transform="translate(792,250)">
+    <rect x="-6" y="-18" width="150" height="26" rx="13" fill="#103225" stroke="#34d27f"/>
+    <text x="68" y="0" text-anchor="middle" fill="#5ee29a" font-size="13" font-weight="700">RUN COMPLETE ✓</text>
+  </g>
+
+  <!-- RELATION: parent event → detached chain's first event -->
+  <path class="relation" d="M470 322 C470 380, 470 400, 470 432" marker-end="url(#rel)"/>
+  <text class="mono" x="486" y="392" fill="#c89a4e">RELATION · TRIGGER</text>
+  <text class="mono" x="486" y="406" fill="#6f7e96">parent → first detached event</text>
+
+  <!-- DETACHED CHAIN (also emitted) -->
+  <text class="lblb" x="40" y="470">detached chain · <tspan class="mono" fill="#8fb6d8">chainRef p1.p1.p0.d</tspan>
+    <tspan class="muted" dx="8">own chainId · fire-and-forget (parent does not wait)</tspan></text>
+  <line x1="470" y1="500" x2="600" y2="500" stroke="#33405a" stroke-width="2.5"/>
+  <circle class="nbase dn1" cx="470" cy="500" r="18"/>
+  <circle class="nbase dn2" cx="600" cy="500" r="18"/>
+  <g text-anchor="middle">
+    <text class="lbl" x="470" y="540">ticket.created</text><text class="mono" x="470" y="556">p1.p1.p0.d0.p0</text>
+    <text class="lbl" x="600" y="540">ticket.updated</text><text class="mono" x="600" y="556">p1.p1.p0.d0.p1</text>
+  </g>
+  <g class="tokenD"><circle r="7.5" fill="#eafff3" stroke="#34d27f" stroke-width="2"/></g>
+  <g class="dbanner" transform="translate(648,500)">
+    <rect x="0" y="-13" width="120" height="24" rx="12" fill="#103225" stroke="#34d27f"/>
+    <text x="60" y="3" text-anchor="middle" fill="#5ee29a" font-size="12" font-weight="700">detached ✓</text>
+  </g>
+
+  <!-- legend + chaos note -->
+  <g transform="translate(40,606)">
+    <circle cx="8" cy="-4" r="7" fill="#1f7a4d" stroke="#34d27f" stroke-width="2"/>
+    <text class="muted" x="22" y="0">resolved (event thrown &amp; arrived)</text>
+    <circle cx="232" cy="-4" r="7" class="nbase" stroke-dasharray="5 4"/>
+    <text class="muted" x="246" y="0">not yet thrown</text>
+    <line x1="360" y1="-4" x2="386" y2="-4" class="relation" style="animation:none;opacity:1"/>
+    <text class="muted" x="392" y="0">RELATION (parent → detached)</text>
+  </g>
+  <text class="muted" x="40" y="644" fill="#5a6478">Default: both chains resolve. As Chaos Monkey, Iron Monkey can withhold or malform the detached stream — then the observer's babysitter (Sympraxis) catches it as a breach. Iron Monkey only throws; the observer renders the outcome.</text>
+</svg>

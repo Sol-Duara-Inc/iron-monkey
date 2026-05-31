@@ -12,13 +12,15 @@
  *  - **descends into `detach`**: each `detach:` list is lifted into its own
  *    {@link ResolvedChain} ({@link ResolvedChain.spawns}), never merged into the
  *    spawning chain's linear sequence;
- *  - **resolves array entries as parallel branches**: an array element under
- *    `produces` becomes its own chain on the `b` axis (its own chainId), spawned
- *    like a detach. The emitter does NOT join — each chain's events are simply
- *    emitted; the receiver (Sympraxis) blocks until the branches complete;
+ *  - **resolves array entries as concurrent branches**: an array element under
+ *    `produces` becomes its own chain (role `concurrent`) on the `b` axis, with
+ *    its own chainId, spawned like a detach. The emitter emits each chain's
+ *    events identically; the difference is purely how the RECEIVER monitors it
+ *    (see {@link ResolvedChain.role}) — a `concurrent` branch is monitored under
+ *    its parent (its breach rolls up to the parent); a `detached` chain is not;
  *  - computes a positional, axis-prefixed **`treePath`** — the Sympraxis binding
  *    key. Every segment is `<axis><index>`, axis ∈ {`p` = produces, `d` =
- *    detach, `b` = parallel branch}, segments joined by `.` (e.g. `p0`,
+ *    detach, `b` = concurrent branch}, segments joined by `.` (e.g. `p0`,
  *    `p1.p0.p1`, `p1.p1.p0.d0.p0`, `p1.b0.p2`). Top-level `produces` is the `p` axis.
  *
  * Chain anchoring (mirrors `junction-box/docs/sympraxis-chain-protocol.md`,
@@ -34,8 +36,9 @@
  * doc's worked example should be corrected to match.
  */
 
-import { nounVerbFromType } from '../loaders/expression.loader.js';
-import type { ExpressionRegistry } from '../loaders/expression.loader.js';
+import { nounVerbFromType } from '../expressions/loader.js';
+import { deepMerge } from '../util/deep-merge.js';
+import type { ExpressionRegistry } from '../expressions/loader.js';
 import type { WorkflowFile } from './types.js';
 
 /** A single expected event within a resolved chain, addressed by `treePath`. */
@@ -75,12 +78,15 @@ export interface ResolvedChainEvent {
  */
 export interface ResolvedChain {
   /**
-   * `'main'` (workflow spine), `'detached'` (fire-and-forget side-chain), or
-   * `'branch'` (parallel branch). All three are emitted identically — each with
-   * its own chainId; `detached` vs `branch` differs only in whether the RECEIVER
-   * blocks on it. The emitter does not join; it just emits the events.
+   * `'main'` (workflow spine), `'detached'` (independent side-chain), or
+   * `'concurrent'` (a branch monitored under its parent). All three are emitted
+   * identically — each with its own chainId; `detached` vs `concurrent` differs
+   * only in how the RECEIVER monitors it: a `concurrent` child's breach rolls up
+   * to its parent (and the parent completes when its concurrent children do); a
+   * `detached` child is monitored independently and its breach does not roll up.
+   * The emitter does not join or block — it just emits each chain's events.
    */
-  role: 'main' | 'detached' | 'branch';
+  role: 'main' | 'detached' | 'concurrent';
   /** Binding key / anchor: `'root'` for main, `${anchorPath}.d` for detached. */
   chainRef: string;
   /** `chainRef` of the chain whose event spawned this one (detached chains only). */
@@ -130,9 +136,10 @@ interface AnyExprItem {
 type AnyProduceItem = AnyEventItem | AnyExprItem;
 /**
  * A produces/detach entry: an event/expression item, OR an array of entries —
- * a PARALLEL BRANCH. Each branch becomes its own chain (its own chainId). The
+ * a CONCURRENT BRANCH. Each branch becomes its own chain (its own chainId). The
  * emitter only produces each chain's events; the receiver (Sympraxis, which
- * holds the same YAML) is what blocks until the branches complete. No join here.
+ * holds the same YAML) monitors a concurrent branch under its parent — the
+ * branch's breach rolls up to the parent. No join on the emitter side.
  */
 type ProduceNode = AnyProduceItem | ProduceNode[];
 
@@ -162,33 +169,6 @@ interface WalkCtx {
     min_wait_ms?: number;
     content?: Record<string, unknown>;
   };
-}
-
-/** Recursively deep-merges two plain objects (override wins; arrays replace). */
-function deepMerge(
-  base: Record<string, unknown>,
-  override: Record<string, unknown>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(override)) {
-    if (
-      value !== null &&
-      value !== undefined &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      typeof result[key] === 'object' &&
-      result[key] !== null &&
-      !Array.isArray(result[key])
-    ) {
-      result[key] = deepMerge(
-        result[key] as Record<string, unknown>,
-        value as Record<string, unknown>,
-      );
-    } else if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-  return result;
 }
 
 /** Joins a path segment, omitting the leading dot at the root. */
@@ -243,10 +223,10 @@ function walk(
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
 
-    // An array entry is a PARALLEL BRANCH: its own chain on the `b` axis,
-    // spawned just like a detach. There is NO join — the emitter only produces
-    // each chain's events with its chainId; the receiver blocks until the
-    // branches complete.
+    // An array entry is a CONCURRENT BRANCH: its own chain (role `concurrent`)
+    // on the `b` axis, spawned just like a detach. No join — the emitter only
+    // produces each chain's events with its chainId; the receiver monitors a
+    // concurrent branch under its parent (its breach rolls up to the parent).
     if (Array.isArray(item)) {
       chain.spawns.push(buildBranch(item, basePath, i, chain.chainRef, ctx, inherited));
       continue;
@@ -350,9 +330,10 @@ function walk(
 }
 
 /**
- * Builds a parallel-branch chain from an array entry — same spawn mechanism as
- * {@link buildDetached}, on the `b` axis. NO join is recorded: joining is the
- * receiver's job; the emitter only produces the chain (its own chainId).
+ * Builds a concurrent-branch chain from an array entry — same spawn mechanism as
+ * {@link buildDetached}, on the `b` axis, but role `concurrent` (the receiver
+ * monitors it under its parent; its breach rolls up). No join is recorded: the
+ * emitter only produces the chain (its own chainId).
  *
  * @param branchItems   - The branch's own ordered items (a sequential p-run).
  * @param anchorPath    - treePath of the forking event (whose `produces` holds
@@ -370,7 +351,7 @@ function buildBranch(
 ): ResolvedChain {
   const branchPath = appendSeg(anchorPath, `b${index}`);
   const br: ResolvedChain = {
-    role: 'branch',
+    role: 'concurrent',
     chainRef: branchPath,
     parentChainRef,
     anchorPath,

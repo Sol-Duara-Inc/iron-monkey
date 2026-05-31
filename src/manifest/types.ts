@@ -76,6 +76,12 @@ export interface ManifestEvent {
    * used by injections to target specific events by name.
    */
   workflowEventId: string;
+  /**
+   * Positional, axis-prefixed binding key from the chain tree (e.g. `'p0'`,
+   * `'p1.p1.p0'`, `'p1.b0.p2'`). Stable across producer/observer; the Sympraxis
+   * RELATION/registry binding key. See {@link module:workflow/chain-tree}.
+   */
+  treePath?: string;
   /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.1.0`. */
   type: string;
   /** Pipeline/stage identifier from the workflow `pipeline` field. */
@@ -173,6 +179,42 @@ export interface CDEventPayload {
 }
 
 /**
+ * A pre-allocated detached or concurrent-branch sub-chain within a manifest.
+ * Each sub-chain is its own Sympraxis chain (its own {@link chainId}), spawned
+ * by an event in a parent chain. The spawning event carries a `RELATION` link
+ * to this chain's first event; this chain's events carry their own internal
+ * `PATH` links and an `END` link on the last event.
+ *
+ * The role determines how the RECEIVER monitors the chain (it does NOT change
+ * how the emitter throws it — both are emitted identically):
+ * - `'detached'`   — monitored independently; its breach does NOT roll up to
+ *   the parent.
+ * - `'concurrent'` — monitored under its parent; its breach ROLLS UP to the
+ *   parent (and the parent completes when its concurrent children complete).
+ *   The emitter does not join or block — joining/rollup is the receiver's job.
+ */
+export interface DetachedManifestChain {
+  /** How the receiver monitors this chain: `'detached'` (independent) or `'concurrent'` (breach rolls up to parent). */
+  role: 'detached' | 'concurrent';
+  /** Positional binding key (chain anchor) from the chain tree, e.g. `'p1.p1.p0.d'`, `'p1.b0'`. */
+  chainRef: string;
+  /** This chain's own Sympraxis chain ID, stamped on every one of its events. */
+  chainId: string;
+  /** How this chain's `chainId` was obtained (Slice 1: always `'fallback'`; acquisition is Slice 2). */
+  chainIdSource: 'conduit' | 'bus' | 'fallback';
+  /** `chainId` of the chain whose event spawned this one. */
+  parentChainId: string;
+  /** `chainRef` of the spawning chain. */
+  parentChainRef: string;
+  /** `eventId` (`context.id`) of the spawning event in the parent chain — the RELATION source. */
+  parentEventId: string;
+  /** Relation kind from the spawning event to this chain's first event (default `'TRIGGER'`). */
+  linkKind: string;
+  /** This chain's own ordered events (internal `PATH` links + an `END` link on the last). */
+  events: ManifestEvent[];
+}
+
+/**
  * The top-level manifest produced by {@link buildManifest}. Captures all run
  * metadata and the ordered, pre-allocated sequence of events to be emitted.
  */
@@ -194,6 +236,13 @@ export interface Manifest {
   chainIdSource: 'conduit' | 'bus' | 'fallback';
   /** ISO 8601 timestamp of when the manifest was built. */
   createdAt: string;
-  /** Ordered list of CDEvents to emit, with timing and chain-link wiring resolved. */
+  /** Ordered list of CDEvents to emit on the MAIN chain, with timing and chain-link wiring resolved. */
   events: ManifestEvent[];
+  /**
+   * Detached / concurrent-branch sub-chains spawned by events in the main (or a
+   * nested) chain, flattened across all nesting levels. Each is its own chain
+   * with its own `chainId`; parentage is expressed via `parentChainId`. Absent
+   * when the workflow declares no `detach` / concurrent branches.
+   */
+  detachedChains?: DetachedManifestChain[];
 }

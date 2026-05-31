@@ -441,7 +441,7 @@ The `content` field deep-merges at each level; all other fields are simple repla
 
 ### Detached sub-chains
 
-An event in an expression may declare a `detach:` list of events or sub-expressions. The detached chain is emitted as a side-chain observable to downstream consumers, but the main chain does not wait on it — the next event in the parent sequence proceeds immediately. This is used to model patterns like async security scans, audit notifications, and rollback chains that must be observable but must not block the critical path.
+An event may declare a `detach:` list of events or sub-expressions. A detached list models async security scans, audit notifications, and rollback chains that must be observable but must not block the critical path.
 
 ```yaml
 produces:
@@ -451,6 +451,44 @@ produces:
   - expression: verify
   - event: dev.cdevents.service.published.0.5.1
 ```
+
+A detached list is lifted out of the main linear sequence into **its own chain**. In the built manifest it appears under `detachedChains[]`, each entry carrying:
+
+- its own `chainId` (distinct from the main chain — the unit the observer babysits independently),
+- its own internal `PATH` links plus an `END` link on its last event, and
+- a `RELATION` link **from the spawning event** in the parent chain **to the detached chain's first event** (`linkKind: TRIGGER`).
+
+The main chain does not wait on a detached chain — the next event in the parent sequence proceeds immediately. At emit time each sub-chain is thrown **fire-and-forget**, anchored at the instant its spawning event is reached (a sub-chain can have no timestamp before the event that triggers it); the run drains all sub-chains before exiting.
+
+### Concurrent branches
+
+Where a detached chain is monitored independently, a **concurrent branch** is monitored _under its parent_: write a nested list (array-of-arrays) under `produces` and each inner list becomes its own chain, run in parallel with its siblings.
+
+```yaml
+produces:
+  - event: dev.cdevents.testsuiterun.started.0.5.1
+    produces:
+      - - event: dev.cdevents.testcaserun.started.0.5.1   # branch 0 — own chainId
+        - event: dev.cdevents.testcaserun.finished.0.5.1
+      - - event: dev.cdevents.testcaserun.started.0.5.1   # branch 1 — own chainId
+        - event: dev.cdevents.testcaserun.finished.0.5.1
+  - event: dev.cdevents.testsuiterun.finished.0.5.1
+```
+
+Branches are modelled identically to detached chains in the manifest (own `chainId`, `RELATION` from the spawning event, internal `PATH`/`END`) — they appear under `detachedChains[]` with `role: "concurrent"`. The difference is **how the receiver monitors them, expressed as breach rollup**, and lives entirely on the receiver — not the emitter:
+
+- a **concurrent** branch is monitored under its parent: its breach **rolls up** to the parent (and the parent reaches `complete` only when its concurrent children do — the quiet side of the same rollup);
+- a **detached** chain is monitored independently: its breach does **not** roll up.
+
+Iron Monkey does not join, block, or roll anything up — it emits each branch's events with its own `chainId`; the event is the output. Sibling branches with identical event sequences (e.g. parallel test-case runs) are disambiguated by their distinct `chainId`s, not by content — so the duplicate `testcaserun.*` types never collide on a single cursor (the bug the flat single-chain form caused).
+
+> Binding key: every manifest event carries an axis-prefixed `treePath` (`p` = produces, `d` = detach, `b` = concurrent branch — e.g. `p1.b0.p2`). It is the stable key both producer and observer use to line up "the chain I mean." See `src/workflow/chain-tree.ts`.
+
+#### Chain IDs for sub-chains
+
+Every chain — main, detached, and branch — gets its **own** chain ID, acquired through the same cascade as the main chain: when a Conduit service is configured (and `--no-conduit` is not set) the ID is minted by Conduit; otherwise a local fallback URN is generated so a run is never blocked. Each sub-chain is registered under the name `<workflow>:<chainRef>` so it is individually addressable, and the `chainIdSource` (`conduit` / `bus` / `fallback`) is recorded on every chain in the manifest.
+
+> Sub-chains are acquired one call per chain today. The Sympraxis protocol defines a single batch register (`POST /api/runs` with the whole run graph → a `chainRef`→`chainId` map); swapping it in changes only `acquireChainIds` in `src/chain/acquire.ts`.
 
 ### Adding a new expression bundle
 
@@ -515,6 +553,8 @@ See [docs/INJECTION.md](docs/INJECTION.md) for full reference. Quick examples:
 ```
 
 Event IDs used in `--inject` specs are the `workflowEventId` values visible in the manifest (e.g., from `--manifest-out`). For events without an explicit subject ID, the ID is derived from the event's `noun.verb` (e.g., `build-started`, `artifact-published`). Bundle events with explicit IDs use those.
+
+Injections can target events on **any** chain — the main chain or any detached / concurrent-branch sub-chain. This is the Chaos Monkey move for parallel streams: withhold (`missing`) or stall (`late`) a detached chain's event and the receiver's babysitter should catch a chain that never started or hung. When the same `workflowEventId` appears on more than one chain, target the exact event by its `treePath` instead (e.g. `--inject missing:p3.p1.p0.d0.p0`); structural injections (`out-of-order`, `duplicate`) act within the chain that owns the targeted event.
 
 ---
 

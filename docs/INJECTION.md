@@ -10,6 +10,19 @@ Iron Monkey supports five injection modes via the repeatable `--inject` flag.
 
 `<event-id>` is the `workflowEventId` visible in the manifest (use `--manifest-out` or `dry-run` to see them). IDs are derived from the event's `noun.verb` — for example, `dev.cdevents.build.started.0.5.1` becomes `build-started`. If the same noun.verb appears more than once, collisions are resolved with a numeric suffix (`pipelinerun-started`, `pipelinerun-started-1`, …). Expression bundle events with an explicit `id:` field use that ID directly (e.g. `deployment-started`, `deployment-finished`).
 
+## Targeting sub-chains
+
+Injections may target events on **any** chain — the main chain or any detached / concurrent-branch sub-chain — so you can deliberately break a parallel stream (the Chaos Monkey move: withhold or stall a detached chain and watch the receiver's babysitter flag a chain that never started or hung). The `<event-id>` is matched against `workflowEventId` first, then `treePath`.
+
+Because each chain allocates its own `workflowEventId`s, the same id can appear on more than one chain. To target an event unambiguously, use its `treePath` (the axis-prefixed binding key, e.g. `p3.p1.p0.d0.p0`) instead:
+
+```bash
+# withhold the first event of a detached chain
+iron-monkey run demo.yaml --inject missing:p3.p1.p0.d0.p0
+```
+
+Structural injections (`out-of-order`, `duplicate`) act within the chain that owns the targeted event — they reorder/duplicate inside that sub-chain, not the main sequence.
+
 ## Modes
 
 ### missing
@@ -105,7 +118,7 @@ iron-monkey run demo.yaml \
 
 ## Auditing
 
-Every injection applied is recorded in the manifest under `events[].injections`. Use `--manifest-out` to save the manifest and inspect what actually happened:
+Every injection applied is recorded on the targeted event's `injections` array — under `events[].injections` for the main chain, or `detachedChains[].events[].injections` for a sub-chain. Use `--manifest-out` to save the manifest and inspect what actually happened:
 
 ```bash
 iron-monkey run demo.yaml \

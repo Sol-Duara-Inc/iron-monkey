@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 540" font-family="ui-sans-serif, system-ui, sans-serif">
+  <title>Parallel-that-blocks: requested vs. what the code builds</title>
+  <desc>Verification diagram. chain-tree.ts implements only produces (sequential) and detach (non-blocking). A fork-join / parallel-blocking test run is NOT one of its relations, so it degrades to a sequential produces chain.</desc>
+  <style>
+    .bg{fill:#0f1420}.title{fill:#e8eef7;font-size:21px;font-weight:700}.sub{fill:#8aa0bd;font-size:13px}
+    .h{fill:#e8eef7;font-size:13px;font-weight:700}.lbl{fill:#cdd9e8;font-size:11px}
+    .mono{fill:#8fb6d8;font-size:10px;font-family:ui-monospace,Menlo,monospace}
+    .muted{fill:#8aa0bd;font-size:11px}
+  </style>
+  <rect class="bg" width="980" height="540"/>
+  <text class="title" x="40" y="44">Parallel that <tspan fill="#e0934a">blocks</tspan> — requested vs. coded</text>
+  <text class="sub" x="40" y="68">Verification: chain-tree.ts has two relations only — produces (sequential) + detach (non-blocking). Neither is fork-join.</text>
+
+  <!-- Panel 1: REQUESTED fork-join -->
+  <rect x="40" y="92" width="900" height="160" rx="10" fill="#1a1410" stroke="#5c4326"/>
+  <text class="h" x="58" y="118" fill="#e0934a">① REQUESTED — fork–join: run 3 tests at once, parent BLOCKS until all complete</text>
+
+  <!-- start -->
+  <rect x="64" y="150" width="118" height="34" rx="6" fill="#241a12" stroke="#7a5a30"/>
+  <text class="lbl" x="123" y="171" text-anchor="middle">testsuite.started</text>
+  <!-- fork lines -->
+  <path d="M182 167 C220 167,220 142,250 142" fill="none" stroke="#7a5a30" stroke-width="2" stroke-dasharray="4 3"/>
+  <path d="M182 167 L250 167" stroke="#7a5a30" stroke-width="2" stroke-dasharray="4 3"/>
+  <path d="M182 167 C220 167,220 192,250 192" fill="none" stroke="#7a5a30" stroke-width="2" stroke-dasharray="4 3"/>
+  <!-- 3 concurrent tests -->
+  <rect x="250" y="128" width="120" height="28" rx="6" fill="#241a12" stroke="#7a5a30"/><text class="lbl" x="310" y="146" text-anchor="middle">testcase.run #0</text>
+  <rect x="250" y="153" width="120" height="28" rx="6" fill="#241a12" stroke="#7a5a30"/><text class="lbl" x="310" y="171" text-anchor="middle">testcase.run #1</text>
+  <rect x="250" y="178" width="120" height="28" rx="6" fill="#241a12" stroke="#7a5a30"/><text class="lbl" x="310" y="196" text-anchor="middle">testcase.run #2</text>
+  <!-- join -->
+  <path d="M370 142 C400 142,400 167,430 167" fill="none" stroke="#7a5a30" stroke-width="2" stroke-dasharray="4 3"/>
+  <path d="M370 167 L430 167" stroke="#7a5a30" stroke-width="2" stroke-dasharray="4 3"/>
+  <path d="M370 192 C400 192,400 167,430 167" fill="none" stroke="#7a5a30" stroke-width="2" stroke-dasharray="4 3"/>
+  <rect x="430" y="150" width="14" height="34" rx="3" fill="#e0934a"/>
+  <text class="mono" x="437" y="206" text-anchor="middle" fill="#e0934a">join</text>
+  <path d="M444 167 L470 167" stroke="#7a5a30" stroke-width="2" stroke-dasharray="4 3"/>
+  <rect x="470" y="150" width="130" height="34" rx="6" fill="#241a12" stroke="#7a5a30"/>
+  <text class="lbl" x="535" y="171" text-anchor="middle">testsuite.finished</text>
+  <text class="muted" x="618" y="164" fill="#e0934a">parent waits for the join</text>
+  <text class="muted" x="618" y="182" fill="#9a7a4a">→ NOT a CDrus relation</text>
+
+  <!-- Panel 2: CODED sequential -->
+  <rect x="40" y="270" width="900" height="150" rx="10" fill="#101a14" stroke="#1f5c3a"/>
+  <text class="h" x="58" y="296" fill="#5ee29a">② CODED — chain-tree.ts builds ONE sequential chain (chainRef root)</text>
+
+  <line x1="120" y1="345" x2="800" y2="345" stroke="#244a36" stroke-width="3"/>
+  <g text-anchor="middle">
+    <circle cx="120" cy="345" r="16" fill="#13261c" stroke="#34d27f" stroke-width="2"/><text class="lbl" x="120" y="376">ts.started</text><text class="mono" x="120" y="392">p1</text>
+    <circle cx="290" cy="345" r="16" fill="#13261c" stroke="#34d27f" stroke-width="2"/><text class="lbl" x="290" y="376">tc.run #0</text><text class="mono" x="290" y="392">p1.p0</text>
+    <circle cx="460" cy="345" r="16" fill="#13261c" stroke="#34d27f" stroke-width="2"/><text class="lbl" x="460" y="376">tc.run #1</text><text class="mono" x="460" y="392">p1.p1</text>
+    <circle cx="630" cy="345" r="16" fill="#13261c" stroke="#34d27f" stroke-width="2"/><text class="lbl" x="630" y="376">tc.run #2</text><text class="mono" x="630" y="392">p1.p2</text>
+    <circle cx="800" cy="345" r="16" fill="#13261c" stroke="#34d27f" stroke-width="2"/><text class="lbl" x="800" y="376">ts.finished</text><text class="mono" x="800" y="392">p2</text>
+  </g>
+  <text class="muted" x="120" y="322">3 tests = produces siblings → sequential &amp; ordered. Iron Monkey throws them one after another; it never awaits.</text>
+
+  <!-- bottom banner -->
+  <text class="muted" x="40" y="452" fill="#cdd9e8" font-size="12" font-weight="600">Finding:</text>
+  <text class="muted" x="100" y="452">CDrus + chain-tree.ts = produces (sequential) + detach (non-blocking). There is NO fork-join / parallel-blocking relation.</text>
+  <text class="muted" x="40" y="474">The `concurrent` emit flag (manifest/types.ts, runner.ts) is hardcoded false in builder.ts:191, unwired to the grammar, and means</text>
+  <text class="muted" x="40" y="492">"emit at the same instant" — not a blocking join. "Block until complete" is the system-under-test's behaviour, not Iron Monkey's.</text>
+  <text class="muted" x="40" y="518" fill="#5a6478" font-size="10.5">If parallel-blocking test runs are a real requirement, that's a NEW grammar relation (a fork-join axis) — not in the current protocol; a design decision, not a code gap to patch silently.</text>
+</svg>

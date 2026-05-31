@@ -13,7 +13,7 @@ const mockBus = vi.hoisted(() => ({
 
 // ── module mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('../../src/loaders/config.loader.js', () => ({
+vi.mock('../../src/config/loader.js', () => ({
   loadConfig: vi.fn(),
   resolveBusName: vi.fn().mockReturnValue('default'),
 }));
@@ -23,7 +23,7 @@ vi.mock('../../src/workflow/parser.js', () => ({
   resolveProduces: vi.fn().mockReturnValue([]),
 }));
 
-vi.mock('../../src/loaders/expression.loader.js', () => ({
+vi.mock('../../src/expressions/loader.js', () => ({
   loadExpressionRegistry: vi.fn().mockReturnValue({ resolve: vi.fn(), list: vi.fn() }),
 }));
 
@@ -51,7 +51,7 @@ vi.mock('../../src/bus/interface.js', () => ({
 
 import { runWorkflow, runWorkflows } from '../../src/emitter/runner.js';
 import { FileWorkflowSource, WorkflowSource } from '../../src/workflow/source.js';
-import { loadConfig, resolveBusName } from '../../src/loaders/config.loader.js';
+import { loadConfig, resolveBusName } from '../../src/config/loader.js';
 import { validateWorkflow } from '../../src/workflow/parser.js';
 import { buildManifest } from '../../src/manifest/builder.js';
 import { applyInjections } from '../../src/injection/apply.js';

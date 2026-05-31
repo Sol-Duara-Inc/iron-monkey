@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://cdrus.dev/schemas/0.2.0/expression.schema.json",
+  "$id": "https://cdrus.dev/schemas/0.3.0/expression.schema.json",
   "title": "CDrus Expression",
   "description": "Defines an Expression in the CDrus language. An Expression specifies an intent — build, deploy, verify, and so on — by declaring the CDEvents that together fulfill that intent. Every Expression is bound to an identity tuple: (group, author, expression). The identity is the commitment; Expressions do not carry versions. A change to the boundary semantics of an Expression requires a new identity (a new expression name, or transfer to a different author or group). Internal refinements that preserve the boundary contract retain the same identity. Expressions compose: a composite Expression references other CDrus Expressions as constituents by identity. Per-event field requirements live in the CDEvent schemas themselves (using one-way inheritance for vendor-specific extensions), not in the Expression.",
   "type": "object",
@@ -32,20 +32,30 @@
     "produces": {
       "type": "array",
       "minItems": 1,
-      "description": "Ordered list of CDEvents and/or sub-Expressions that together fulfill this CDrus Expression. Order is significant: events fire depth-first in the order specified — a parent event with nested produces fires, all its descendants fire (recursively), then the parent's next sibling fires. Sub-Expressions are expanded recursively at the position they appear, resolved by identity.",
+      "description": "Ordered list of CDEvents and/or sub-Expressions that together fulfill this CDrus Expression. Order is significant: events fire depth-first in the order specified — a parent event with nested produces fires, all its descendants fire (recursively), then the parent's next sibling fires. Sub-Expressions are expanded recursively at the position they appear, resolved by identity. A list element may also be a concurrent branch (a nested list): sibling branches run concurrently and the parent does not complete until every branch has completed.",
       "items": { "$ref": "#/definitions/produce_item" }
     }
   },
   "definitions": {
     "produce_item": {
-      "description": "A produce item is either a CDEvent (terminal, optionally with nested produces and/or detach lists) or a reference to another CDrus Expression by identity (composition, no nesting). The two forms are mutually exclusive within a single item.",
-      "oneOf": [{ "$ref": "#/definitions/event_item" }, { "$ref": "#/definitions/expression_item" }]
+      "description": "A produce item is one of three mutually exclusive forms within a single item: (1) a CDEvent (terminal, optionally with nested produces and/or detach lists); (2) a reference to another CDrus Expression by identity (composition, no nesting); or (3) a concurrent branch — a nested list of produce items that runs in PARALLEL with its sibling branches in the same list (see 'concurrent_branch'). The three forms are structurally distinct: an event item and an expression item are objects; a concurrent branch is an array.",
+      "oneOf": [
+        { "$ref": "#/definitions/event_item" },
+        { "$ref": "#/definitions/expression_item" },
+        { "$ref": "#/definitions/concurrent_branch" }
+      ]
+    },
+    "concurrent_branch": {
+      "type": "array",
+      "minItems": 1,
+      "description": "A concurrent branch: an ordered sub-sequence of produce items (events, sub-Expressions, or further nested branches) written as a nested YAML list. Like a detached branch (an event's `detach` entry), a concurrent branch is its own chain with its own chainId, linked to the spawning event by a RELATION link; the only difference is one bit — the parent WAITS on a concurrent branch. Sibling concurrent branches run concurrently; their events are the output — there is no join, merge, or synthetic join event — and the parent chain does not reach COMPLETE until every concurrent branch has completed (a branch that never completes leaves the parent incomplete). Sibling concurrent branches whose event sequences are identical are legal and expected (e.g. parallel test-case runs under one suite) and are disambiguated by their distinct chainIds, not by content.",
+      "items": { "$ref": "#/definitions/produce_item" }
     },
     "event_item": {
       "type": "object",
       "required": ["event"],
       "additionalProperties": false,
-      "description": "An event item references a CDEvent type to emit. It may carry a nested produces list (events triggered by this event, fired in depth-first order before the next sibling) and/or a detach list (independent chains spawned by this event, with their own chainIds and RELATION links back; the parent does not wait for detached chains to complete).",
+      "description": "An event item references a CDEvent type to emit. It may carry a nested produces list (events triggered by this event, fired in depth-first order before the next sibling) and/or a detach list (detached branches spawned by this event, each with its own chainId and RELATION link back; the parent does not wait for them). A produces or detach entry may itself be a concurrent branch (a nested list) — the awaited parallel counterpart of a detached branch.",
       "properties": {
         "event": {
           "type": "string",
@@ -67,7 +77,7 @@
         "detach": {
           "type": "array",
           "minItems": 1,
-          "description": "Independent chains spawned by this event. Each detached item gets its own chainId at run time, with a RELATION link from the parent event to the first event of the detached chain. The parent does not wait for detached chains to complete; its next sibling fires immediately. Detached chains are declared (not implicit) so consumers can act as a babysitter — tracking expected detached chains, raising alerts if they fail to start or hang. Without an explicit detach declaration, an unrelated chain spawned in the runtime is unobservable to the system.",
+          "description": "Detached branches spawned by this event. Each gets its own chainId at run time, with a RELATION link from the parent event to the first event of the branch. The parent does NOT wait for a detached branch to complete; its next sibling fires immediately. Detached branches are declared (not implicit) so consumers can act as a babysitter — tracking expected branches, raising alerts if they fail to start or hang. Without an explicit detach declaration, an unrelated chain spawned in the runtime is unobservable to the system. For the awaited counterpart (the parent blocks until the branch completes), write a concurrent branch — a nested list — instead.",
           "items": { "$ref": "#/definitions/produce_item" }
         }
       }

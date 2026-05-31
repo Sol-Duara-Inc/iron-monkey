@@ -10,9 +10,10 @@ export function dryRunCommand(): Command {
   addCommonFlags(cmd);
 
   cmd.action(async (workflowPath: string, options: Record<string, unknown>) => {
-    const { validateWorkflow, resolveProduces } = await import('../../workflow/parser.js');
-    const { loadConfig, resolveBusName } = await import('../../loaders/config.loader.js');
-    const { loadExpressionRegistry } = await import('../../loaders/expression.loader.js');
+    const { validateWorkflow } = await import('../../workflow/parser.js');
+    const { resolveChainTree } = await import('../../workflow/chain-tree.js');
+    const { loadConfig, resolveBusName } = await import('../../config/loader.js');
+    const { loadExpressionRegistry } = await import('../../expressions/loader.js');
     const { buildManifest } = await import('../../manifest/builder.js');
     const { parseInjections } = await import('../../injection/parser.js');
     const { applyInjections } = await import('../../injection/apply.js');
@@ -31,11 +32,11 @@ export function dryRunCommand(): Command {
 
     const workflow = await validateWorkflow(workflowPath);
     const registry = loadExpressionRegistry();
-    const events = resolveProduces(workflow, registry);
+    const mainChain = resolveChainTree(workflow, registry);
 
     const interval = options.interval as number | undefined;
     if (typeof interval === 'number' && interval >= 0) {
-      for (const e of events) {
+      for (const e of mainChain.events) {
         e.min_wait_ms = interval;
         e.timeout_ms = interval;
       }
@@ -46,7 +47,7 @@ export function dryRunCommand(): Command {
 
     const manifest = await buildManifest(
       { id: workflow.workflow.id, name: workflow.workflow.name },
-      events,
+      mainChain,
       config,
       {
         noConduit: true,

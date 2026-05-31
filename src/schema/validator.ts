@@ -6,16 +6,10 @@
  * `{ type, target }` link shape rather than the full 0.5.1 specification.
  */
 
-import Ajv2020 from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
-import { loadSchemasFromDir, getDefaultSchemasDir } from '../loaders/schema.loader.js';
+import { createAjv2020 } from '../util/ajv.js';
+import { loadSchemasFromDir, getDefaultSchemasDir } from './loader.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const AjvConstructor = (Ajv2020 as any).default ?? Ajv2020;
-const ajv = new AjvConstructor({ allErrors: true, strict: false });
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const addFormatsFunc = (addFormats as any).default ?? addFormats;
-addFormatsFunc(ajv);
+const ajv = createAjv2020({ formats: true, strict: false });
 
 // The CDEvent schemas reference this via $ref; define it here so AJV resolves
 // it. Iron Monkey emits links in the CDEvents 0.6.0 embedded-link shape — a
