@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
+import { getLogger } from '../../src/logger/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DIR = path.resolve(__dirname, '../../expressions');
@@ -143,20 +144,50 @@ describe('loadExpressionRegistry — error cases', () => {
     );
   });
 
-  it('fails with clear error on missing required fields in bundle', async () => {
+  it('skips a schema-invalid bundle file with a warning instead of throwing', async () => {
     const dir = await makeTmpDir();
     await writeFile(
       path.join(dir, 'bad.yaml'),
       `expression:\n  name: bad\n  version: 1.0.0\n`,
       'utf-8',
     );
-    expect(() => loadExpressionRegistry(dir)).toThrow('schema validation failed');
+    const warn = vi.spyOn(getLogger(), 'warn').mockImplementation(() => {});
+    let registry!: ReturnType<typeof loadExpressionRegistry>;
+    expect(() => {
+      registry = loadExpressionRegistry(dir);
+    }).not.toThrow();
+    expect(registry.list()).toEqual([]); // the only file was skipped
+    expect(warn).toHaveBeenCalled(); // fail-loud in logs
+    warn.mockRestore();
   });
 
-  it('fails with clear error on malformed YAML bundle', async () => {
+  it('skips a malformed-YAML bundle file with a warning instead of throwing', async () => {
     const dir = await makeTmpDir();
     await writeFile(path.join(dir, 'broken.yaml'), `group: [invalid: yaml: {\n`, 'utf-8');
-    expect(() => loadExpressionRegistry(dir)).toThrow('Failed to parse expression bundle YAML');
+    const warn = vi.spyOn(getLogger(), 'warn').mockImplementation(() => {});
+    expect(() => loadExpressionRegistry(dir)).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('loads the good bundles even when one file in the directory is invalid', async () => {
+    // The resilience guarantee: one stray/malformed file must not break runs
+    // that depend only on the good bundles.
+    const dir = await makeTmpDir();
+    await writeFile(path.join(dir, 'good.yaml'), minimalBundle('good-one'), 'utf-8');
+    await writeFile(path.join(dir, 'bad.yaml'), `expression:\n  name: bad\n`, 'utf-8');
+
+    const warn = vi.spyOn(getLogger(), 'warn').mockImplementation(() => {});
+    let registry!: ReturnType<typeof loadExpressionRegistry>;
+    expect(() => {
+      registry = loadExpressionRegistry(dir);
+    }).not.toThrow();
+    warn.mockRestore();
+
+    // The good bundle is indexed and resolvable; the bad one is absent.
+    expect(registry.list().map((b) => b.name)).toEqual(['good-one']);
+    expect(registry.resolve('good-one').expression).toBe('good-one');
+    expect(() => registry.resolve('bad')).toThrow("No expression bundle found for 'bad'");
   });
 
   it('accepts duplicate noun.verb events without explicit ids', async () => {
