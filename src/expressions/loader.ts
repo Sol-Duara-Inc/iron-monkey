@@ -14,6 +14,7 @@ import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 import { createAjv } from '../util/ajv.js';
+import { getLogger } from '../logger/index.js';
 import { expressionBundleSchema } from './schema.js';
 import type { ExpressionBundle } from './types.js';
 
@@ -166,8 +167,14 @@ interface IndexedBundle {
 /**
  * Scans a directory of expression bundle YAML files, validates and indexes
  * them, and returns a resolver registry. All `.yaml` / `.yml` files are
- * considered; identity is read from the YAML content. Files that fail
- * validation throw immediately.
+ * considered; identity is read from the YAML content.
+ *
+ * Per-file resilience: an individual file that fails to read, parse, or
+ * validate is **skipped with a warning**, not fatal — one stray or malformed
+ * bundle must never break an entire run. The registry is built from the files
+ * that load cleanly. (`loadBundle` itself stays strict and throws; only this
+ * registry layer is tolerant.) A workflow that references a skipped expression
+ * still fails clearly at resolution time.
  *
  * The directory is resolved in this order:
  * 1. `IRON_MONKEY_EXPRESSIONS` environment variable.
@@ -175,11 +182,11 @@ interface IndexedBundle {
  * 3. The package's bundled `expressions/` directory.
  *
  * @param dir - Optional path to the expressions directory.
- * @returns A fully populated {@link ExpressionRegistry}.
- * @throws {Error} If any discovered bundle fails validation.
+ * @returns A registry populated from every bundle that loaded cleanly.
  */
 export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
   const expressionsDir = process.env.IRON_MONKEY_EXPRESSIONS ?? dir ?? defaultExpressionsDir();
+  const logger = getLogger();
 
   let files: string[] = [];
   try {
@@ -189,11 +196,29 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
   }
 
   const indexed: IndexedBundle[] = [];
+  let skipped = 0;
 
   for (const file of files) {
     const filePath = join(expressionsDir, file);
-    const bundle = loadBundle(filePath);
-    indexed.push({ name: bundle.expression, group: bundle.group, author: bundle.author, bundle });
+    try {
+      const bundle = loadBundle(filePath);
+      indexed.push({ name: bundle.expression, group: bundle.group, author: bundle.author, bundle });
+    } catch (err) {
+      // Skip this one file but keep loading the rest — fail-loud in logs,
+      // fail-soft for the run.
+      skipped += 1;
+      logger.warn(
+        { file: filePath, err: (err as Error).message },
+        'skipping invalid expression bundle',
+      );
+    }
+  }
+
+  if (skipped > 0) {
+    logger.warn(
+      { indexed: indexed.length, files: files.length, skipped },
+      `indexed ${indexed.length} expression(s) from ${files.length} file(s) (${skipped} skipped)`,
+    );
   }
 
   return {
