@@ -134,3 +134,139 @@ describe('workflow schema — concurrent branches', () => {
     expect(validateWf(wf)).toBe(false);
   });
 });
+
+// ── `as` anchor + canonical timing ──────────────────────────────────────────
+// Guards two cross-repo contracts with Junction Box:
+//   1. IM must ACCEPT the `as:` anchor field (§4.9) so JB's `@anchor` selectors
+//      can bind to a named event. IM never consumes `as` (binding is entirely
+//      consumer-side); it only has to not reject the bundle/workflow. If a
+//      future overlay edit re-tightens `additionalProperties`, this fails.
+//   2. Timing (`timeout_ms` / `min_wait_ms`) is canonical and typed `number`.
+//      An earlier IM overlay re-declared it as `integer`, which rejected
+//      fractional millisecond values the canonical schema (and JB) accept,
+//      silently splitting the two schemas. These tests lock the `number` type.
+const BUILD_STARTED = 'dev.cdevents.build.started.0.5.1';
+
+describe('schema — `as` anchor field (§4.9, JB @anchor lockstep)', () => {
+  it('workflow event_item accepts `as`', () => {
+    const wf = {
+      workflow: {
+        id: 'wf',
+        name: 'wf',
+        cdrus: { version: 1 },
+        produces: [{ event: BUILD_STARTED, as: 'kickoff' }],
+      },
+    };
+    expect(validateWf(wf), JSON.stringify(validateWf.errors)).toBe(true);
+  });
+
+  it('expression bundle event_item accepts `as`', () => {
+    const bundle = {
+      group: 'sol-duara',
+      author: 'dsanyika',
+      expression: 'anchored',
+      produces: [{ event: BUILD_STARTED, as: 'build-kicked-off' }],
+    };
+    expect(validateBundle(bundle), JSON.stringify(validateBundle.errors)).toBe(true);
+  });
+
+  it('accepts `as` on events nested inside detach and concurrent branches', () => {
+    const wf = {
+      workflow: {
+        id: 'wf',
+        name: 'wf',
+        cdrus: { version: 1 },
+        produces: [
+          {
+            event: 'dev.cdevents.taskrun.started.0.5.1',
+            as: 'fanout-start',
+            produces: [
+              [{ event: TC_STARTED, as: 'branch-a-event' }],
+              [{ event: TC_FINISHED, as: 'branch-b-event' }],
+            ],
+            detach: [{ event: 'dev.cdevents.repository.created.0.5.1', as: 'detached-side-effect' }],
+          },
+        ],
+      },
+    };
+    expect(validateWf(wf), JSON.stringify(validateWf.errors)).toBe(true);
+  });
+
+  it('still rejects an unknown event field (additionalProperties:false preserved)', () => {
+    const wf = {
+      workflow: {
+        id: 'wf',
+        name: 'wf',
+        cdrus: { version: 1 },
+        produces: [{ event: BUILD_STARTED, nonsense: true }],
+      },
+    };
+    expect(validateWf(wf)).toBe(false);
+  });
+});
+
+describe('schema — canonical timing is `number` (not `integer`)', () => {
+  it('workflow accepts fractional timeout_ms / min_wait_ms on an event', () => {
+    const wf = {
+      workflow: {
+        id: 'wf',
+        name: 'wf',
+        cdrus: { version: 1 },
+        produces: [{ event: BUILD_STARTED, timeout_ms: 100.5, min_wait_ms: 0.25 }],
+      },
+    };
+    expect(validateWf(wf), JSON.stringify(validateWf.errors)).toBe(true);
+  });
+
+  it('workflow accepts fractional timing on an expression ref and a per-event override', () => {
+    const wf = {
+      workflow: {
+        id: 'wf',
+        name: 'wf',
+        cdrus: { version: 1 },
+        produces: [
+          {
+            expression: 'build',
+            timeout_ms: 1500.75,
+            overrides: { 'build.finished': { timeout_ms: 250.5 } },
+          },
+        ],
+      },
+    };
+    expect(validateWf(wf), JSON.stringify(validateWf.errors)).toBe(true);
+  });
+
+  it('expression bundle accepts fractional timeout_ms on an event', () => {
+    const bundle = {
+      group: 'sol-duara',
+      author: 'dsanyika',
+      expression: 'timed',
+      produces: [{ event: BUILD_STARTED, timeout_ms: 100.5 }],
+    };
+    expect(validateBundle(bundle), JSON.stringify(validateBundle.errors)).toBe(true);
+  });
+
+  it('still accepts integer timing (no regression for whole-millisecond values)', () => {
+    const wf = {
+      workflow: {
+        id: 'wf',
+        name: 'wf',
+        cdrus: { version: 1 },
+        produces: [{ event: BUILD_STARTED, timeout_ms: 300000, min_wait_ms: 100 }],
+      },
+    };
+    expect(validateWf(wf)).toBe(true);
+  });
+
+  it('still rejects negative timing (minimum:0 preserved)', () => {
+    const wf = {
+      workflow: {
+        id: 'wf',
+        name: 'wf',
+        cdrus: { version: 1 },
+        produces: [{ event: BUILD_STARTED, timeout_ms: -1 }],
+      },
+    };
+    expect(validateWf(wf)).toBe(false);
+  });
+});
