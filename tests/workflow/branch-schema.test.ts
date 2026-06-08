@@ -184,7 +184,9 @@ describe('schema — `as` anchor field (§4.9, JB @anchor lockstep)', () => {
               [{ event: TC_STARTED, as: 'branch-a-event' }],
               [{ event: TC_FINISHED, as: 'branch-b-event' }],
             ],
-            detach: [{ event: 'dev.cdevents.repository.created.0.5.1', as: 'detached-side-effect' }],
+            detach: [
+              { event: 'dev.cdevents.repository.created.0.5.1', as: 'detached-side-effect' },
+            ],
           },
         ],
       },
