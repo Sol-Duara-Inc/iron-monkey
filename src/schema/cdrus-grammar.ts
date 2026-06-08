@@ -10,9 +10,15 @@
  * explicit Iron Monkey OVERLAY:
  *
  *  - **Extensions** IM adds that the language spec deliberately omits:
- *    event-level `timeout_ms` / `min_wait_ms` / `subject` (timing + subject
- *    seeding), `defaults.content`, and `timeout_ms` / `min_wait_ms` on
- *    expression references and per-event overrides.
+ *    event-level `subject` seeding and `defaults.content`. Timing
+ *    (`timeout_ms` / `min_wait_ms`) is now CANONICAL on the workflow side
+ *    (the CDrus workflow schema types it `number` on `event_item`,
+ *    `expression_item`, `event_override`, and `defaults`), so the workflow
+ *    overlay no longer re-declares it — re-declaring once shadowed canonical's
+ *    `number` with `integer` and wrongly rejected fractional values. On the
+ *    EXPRESSION-BUNDLE side, where the canonical grammar omits timing, IM still
+ *    adds it — as `number`, matching the workflow convention so both schemas
+ *    accept the same values.
  *  - **Relaxations** IM needs as a permissive *emitter* (Iron Mike + Chaos
  *    Monkey) of a stricter spec: `group` / `author` optional; event-type
  *    `pattern` and `source` `format: uri` dropped to plain non-empty strings.
@@ -56,10 +62,18 @@ function stripKeys(node: unknown, keys: string[]): void {
   }
 }
 
-/** Iron Monkey timing extension fields, shared by events / overrides. */
+/**
+ * Timing fields for the EXPRESSION-BUNDLE overlay only. The canonical CDrus
+ * workflow schema already defines `timeout_ms` / `min_wait_ms` (as `number`) on
+ * its event/expression/override items, so the workflow overlay leaves them
+ * alone; the canonical expression grammar omits them, so IM adds them here.
+ * Typed `number` (NOT `integer`) so it matches canonical/workflow exactly — an
+ * `integer` here would reject fractional millisecond values the workflow side
+ * accepts, splitting the two schemas.
+ */
 const TIMING = {
-  timeout_ms: { type: 'integer', minimum: 0 },
-  min_wait_ms: { type: 'integer', minimum: 0 },
+  timeout_ms: { type: 'number', minimum: 0 },
+  min_wait_ms: { type: 'number', minimum: 0 },
 };
 
 /** IM subject-seeding extension. */
@@ -98,23 +112,22 @@ function buildWorkflowSchema(): SchemaObj {
   defaultsProps.content = { type: 'object', additionalProperties: true };
   loosen(defaultsProps, 'source');
 
-  // event_item: + timing + subject extensions; loosen event-type & source.
+  // event_item: timing + `as` are canonical (number / string in the CDrus
+  // workflow schema); IM only adds `subject` seeding and loosens event/source.
   const eventItem = defs.event_item as SchemaObj;
   const evProps = eventItem.properties as SchemaObj;
-  Object.assign(evProps, { ...TIMING, subject: { ...SUBJECT } });
+  Object.assign(evProps, { subject: { ...SUBJECT } });
   loosen(evProps, 'event');
   loosen(evProps, 'source');
 
-  // expression_item: + timing extensions; loosen source.
+  // expression_item: timing is canonical; IM only loosens source.
   const exprItem = defs.expression_item as SchemaObj;
   const exProps = exprItem.properties as SchemaObj;
-  Object.assign(exProps, { ...TIMING });
   loosen(exProps, 'source');
 
-  // event_override: + timing extensions; loosen source.
+  // event_override: timing is canonical; IM only loosens source.
   const override = defs.event_override as SchemaObj;
   const ovProps = override.properties as SchemaObj;
-  Object.assign(ovProps, { ...TIMING });
   loosen(ovProps, 'source');
 
   return s;

@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=../../schemas/cdrus/workflow.schema.json
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Anchored Release Showcase — `as:` anchors + detach + concurrent + timing
+# ─────────────────────────────────────────────────────────────────────────────
+# Demonstrates the new CDrus features end-to-end:
+#
+#   • `as:`  — a stable, author-given anchor naming an event (§4.9). It is PURE
+#             INTENT METADATA: Iron Monkey only emits the event; it never binds
+#             or reacts to the anchor. Junction Box's Koine selectors reference
+#             these names with `@anchor` (e.g. `@artifact-ready`, `@released`)
+#             instead of brittle positional coordinates. Anchors are unique
+#             across the whole resolved tree and work anywhere an event can
+#             appear — top level, inside a `detach:`, or inside a concurrent
+#             branch (shown below).
+#
+#   • detach    — a fire-and-forget sub-chain the main line does NOT wait on; a
+#                 breach inside it does NOT roll up to the parent (async SBOM
+#                 scan below).
+#   • concurrent — sibling branches under one event (`produces: [[...],[...]]`);
+#                  a breach inside DOES roll up to the parent (verify below).
+#   • timing    — per-event `timeout_ms` / `min_wait_ms` (canonical `number`).
+#
+# Anchor map for Junction Box (`@anchor` → event):
+#   @ci-started      pipelinerun.started      @verify-started   testsuiterun.started
+#   @artifact-ready  artifact.packaged        @case-a-finished  testcaserun.finished (branch A)
+#   @sbom-signed     artifact.signed (detach) @case-b-finished  testcaserun.finished (branch B)
+#   @scan-reported   testoutput.published     @verify-finished  testsuiterun.finished
+#                    (detach)                 @canary-live      service.deployed
+#                                             @released         service.published
+# ─────────────────────────────────────────────────────────────────────────────
+workflow:
+  id: cdcon-2026-anchored-release-showcase
+  group: sol-duara
+  author: dsanyika
+  name: "cdCon 2026 — Anchored Release Showcase (as anchors · detach · concurrent · timing)"
+  cdrus:
+    version: 1
+    metadata:
+      occasion: cdCon May 2026 (Minneapolis)
+      purpose: "Showcase CDrus `as:` anchors targeted by Junction Box `@anchor` selectors, alongside detach, concurrent branches, and per-event timing"
+      owner: Sol Duara
+      tags: [demo, anchors, detach, concurrent, timing]
+
+  defaults:
+    pipeline: anchored-release
+    timeout_ms: 300000
+    min_wait_ms: 100
+
+  produces:
+    # ── Jenkins (CI) ──────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.started.0.5.1
+      as: ci-started                       # JB binds "pipeline kicked off" here
+      tool: jenkins-prod
+      source: https://jenkins.example.com/
+
+    # The standard build bracket (build.started → testsuite → build.finished).
+    # No anchors inside — anchor the JOIN POINTS you bind to, not every event.
+    - expression: build
+      tool: jenkins-prod
+      source: https://jenkins.example.com/
+
+    # Package the artifact, then fire-and-forget an async SBOM sign + scan. The
+    # build does NOT wait on the scan; consumers observe it via the detached
+    # chain, and a scan breach does not roll up to the release line.
+    - event: dev.cdevents.artifact.packaged.0.5.1
+      as: artifact-ready                   # JB binds "artifact built" here
+      tool: jenkins-prod
+      source: https://jenkins.example.com/
+      detach:
+        - event: dev.cdevents.artifact.signed.0.5.1
+          as: sbom-signed                  # anchor INSIDE a detached chain
+          tool: security-scanner
+          source: https://snyk.example.com/
+          min_wait_ms: 500                 # the scanner takes a beat to pick up
+        - event: dev.cdevents.testoutput.published.0.5.1
+          as: scan-reported                # detached chain's terminal anchor
+          tool: security-scanner
+          source: https://snyk.example.com/
+          timeout_ms: 600000               # generous budget for a long scan
+
+    # ── Spinnaker (CD): concurrent verification across two test cases ──────────
+    # Both branches run as siblings; a breach in either rolls UP to the suite.
+    - event: dev.cdevents.testsuiterun.started.0.5.1
+      as: verify-started
+      tool: spinnaker-prod
+      source: https://spinnaker.example.com/
+      produces:
+        - - event: dev.cdevents.testcaserun.started.0.5.1
+            tool: spinnaker-prod
+          - event: dev.cdevents.testcaserun.finished.0.5.1
+            as: case-a-finished            # anchor INSIDE concurrent branch A
+            tool: spinnaker-prod
+        - - event: dev.cdevents.testcaserun.started.0.5.1
+            tool: spinnaker-prod
+          - event: dev.cdevents.testcaserun.finished.0.5.1
+            as: case-b-finished            # anchor INSIDE concurrent branch B
+            tool: spinnaker-prod
+    - event: dev.cdevents.testsuiterun.finished.0.5.1
+      as: verify-finished
+      tool: spinnaker-prod
+      source: https://spinnaker.example.com/
+
+    # ── GKE: canary deploy → release ──────────────────────────────────────────
+    - event: dev.cdevents.service.deployed.0.5.1
+      as: canary-live                      # JB binds canary health checks here
+      tool: gke-prod
+      source: https://gke.example.com/
+
+    - event: dev.cdevents.service.published.0.5.1
+      as: released                         # terminal — JB binds "release done"
+      tool: gke-prod
+      source: https://gke.example.com/
+
+    # ── Terminal ──────────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.finished.0.5.1
+      tool: spinnaker-prod
+      source: https://spinnaker.example.com/

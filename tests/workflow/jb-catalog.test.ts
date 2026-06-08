@@ -50,6 +50,11 @@ const EXPRESSIONS_DIR = path.join(REPO_ROOT, 'expressions');
  */
 const PROD_WORKFLOWS = [
   'cdcon-2026-jenkins-spinnaker-demo.yaml',
+  // Exercises the `as:` anchors + detach + concurrent + per-event timing
+  // showcase end-to-end (validation → resolution → manifest → emit), so a
+  // regression in any of those features fails CI here, not just in the schema
+  // unit tests.
+  'cdcon-2026-anchored-release-showcase.yaml',
   'prod-api-gateway-production-deploy-gated.yaml',
   'prod-auth-hotfix-fast-path.yaml',
   'prod-checkout-jenkins-spinnaker-canary.yaml',
