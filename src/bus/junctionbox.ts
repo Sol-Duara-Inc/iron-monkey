@@ -67,19 +67,19 @@ export class JunctionBoxBus implements Bus {
     }
 
     if (this.config.workflow_id && this.config.launch !== false) {
-      const launchUrl = `${base}/api/runs/register`;
+      const registerUrl = `${base}/api/runs/register`;
       logger.info(
-        { bus: this.name, url: launchUrl, workflowId: this.config.workflow_id },
+        { bus: this.name, url: registerUrl, workflowId: this.config.workflow_id },
         'activating workflow',
       );
-      const res = await fetch(launchUrl, {
+      const res = await fetch(registerUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...this.headers() },
         body: JSON.stringify({ workflowId: this.config.workflow_id }),
         signal: AbortSignal.timeout(10000),
       });
       const bodyText = await res.text();
-      let body: { runId?: string; error?: string } = {};
+      let body: { runId?: string; alreadyActive?: boolean; error?: string } = {};
       try {
         body = bodyText ? JSON.parse(bodyText) : {};
       } catch {
@@ -96,9 +96,10 @@ export class JunctionBoxBus implements Bus {
         );
       }
       this.acquiredChainId = body.runId;
+      const reused = Boolean(body.alreadyActive || body.error);
       logger.info(
-        { bus: this.name, chainId: body.runId, reused: Boolean(body.error) },
-        body.error ? 'workflow already active — reusing existing run' : 'workflow activated',
+        { bus: this.name, chainId: body.runId, reused },
+        reused ? 'workflow already active — reusing existing run' : 'workflow activated',
       );
     }
 

@@ -159,11 +159,11 @@ describe('JunctionBoxBus.connect', () => {
     await expect(bus.connect()).rejects.toThrow(/returned no runId/);
   });
 
-  it('accepts a "workflow already active" launch reply that carries both error and runId', async () => {
+  it('accepts an alreadyActive register reply and reuses the runId', async () => {
     fetchMock
       .mockImplementationOnce(async () => mockResponse(200, 'ok'))
       .mockImplementationOnce(async () =>
-        mockResponse(200, { runId: 'reused-run', error: 'workflow already active' }),
+        mockResponse(200, { runId: 'reused-run', alreadyActive: true }),
       );
     const bus = new JunctionBoxBus('jb', { ...baseConfig, workflow_id: 'demo-1' });
     await bus.connect();
