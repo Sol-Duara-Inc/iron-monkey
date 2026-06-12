@@ -272,3 +272,37 @@ describe('schema — canonical timing is `number` (not `integer`)', () => {
     expect(validateWf(wf)).toBe(false);
   });
 });
+
+// ── workflow.id is path-safe (^[a-z][a-z0-9-]*$) ────────────────────────────
+// The id is used directly as a storage-path segment, so the canonical schema
+// constrains it to lowercase alphanumerics + hyphens, starting with a letter.
+// IM's overlay must NOT loosen `id` (unlike `event`/`source`), so this proves
+// the pattern survives into the runtime validator.
+describe('workflow schema — id is path-safe', () => {
+  const wfWithId = (id: string) => ({
+    workflow: { id, name: 'wf', cdrus: { version: 1 }, produces: [{ event: BUILD_STARTED }] },
+  });
+
+  it('accepts a plain lowercase id', () => {
+    expect(validateWf(wfWithId('wf')), JSON.stringify(validateWf.errors)).toBe(true);
+  });
+
+  it('accepts lowercase, digits, and hyphens (the real example shape)', () => {
+    expect(
+      validateWf(wfWithId('cdcon-2026-anchored-release-showcase')),
+      JSON.stringify(validateWf.errors),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['uppercase letters', 'MyWorkflow'],
+    ['an underscore', 'my_workflow'],
+    ['a leading digit', '9-bad'],
+    ['a leading hyphen', '-bad'],
+    ['a dot (path-unsafe)', 'my.workflow'],
+    ['a slash (path-unsafe)', 'my/workflow'],
+    ['a space', 'my workflow'],
+  ])('rejects an id with %s', (_label, id) => {
+    expect(validateWf(wfWithId(id))).toBe(false);
+  });
+});
