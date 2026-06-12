@@ -15,7 +15,8 @@
         "id": {
           "type": "string",
           "minLength": 1,
-          "description": "Unique identifier for this workflow definition."
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Unique identifier for this workflow definition. Lowercase alphanumeric with hyphens as the only separator; must start with a letter. Used directly as a storage-path segment, so it must be path-safe."
         },
         "group": {
           "type": "string",
