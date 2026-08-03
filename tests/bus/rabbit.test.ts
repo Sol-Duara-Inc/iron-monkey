@@ -46,7 +46,7 @@ const configWithAuth: RabbitMQBusConfig = {
 function makePayload() {
   return {
     context: {
-      specversion: "0.6.0-draft",
+      specversion: '0.6.0-draft',
       id: 'evt-1',
       source: 'https://example.com/',
       type: 'dev.cdevents.build.started.0.3.0',

@@ -52,6 +52,7 @@ function makeRegistry(bundles: ExpressionBundle[]): ExpressionRegistry {
       throw new Error(`unresolved expression '${ref}' in ${ctx.group}/${ctx.author}`);
     },
     list: () => bundles.map((b) => ({ name: b.expression, group: b.group, author: b.author })),
+    hintFindings: () => [],
   };
 }
 

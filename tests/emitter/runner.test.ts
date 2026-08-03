@@ -72,7 +72,7 @@ function makeEvent(overrides: Partial<ManifestEvent> = {}): ManifestEvent {
     targetEmitTime: Date.now() - 1000, // in the past → no sleep
     payload: {
       context: {
-        specversion: "0.6.0-draft",
+        specversion: '0.6.0-draft',
         id: 'evt-1',
         source: 'https://jenkins.example.com/',
         type: 'dev.cdevents.build.started.0.3.0',

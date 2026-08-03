@@ -15,6 +15,8 @@ import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 import { createAjv } from '../util/ajv.js';
 import { getLogger } from '../logger/index.js';
+import { checkNameHints, loadHintTable } from '../hints/index.js';
+import type { HintCheckResult, HintTable } from '../hints/index.js';
 import { expressionBundleSchema } from './schema.js';
 import type { ExpressionBundle } from './types.js';
 
@@ -150,6 +152,27 @@ export interface ExpressionRegistry {
    * name component of the identity tuple.
    */
   list(): { name: string; group: string; author: string }[];
+
+  /**
+   * Returns the name-hint findings (RFC §4.1.1) recorded while building the
+   * registry: one entry per file that produced violations or diagnostics.
+   * Files whose hint check was clean are not listed. A file with violations
+   * was **skipped** (not indexed); a file with only diagnostics loaded
+   * normally — diagnostics never affect acceptance.
+   */
+  hintFindings(): HintFinding[];
+}
+
+/** A name-hint finding recorded for one expression bundle file. */
+export interface HintFinding {
+  /** Absolute path of the bundle file. */
+  file: string;
+  /** The bundle's identity as `group/author/expression`. */
+  identity: string;
+  /** The full hint-check result (violations and/or diagnostics). */
+  result: HintCheckResult;
+  /** True when the bundle was skipped because of violations. */
+  skipped: boolean;
 }
 
 /** Internal representation of an indexed bundle with its parsed identity. */
@@ -195,14 +218,28 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
     // directory may not exist in some test environments; resolve() will fail clearly
   }
 
+  // Name-hint checking (RFC §4.1.1) follows the same fail-soft posture as the
+  // rest of this layer: a missing or malformed keyword table disables the
+  // check with a warning rather than breaking the run.
+  let hintTable: HintTable | undefined;
+  try {
+    hintTable = loadHintTable();
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message },
+      'name-hint table unavailable; hint checks skipped',
+    );
+  }
+
   const indexed: IndexedBundle[] = [];
+  const findings: HintFinding[] = [];
   let skipped = 0;
 
   for (const file of files) {
     const filePath = join(expressionsDir, file);
+    let bundle: ExpressionBundle;
     try {
-      const bundle = loadBundle(filePath);
-      indexed.push({ name: bundle.expression, group: bundle.group, author: bundle.author, bundle });
+      bundle = loadBundle(filePath);
     } catch (err) {
       // Skip this one file but keep loading the rest — fail-loud in logs,
       // fail-soft for the run.
@@ -211,7 +248,37 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
         { file: filePath, err: (err as Error).message },
         'skipping invalid expression bundle',
       );
+      continue;
     }
+
+    const identity = `${bundle.group}/${bundle.author}/${bundle.expression}`;
+    if (hintTable) {
+      const result = checkNameHints(
+        { expression: bundle.expression, produces: bundle.produces },
+        hintTable,
+      );
+      if (!result.ok) {
+        // Loader posture: report and skip — the store-level MUST-reject lives
+        // in `validate`, which surfaces these findings as hard errors.
+        skipped += 1;
+        findings.push({ file: filePath, identity, result, skipped: true });
+        logger.warn(
+          { file: filePath, identity, violations: result.violations.map((v) => v.message) },
+          'skipping expression bundle with unsatisfied name hints',
+        );
+        continue;
+      }
+      if (result.diagnostics.length > 0) {
+        // Advisory only — the bundle still loads.
+        findings.push({ file: filePath, identity, result, skipped: false });
+        logger.warn(
+          { file: filePath, identity, diagnostics: result.diagnostics.map((d) => d.message) },
+          'expression name-hint diagnostics',
+        );
+      }
+    }
+
+    indexed.push({ name: bundle.expression, group: bundle.group, author: bundle.author, bundle });
   }
 
   if (skipped > 0) {
@@ -302,6 +369,10 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
 
     list(): { name: string; group: string; author: string }[] {
       return indexed.map((b) => ({ name: b.name, group: b.group, author: b.author }));
+    },
+
+    hintFindings(): HintFinding[] {
+      return findings;
     },
   };
 }

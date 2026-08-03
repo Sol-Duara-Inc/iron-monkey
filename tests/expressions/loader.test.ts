@@ -216,14 +216,21 @@ describe('loadExpressionRegistry — error cases', () => {
 describe('loadExpressionRegistry — path-style disambiguation', () => {
   it('resolves by author/expression when two bundles share the same expression name', async () => {
     const dir = await makeTmpDir();
+    // Both bundles must satisfy the 'build' name hint (started + finished);
+    // they stay distinguishable by their first event.
     await writeFile(
       path.join(dir, 'alpha.yaml'),
-      `group: acme\nauthor: team-alpha\nexpression: build\nproduces:\n  - event: dev.cdevents.build.started.0.3.0\n`,
+      `group: acme\nauthor: team-alpha\nexpression: build\nproduces:\n` +
+        `  - event: dev.cdevents.build.started.0.3.0\n` +
+        `  - event: dev.cdevents.build.finished.0.3.0\n`,
       'utf-8',
     );
     await writeFile(
       path.join(dir, 'beta.yaml'),
-      `group: acme\nauthor: team-beta\nexpression: build\nproduces:\n  - event: dev.cdevents.build.finished.0.3.0\n`,
+      `group: acme\nauthor: team-beta\nexpression: build\nproduces:\n` +
+        `  - event: dev.cdevents.build.queued.0.3.0\n` +
+        `  - event: dev.cdevents.build.started.0.3.0\n` +
+        `  - event: dev.cdevents.build.finished.0.3.0\n`,
       'utf-8',
     );
 
@@ -235,7 +242,7 @@ describe('loadExpressionRegistry — path-style disambiguation', () => {
     expect(alpha.produces[0].event).toBe('dev.cdevents.build.started.0.3.0');
 
     const beta = registry.resolve('team-beta/build');
-    expect(beta.produces[0].event).toBe('dev.cdevents.build.finished.0.3.0');
+    expect(beta.produces[0].event).toBe('dev.cdevents.build.queued.0.3.0');
   });
 
   it('resolves with fully-qualified group/author/expression path', async () => {
