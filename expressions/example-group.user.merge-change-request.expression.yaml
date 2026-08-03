@@ -4,5 +4,5 @@ author: user
 expression: merge-change-request
 description: Reviewed change is merged into the target branch.
 produces:
-  - event: dev.cdevents.change.reviewed.0.5.1
-  - event: dev.cdevents.change.merged.0.5.1
+  - event: dev.cdevents.change.reviewed.0.3.0
+  - event: dev.cdevents.change.merged.0.3.0

@@ -8,10 +8,10 @@ description: |
   babysit it. The service is deployed, then verification runs, then the
   service is published — no traffic until verification has passed.
 produces:
-  - event: dev.cdevents.taskrun.started.0.5.1
+  - event: dev.cdevents.taskrun.started.0.3.0
     detach:
       - expression: ticket-associate
-  - event: dev.cdevents.service.deployed.0.5.1
+  - event: dev.cdevents.service.deployed.0.3.0
   - expression: verify
-  - event: dev.cdevents.service.published.0.5.1
-  - event: dev.cdevents.taskrun.finished.0.5.1
+  - event: dev.cdevents.service.published.0.3.0
+  - event: dev.cdevents.taskrun.finished.0.3.0

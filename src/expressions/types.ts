@@ -17,7 +17,7 @@
  * A direct CDEvent entry within an expression bundle's `produces` list.
  */
 export interface BundleEventItem {
-  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.5.1`. */
+  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.3.0`. */
   event: string;
   /**
    * Optional stable identifier for this event within the bundle. Required when

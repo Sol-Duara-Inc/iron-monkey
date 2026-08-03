@@ -87,7 +87,7 @@ export interface ResolvedEvent {
    * noun-verb appears more than once in the workflow.
    */
   id: string;
-  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.1.0`. */
+  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.3.0`. */
   type: string;
   /** Tool identifier whose `source` URI is looked up from the config `tools` map. */
   tool: string;

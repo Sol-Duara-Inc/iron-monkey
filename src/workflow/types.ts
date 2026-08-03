@@ -54,7 +54,7 @@ export interface WorkflowDefaults {
  * subject content that override workflow-level defaults.
  */
 export interface EventItem {
-  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.1.0`. */
+  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.3.0`. */
   event: string;
   /** Tool identifier overriding the workflow default for this event. */
   tool?: string;

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/links/linkend",
+  "properties": {
+    "chainId": {
+      "description": "This represents the full lifecycles of a series of events in CDEvents",
+      "type": "string",
+      "minLength": 1
+    },
+    "linkType": {
+      "description": "The type associated with the link. In this case, 'END', suggesting the end of some CI/CD lifecycle",
+      "type": "string",
+      "enum": [
+        "END"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "from": {
+      "description": "This is the context ID of the producing CDEvent.",
+      "type": "object",
+      "properties": {
+        "contextId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domainId": {
+          "type": "string",
+          "format": "uri-reference"
+        }
+      },
+      "anyOf": [
+        { "required": ["contextId"] },
+        { "required": ["domainId"] }
+      ]
+    },
+    "end": {
+      "description": "This is the context ID of the final CDEvent in the chain",
+      "type": "object",
+      "properties": {
+        "contextId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domainId": {
+          "type": "string",
+          "format": "uri-reference"
+        }
+      },
+      "anyOf": [
+        { "required": ["contextId"] },
+        { "required": ["domainId"] }
+      ]
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "chainId",
+    "linkType",
+    "timestamp",
+    "from",
+    "end"
+  ]
+}
+

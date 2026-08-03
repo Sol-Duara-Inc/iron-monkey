@@ -4,5 +4,5 @@ author: user
 expression: branch-lifecycle
 description: Short-lived branch — created and later deleted.
 produces:
-  - event: dev.cdevents.branch.created.0.5.1
-  - event: dev.cdevents.branch.deleted.0.5.1
+  - event: dev.cdevents.branch.created.0.3.0
+  - event: dev.cdevents.branch.deleted.0.3.0

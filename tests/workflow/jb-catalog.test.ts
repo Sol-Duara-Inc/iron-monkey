@@ -161,9 +161,9 @@ describe('integration: full runWorkflow against bundled JB-style catalog', () =>
     }
 
     const emittedTypes = mockBus.emit.mock.calls.map((c) => c[0]);
-    expect(emittedTypes).toContain('dev.cdevents.build.started.0.5.1');
-    expect(emittedTypes).toContain('dev.cdevents.build.finished.0.5.1');
-    expect(emittedTypes).toContain('dev.cdevents.service.deployed.0.5.1');
+    expect(emittedTypes).toContain('dev.cdevents.build.started.0.3.0');
+    expect(emittedTypes).toContain('dev.cdevents.build.finished.0.3.0');
+    expect(emittedTypes).toContain('dev.cdevents.service.deployed.0.3.0');
     // No chain.end sentinel — the chain end is expressed as an END link on
     // the last manifest event (typically pipelineRun.finished).
     expect(emittedTypes).not.toContain('dev.cdevents.chain.end');

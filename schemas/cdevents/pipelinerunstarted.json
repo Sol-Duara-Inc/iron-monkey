@@ -1,6 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cdevents.dev/0.5.1/schema/pipelinerun-started-event",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/pipelinerun-started-event",
+  "x-cdevents-semantics": {
+    "subject": "cdevents/_defs/pipelinerun",
+    "predicate": "cdevents/_defs/started"
+  },
   "properties": {
     "context": {
       "properties": {
@@ -19,8 +23,10 @@
         },
         "type": {
           "type": "string",
-          "enum": ["dev.cdevents.pipelinerun.started.0.5.1"],
-          "default": "dev.cdevents.pipelinerun.started.0.5.1"
+          "enum": [
+            "dev.cdevents.pipelinerun.started.0.3.0"
+          ],
+          "default": "dev.cdevents.pipelinerun.started.0.3.0"
         },
         "timestamp": {
           "type": "string",
@@ -41,7 +47,13 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["specversion", "id", "source", "type", "timestamp"]
+      "required": [
+        "specversion",
+        "id",
+        "source",
+        "type",
+        "timestamp"
+      ]
     },
     "subject": {
       "properties": {
@@ -66,12 +78,18 @@
           },
           "additionalProperties": false,
           "type": "object",
-          "required": ["pipelineName", "uri"]
+          "required": [
+            "pipelineName",
+            "uri"
+          ]
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["id", "content"]
+      "required": [
+        "id",
+        "content"
+      ]
     },
     "customData": {
       "oneOf": [
@@ -90,5 +108,8 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["context", "subject"]
+  "required": [
+    "context",
+    "subject"
+  ]
 }

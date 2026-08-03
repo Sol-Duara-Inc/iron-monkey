@@ -4,7 +4,7 @@ author: user
 expression: ephemeral-environment
 description: Preview/PR environment lifecycle — provision, deploy, verify, tear down.
 produces:
-  - event: dev.cdevents.environment.created.0.5.1
+  - event: dev.cdevents.environment.created.0.3.0
   - expression: deploy
   - expression: verify
-  - event: dev.cdevents.environment.deleted.0.5.1
+  - event: dev.cdevents.environment.deleted.0.3.0

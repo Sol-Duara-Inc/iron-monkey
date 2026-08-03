@@ -53,12 +53,12 @@ describe('createBus', () => {
       url: 'http://localhost:3000',
     });
     await expect(
-      bus.emit('dev.cdevents.build.started.0.5.1', 'evt-1', {
+      bus.emit('dev.cdevents.build.started.0.3.0', 'evt-1', {
         context: {
-          specversion: '0.5.1',
+          specversion: "0.6.0-draft",
           id: 'evt-1',
           source: 'https://example.com/',
-          type: 'dev.cdevents.build.started.0.5.1',
+          type: 'dev.cdevents.build.started.0.3.0',
           timestamp: '2026-05-08T00:00:00.000Z',
         },
         subject: { id: 'sub-1', content: {} },

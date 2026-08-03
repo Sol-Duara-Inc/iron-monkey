@@ -4,4 +4,4 @@ author: user
 expression: environment-provision
 description: New environment is provisioned.
 produces:
-  - event: dev.cdevents.environment.created.0.5.1
+  - event: dev.cdevents.environment.created.0.3.0

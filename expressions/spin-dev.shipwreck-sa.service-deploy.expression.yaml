@@ -8,6 +8,6 @@ description: |
   service being deployed and the service being published — even a "light"
   deploy is gated.
 produces:
-  - event: dev.cdevents.service.deployed.0.5.1
+  - event: dev.cdevents.service.deployed.0.3.0
   - expression: verify
-  - event: dev.cdevents.service.published.0.5.1
+  - event: dev.cdevents.service.published.0.3.0

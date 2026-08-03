@@ -19,7 +19,7 @@ async function makeTmpDir(): Promise<string> {
 }
 
 function minimalBundle(name: string, group = 'sol-duara', author = 'dsanyika'): string {
-  return `group: ${group}\nauthor: ${author}\nexpression: ${name}\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n`;
+  return `group: ${group}\nauthor: ${author}\nexpression: ${name}\nproduces:\n  - event: dev.cdevents.build.started.0.3.0\n`;
 }
 
 // ── bundled directory ─────────────────────────────────────────────────────────
@@ -196,7 +196,7 @@ describe('loadExpressionRegistry — error cases', () => {
     const dir = await makeTmpDir();
     await writeFile(
       path.join(dir, 'collision.yaml'),
-      `group: sol-duara\nauthor: dsanyika\nexpression: collision\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n  - event: dev.cdevents.build.started.0.5.1\n`,
+      `group: sol-duara\nauthor: dsanyika\nexpression: collision\nproduces:\n  - event: dev.cdevents.build.started.0.3.0\n  - event: dev.cdevents.build.started.0.3.0\n`,
       'utf-8',
     );
     expect(() => loadExpressionRegistry(dir)).not.toThrow();
@@ -218,12 +218,12 @@ describe('loadExpressionRegistry — path-style disambiguation', () => {
     const dir = await makeTmpDir();
     await writeFile(
       path.join(dir, 'alpha.yaml'),
-      `group: acme\nauthor: team-alpha\nexpression: build\nproduces:\n  - event: dev.cdevents.build.started.0.5.1\n`,
+      `group: acme\nauthor: team-alpha\nexpression: build\nproduces:\n  - event: dev.cdevents.build.started.0.3.0\n`,
       'utf-8',
     );
     await writeFile(
       path.join(dir, 'beta.yaml'),
-      `group: acme\nauthor: team-beta\nexpression: build\nproduces:\n  - event: dev.cdevents.build.finished.0.5.1\n`,
+      `group: acme\nauthor: team-beta\nexpression: build\nproduces:\n  - event: dev.cdevents.build.finished.0.3.0\n`,
       'utf-8',
     );
 
@@ -232,10 +232,10 @@ describe('loadExpressionRegistry — path-style disambiguation', () => {
     expect(() => registry.resolve('build')).toThrow('Ambiguous expression reference');
 
     const alpha = registry.resolve('team-alpha/build');
-    expect(alpha.produces[0].event).toBe('dev.cdevents.build.started.0.5.1');
+    expect(alpha.produces[0].event).toBe('dev.cdevents.build.started.0.3.0');
 
     const beta = registry.resolve('team-beta/build');
-    expect(beta.produces[0].event).toBe('dev.cdevents.build.finished.0.5.1');
+    expect(beta.produces[0].event).toBe('dev.cdevents.build.finished.0.3.0');
   });
 
   it('resolves with fully-qualified group/author/expression path', async () => {

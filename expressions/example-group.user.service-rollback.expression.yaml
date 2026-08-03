@@ -4,6 +4,6 @@ author: user
 expression: service-rollback
 description: Negative deploy path — service rolled back within a taskrun.
 produces:
-  - event: dev.cdevents.taskrun.started.0.5.1
-  - event: dev.cdevents.service.rolledback.0.5.1
-  - event: dev.cdevents.taskrun.finished.0.5.1
+  - event: dev.cdevents.taskrun.started.0.3.0
+  - event: dev.cdevents.service.rolledback.0.3.0
+  - event: dev.cdevents.taskrun.finished.0.3.0

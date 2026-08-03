@@ -21,7 +21,7 @@ describe('loadSchemasFromDir', () => {
   it('loads all bundled schemas', async () => {
     const schemas = await loadSchemasFromDir(BUNDLED_DIR);
     expect(schemas.size).toBeGreaterThan(40);
-    expect(schemas.has('dev.cdevents.pipelinerun.started.0.5.1')).toBe(true);
+    expect(schemas.has('dev.cdevents.pipelinerun.started.0.3.0')).toBe(true);
   });
 
   it('returns an empty map for a non-existent directory', async () => {

@@ -191,7 +191,7 @@ function buildEvent(
 
   const payload: CDEventPayload = {
     context: {
-      specversion: '0.5.1',
+      specversion: '0.6.0-draft',
       id: eventId,
       source: toolSource,
       type: re.type,

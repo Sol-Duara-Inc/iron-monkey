@@ -1,10 +1,21 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cdevents.dev/0.5.1/schema/links/embeddedlinksarray",
-  "description": "Array of CDEvent links that associate this event with other events or artifacts in the supply chain.",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/links/embeddedlinksarray",
   "type": "array",
   "items": {
-    "type": "object",
-    "additionalProperties": true
+    "anyOf": [
+      {
+        "type": "object",
+        "$ref": "embeddedlinkend"
+      },
+      {
+        "type": "object",
+        "$ref": "embeddedlinkpath"
+      },
+      {
+        "type": "object",
+        "$ref": "embeddedlinkrelation"
+      }
+    ]
   }
 }

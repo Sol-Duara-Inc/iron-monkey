@@ -49,7 +49,7 @@ workflow:
 
   produces:
     # ── Jenkins (CI) ──────────────────────────────────────────────────────────
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       as: ci-started                       # JB binds "pipeline kicked off" here
       tool: jenkins-prod
       source: https://jenkins.example.com/
@@ -63,17 +63,17 @@ workflow:
     # Package the artifact, then fire-and-forget an async SBOM sign + scan. The
     # build does NOT wait on the scan; consumers observe it via the detached
     # chain, and a scan breach does not roll up to the release line.
-    - event: dev.cdevents.artifact.packaged.0.5.1
+    - event: dev.cdevents.artifact.packaged.0.3.0
       as: artifact-ready                   # JB binds "artifact built" here
       tool: jenkins-prod
       source: https://jenkins.example.com/
       detach:
-        - event: dev.cdevents.artifact.signed.0.5.1
+        - event: dev.cdevents.artifact.signed.0.3.0
           as: sbom-signed                  # anchor INSIDE a detached chain
           tool: security-scanner
           source: https://snyk.example.com/
           min_wait_ms: 500                 # the scanner takes a beat to pick up
-        - event: dev.cdevents.testoutput.published.0.5.1
+        - event: dev.cdevents.testoutput.published.0.3.0
           as: scan-reported                # detached chain's terminal anchor
           tool: security-scanner
           source: https://snyk.example.com/
@@ -81,38 +81,38 @@ workflow:
 
     # ── Spinnaker (CD): concurrent verification across two test cases ──────────
     # Both branches run as siblings; a breach in either rolls UP to the suite.
-    - event: dev.cdevents.testsuiterun.started.0.5.1
+    - event: dev.cdevents.testsuiterun.started.0.3.0
       as: verify-started
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
       produces:
-        - - event: dev.cdevents.testcaserun.started.0.5.1
+        - - event: dev.cdevents.testcaserun.started.0.3.0
             tool: spinnaker-prod
-          - event: dev.cdevents.testcaserun.finished.0.5.1
+          - event: dev.cdevents.testcaserun.finished.0.3.0
             as: case-a-finished            # anchor INSIDE concurrent branch A
             tool: spinnaker-prod
-        - - event: dev.cdevents.testcaserun.started.0.5.1
+        - - event: dev.cdevents.testcaserun.started.0.3.0
             tool: spinnaker-prod
-          - event: dev.cdevents.testcaserun.finished.0.5.1
+          - event: dev.cdevents.testcaserun.finished.0.3.0
             as: case-b-finished            # anchor INSIDE concurrent branch B
             tool: spinnaker-prod
-    - event: dev.cdevents.testsuiterun.finished.0.5.1
+    - event: dev.cdevents.testsuiterun.finished.0.3.0
       as: verify-finished
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
 
     # ── GKE: canary deploy → release ──────────────────────────────────────────
-    - event: dev.cdevents.service.deployed.0.5.1
+    - event: dev.cdevents.service.deployed.0.3.0
       as: canary-live                      # JB binds canary health checks here
       tool: gke-prod
       source: https://gke.example.com/
 
-    - event: dev.cdevents.service.published.0.5.1
+    - event: dev.cdevents.service.published.0.3.0
       as: released                         # terminal — JB binds "release done"
       tool: gke-prod
       source: https://gke.example.com/
 
     # ── Terminal ──────────────────────────────────────────────────────────────
-    - event: dev.cdevents.pipelinerun.finished.0.5.1
+    - event: dev.cdevents.pipelinerun.finished.0.3.0
       tool: spinnaker-prod
       source: https://spinnaker.example.com/

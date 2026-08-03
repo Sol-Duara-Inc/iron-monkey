@@ -20,7 +20,7 @@ workflow:
 
   produces:
     # ── Jenkins (CI + deploy orchestration; no Spinnaker hop on hotfix) ───
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jenkins-prod
       source: https://jenkins.spin-dev.io/
       pipeline: auth-hotfix
@@ -42,7 +42,7 @@ workflow:
           source: https://gke.spin-dev.io/auth
 
     # ── Terminal ──────────────────────────────────────────────────────────
-    - event: dev.cdevents.pipelinerun.finished.0.5.1
+    - event: dev.cdevents.pipelinerun.finished.0.3.0
       tool: jenkins-prod
       source: https://jenkins.spin-dev.io/
       pipeline: auth-hotfix

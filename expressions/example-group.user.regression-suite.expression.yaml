@@ -4,9 +4,9 @@ author: user
 expression: regression-suite
 description: Test suite run wrapping multiple test cases and a published output report.
 produces:
-  - event: dev.cdevents.testsuiterun.queued.0.5.1
-  - event: dev.cdevents.testsuiterun.started.0.5.1
+  - event: dev.cdevents.testsuiterun.queued.0.3.0
+  - event: dev.cdevents.testsuiterun.started.0.3.0
   - expression: test-case
   - expression: test-case
-  - event: dev.cdevents.testoutput.published.0.5.1
-  - event: dev.cdevents.testsuiterun.finished.0.5.1
+  - event: dev.cdevents.testoutput.published.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0

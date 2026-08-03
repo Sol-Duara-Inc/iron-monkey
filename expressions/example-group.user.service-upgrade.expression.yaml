@@ -4,7 +4,7 @@ author: user
 expression: service-upgrade
 description: In-place service version bump bracketed by a taskrun.
 produces:
-  - event: dev.cdevents.taskrun.started.0.5.1
-  - event: dev.cdevents.service.upgraded.0.5.1
-  - event: dev.cdevents.service.published.0.5.1
-  - event: dev.cdevents.taskrun.finished.0.5.1
+  - event: dev.cdevents.taskrun.started.0.3.0
+  - event: dev.cdevents.service.upgraded.0.3.0
+  - event: dev.cdevents.service.published.0.3.0
+  - event: dev.cdevents.taskrun.finished.0.3.0

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cdevents.dev/schemas/0.5.1/base-event.json",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/event-base-event",
   "title": "Conduit CDEvents Base Event",
-  "description": "Base schema for all Conduit CDEvents. All Conduit event types extend this structure. Does not include customData or data — all event-specific payload belongs in subject.content.",
+  "description": "Base schema for all Conduit CDEvents. All Conduit event types extend this structure. Event-specific payload belongs in subject.content; customData carries producer-defined data outside the CDEvents-defined payload, per the CDEvents specification.",
   "type": "object",
   "required": ["context", "subject"],
   "additionalProperties": false,
@@ -10,14 +10,14 @@
     "context": {
       "type": "object",
       "description": "Routing and identification envelope. Contains only the metadata Conduit needs to route, version, and validate an event — no semantic payload.",
-      "required": ["version", "id", "source", "type", "timestamp", "schemaUri"],
+      "required": ["specversion", "id", "source", "type", "timestamp", "schemaUri"],
       "additionalProperties": false,
       "properties": {
         "specversion": {
           "type": "string",
           "description": "CDEvents specification version this event conforms to.",
-          "pattern": "^\\d+\\.\\d+\\.\\d+$",
-          "examples": ["0.5.1"]
+          "minLength": 1,
+          "examples": ["0.6.0-draft"]
         },
         "id": {
           "type": "string",
@@ -28,14 +28,15 @@
         "source": {
           "type": "string",
           "description": "URI-reference identifying the system that produced this event.",
+          "minLength": 1,
           "format": "uri-reference",
           "examples": ["example.com/source", "https://ci.example.com/pipelines"]
         },
         "type": {
           "type": "string",
           "description": "Event type. For the Conduit base event this MUST be exactly: dev.cdevents.event.base.<major>.<minor>.<patch>.",
-          "pattern": "^dev\\.cdevents\\.event\\.base\\.\\d+\\.\\d+\\.\\d+$",
-          "examples": ["dev.cdevents.event.base.0.5.1"]
+          "pattern": "^dev\\.cdevents\\.event\\.base\\.\\d+\\.\\d+\\.\\d+(-draft)?$",
+          "examples": ["dev.cdevents.event.base.0.1.0-draft"]
         },
         "timestamp": {
           "type": "string",
@@ -46,15 +47,16 @@
         "schemaUri": {
           "type": "string",
           "description": "Absolute URI pointing to the JSON Schema that validates this event type.",
+          "minLength": 1,
           "format": "uri",
-          "examples": ["https://cdevents.dev/schemas/0.5.1/base-event.json"]
+          "examples": ["https://cdevents.dev/0.6.0-draft/schema/event-base-event"]
         }
       }
     },
     "subject": {
       "type": "object",
       "description": "The entity this event is about. All semantic payload — both identity fields and event-specific attributes — lives here.",
-      "required": ["id", "type"],
+      "required": ["id", "content"],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -63,15 +65,10 @@
           "minLength": 1,
           "examples": ["subject-123", "pipeline-run-42"]
         },
-        "type": {
-          "type": "string",
-          "description": "Type label for the subject entity (e.g. pipelineRun, taskRun, artifact).",
-          "minLength": 1,
-          "examples": ["pipelineRun", "taskRun", "artifact", "repository"]
-        },
         "source": {
           "type": "string",
           "description": "URI-reference identifying the subject's origin system, if different from context.source.",
+          "minLength": 1,
           "format": "uri-reference",
           "examples": ["https://tekton.example.com"]
         },
@@ -81,21 +78,35 @@
           "additionalProperties": true
         }
       }
+    },
+    "customData": {
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "string",
+          "contentEncoding": "base64"
+        }
+      ]
+    },
+    "customDataContentType": {
+      "type": "string"
     }
   },
   "examples": [
     {
       "context": {
-        "version": "0.5.1",
+        "specversion": "0.6.0-draft",
         "id": "550e8400-e29b-41d4-a716-446655440000",
         "source": "example.com/source",
-        "type": "dev.cdevents.event.base.0.5.1",
+        "type": "dev.cdevents.event.base.0.1.0-draft",
         "timestamp": "2025-07-03T21:47:00.000Z",
-        "schemaUri": "https://cdevents.dev/schemas/0.5.1/base-event.json"
+        "schemaUri": "https://cdevents.dev/0.6.0-draft/schema/event-base-event"
       },
       "subject": {
         "id": "subject-123",
-        "type": "example"
+        "content": {}
       }
     }
   ]

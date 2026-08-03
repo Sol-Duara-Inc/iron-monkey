@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cdevents.dev/0.5.1/schema/change-updated-event",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/change-updated-event",
   "properties": {
     "context": {
       "properties": {
@@ -19,8 +19,10 @@
         },
         "type": {
           "type": "string",
-          "enum": ["dev.cdevents.change.updated.0.5.1"],
-          "default": "dev.cdevents.change.updated.0.5.1"
+          "enum": [
+            "dev.cdevents.change.updated.0.3.0"
+          ],
+          "default": "dev.cdevents.change.updated.0.3.0"
         },
         "timestamp": {
           "type": "string",
@@ -41,7 +43,13 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["specversion", "id", "source", "type", "timestamp"]
+      "required": [
+        "specversion",
+        "id",
+        "source",
+        "type",
+        "timestamp"
+      ]
     },
     "subject": {
       "properties": {
@@ -70,7 +78,9 @@
               },
               "additionalProperties": false,
               "type": "object",
-              "required": ["id"]
+              "required": [
+                "id"
+              ]
             }
           },
           "additionalProperties": false,
@@ -79,7 +89,10 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["id", "content"]
+      "required": [
+        "id",
+        "content"
+      ]
     },
     "customData": {
       "oneOf": [
@@ -98,5 +111,8 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["context", "subject"]
+  "required": [
+    "context",
+    "subject"
+  ]
 }

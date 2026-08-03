@@ -221,7 +221,7 @@ workflow:
     timeout_ms: 30000
     min_wait_ms: 100
   produces:
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jenkins-prod
       source: https://jenkins.example.com/
       pipeline: my-pipeline
@@ -230,7 +230,7 @@ workflow:
       tool: jenkins-prod
       source: https://jenkins.example.com/
 
-    - event: dev.cdevents.pipelinerun.finished.0.5.1
+    - event: dev.cdevents.pipelinerun.finished.0.3.0
       tool: jenkins-prod
       source: https://jenkins.example.com/
       pipeline: my-pipeline
@@ -242,7 +242,7 @@ Key points:
 - **No `stages:`** — the list is flat; tool is set per-item or via `workflow.defaults`.
 - `workflow.defaults` applies to every item; per-item fields override defaults.
 - `tool:` maps to a `tools.*` entry in your config file for source URI resolution. You can also set `source:` directly on any item.
-- Event type strings use CDEvents 0.5.1 versioning — the suffix is always `.0.5.1` for all event types bundled with Iron Monkey (e.g. `dev.cdevents.build.started.0.5.1`).
+- Event type strings follow the CDEvents 0.6.0-draft vocabulary — each event type carries its own independently-versioned suffix (e.g. `dev.cdevents.build.started.0.3.0`).
 - **You do not need to spell out every required `subject.content` field.** Iron Monkey synthesizes anything the schema marks `required` but the workflow/bundle omits (see _Payload synthesis_ below). Use `content:` on an event item if you want to pin specific values; everything else is filled in for you.
 - The schema version lives under `workflow.cdrus.version`, not at the top level.
 - **Emission cadence is derived, not uniform.** By default each event's delay is `min(10 × base, mean(base, timeout_ms))` where `base = max(min_wait_ms, 100)`, displaced by ±10% jitter and floored at 900ms — so a run is watchable by default without firing past a consumer before it can subscribe. `min_wait_ms` defaults to `100` and acts as a debounce floor (sub-100 values clamp up to 100); `timeout_ms` defaults to `5000`. Pass `--interval <ms>` for exact, jitter-free spacing instead.
@@ -445,11 +445,11 @@ An event may declare a `detach:` list of events or sub-expressions. A detached l
 
 ```yaml
 produces:
-  - event: dev.cdevents.service.deployed.0.5.1
+  - event: dev.cdevents.service.deployed.0.3.0
     detach:
       - expression: service-rollback   # rollback path is visible but non-blocking
   - expression: verify
-  - event: dev.cdevents.service.published.0.5.1
+  - event: dev.cdevents.service.published.0.3.0
 ```
 
 A detached list is lifted out of the main linear sequence into **its own chain**. In the built manifest it appears under `detachedChains[]`, each entry carrying:
@@ -466,13 +466,13 @@ Where a detached chain is monitored independently, a **concurrent branch** is mo
 
 ```yaml
 produces:
-  - event: dev.cdevents.testsuiterun.started.0.5.1
+  - event: dev.cdevents.testsuiterun.started.0.3.0
     produces:
-      - - event: dev.cdevents.testcaserun.started.0.5.1   # branch 0 — own chainId
-        - event: dev.cdevents.testcaserun.finished.0.5.1
-      - - event: dev.cdevents.testcaserun.started.0.5.1   # branch 1 — own chainId
-        - event: dev.cdevents.testcaserun.finished.0.5.1
-  - event: dev.cdevents.testsuiterun.finished.0.5.1
+      - - event: dev.cdevents.testcaserun.started.0.3.0   # branch 0 — own chainId
+        - event: dev.cdevents.testcaserun.finished.0.3.0
+      - - event: dev.cdevents.testcaserun.started.0.3.0   # branch 1 — own chainId
+        - event: dev.cdevents.testcaserun.finished.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0
 ```
 
 Branches are modelled identically to detached chains in the manifest (own `chainId`, `RELATION` from the spawning event, internal `PATH`/`END`) — they appear under `detachedChains[]` with `role: "concurrent"`. The difference is **how the receiver monitors them, expressed as breach rollup**, and lives entirely on the receiver — not the emitter:
@@ -501,10 +501,10 @@ author: my-tool
 expression: my-pattern
 description: One-line description of what this pattern represents.
 produces:
-  - event: dev.cdevents.build.started.0.5.1
+  - event: dev.cdevents.build.started.0.3.0
     timeout_ms: 30000
     min_wait_ms: 100
-  - event: dev.cdevents.build.finished.0.5.1
+  - event: dev.cdevents.build.finished.0.3.0
     timeout_ms: 30000
     min_wait_ms: 500
 ```
@@ -560,15 +560,15 @@ Injections can target events on **any** chain — the main chain or any detached
 
 ## CDEvent payload shape
 
-Every event Iron Monkey emits follows the CDEvents 0.5.1 envelope:
+Every event Iron Monkey emits follows the CDEvents 0.6.0-draft envelope:
 
 ```json
 {
   "context": {
-    "specversion": "0.5.1",
+    "specversion": "0.6.0-draft",
     "id": "<uuid>",
     "source": "<tool-source-uri>",
-    "type": "dev.cdevents.<noun>.<verb>.0.5.1",
+    "type": "dev.cdevents.<noun>.<verb>.<version>",
     "timestamp": "<iso-8601>",
     "chainId": "<uuid-or-fallback-urn>",
     "links": [
@@ -582,7 +582,7 @@ Every event Iron Monkey emits follows the CDEvents 0.5.1 envelope:
 }
 ```
 
-`context.specversion` is always `"0.5.1"`. The type suffix is also `.0.5.1` for all 45 event types bundled with Iron Monkey.
+`context.specversion` is always `"0.6.0-draft"`. Each of the 45 bundled event types carries its own version suffix, as defined by the CDEvents vocabulary.
 
 `context.links` is a plain array of link objects following the [CDEvents 0.6.0 embedded-link spec](https://github.com/cdevents/spec/blob/main/links.md). The first event in a chain has no `links` entry. Subsequent events carry a `PATH` link pointing back to the immediately preceding event:
 
@@ -608,7 +608,7 @@ Iron Monkey validates each event against a per-event schema loaded from `schemas
 
 To add a new event type:
 
-1. Get the schema from the [CDEvents spec repository](https://github.com/cdevents/spec) or write one following the 0.5.1 shape (JSON Schema 2020-12).
+1. Get the schema from the [CDEvents spec repository](https://github.com/cdevents/spec) or write one following the 0.6.0-draft shape (JSON Schema 2020-12).
 2. Drop it in `schemas/cdevents/` (or point `IRON_MONKEY_SCHEMAS` to a custom directory).
 3. Use the matching type string in your workflow YAML.
 

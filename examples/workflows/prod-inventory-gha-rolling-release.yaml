@@ -21,7 +21,7 @@ workflow:
     timeout_ms: 480000
 
   produces:
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       pipeline: inventory-prod-rolling
 
     - expression: build
@@ -37,5 +37,5 @@ workflow:
           tool: gke-prod
           source: https://gke.spin-dev.io/inventory
 
-    - event: dev.cdevents.pipelinerun.finished.0.5.1
+    - event: dev.cdevents.pipelinerun.finished.0.3.0
       pipeline: inventory-prod-rolling

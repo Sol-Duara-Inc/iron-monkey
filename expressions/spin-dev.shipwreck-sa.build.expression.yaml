@@ -8,9 +8,9 @@ description: |
   observable, verification runs inside the build envelope, and the build is
   not finished until test output has been published.
 produces:
-  - event: dev.cdevents.change.merged.0.5.1
-  - event: dev.cdevents.build.queued.0.5.1
-  - event: dev.cdevents.build.started.0.5.1
+  - event: dev.cdevents.change.merged.0.3.0
+  - event: dev.cdevents.build.queued.0.3.0
+  - event: dev.cdevents.build.started.0.3.0
   - expression: verify
-  - event: dev.cdevents.testoutput.published.0.5.1
-  - event: dev.cdevents.build.finished.0.5.1
+  - event: dev.cdevents.testoutput.published.0.3.0
+  - event: dev.cdevents.build.finished.0.3.0

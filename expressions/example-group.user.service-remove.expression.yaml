@@ -4,6 +4,6 @@ author: user
 expression: service-remove
 description: Service decommissioned within a taskrun.
 produces:
-  - event: dev.cdevents.taskrun.started.0.5.1
-  - event: dev.cdevents.service.removed.0.5.1
-  - event: dev.cdevents.taskrun.finished.0.5.1
+  - event: dev.cdevents.taskrun.started.0.3.0
+  - event: dev.cdevents.service.removed.0.3.0
+  - event: dev.cdevents.taskrun.finished.0.3.0

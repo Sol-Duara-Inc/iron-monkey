@@ -41,7 +41,7 @@ function defaultExpressionsDir(): string {
 
 /**
  * Extracts the `noun.verb` key from a fully-qualified CDEvent type string such
- * as `dev.cdevents.build.started.0.5.1`. Used for collision detection in
+ * as `dev.cdevents.build.started.0.3.0`. Used for collision detection in
  * expression bundles and for generating default `workflowEventId` values.
  *
  * @param eventType - A CDEvent type string or similar dot-separated identifier.

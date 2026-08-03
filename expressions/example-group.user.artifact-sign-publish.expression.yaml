@@ -4,6 +4,6 @@ author: user
 expression: artifact-sign-publish
 description: Supply-chain-aware artifact flow — packaged, signed, published.
 produces:
-  - event: dev.cdevents.artifact.packaged.0.5.1
-  - event: dev.cdevents.artifact.signed.0.5.1
-  - event: dev.cdevents.artifact.published.0.5.1
+  - event: dev.cdevents.artifact.packaged.0.3.0
+  - event: dev.cdevents.artifact.signed.0.3.0
+  - event: dev.cdevents.artifact.published.0.3.0

@@ -5,4 +5,4 @@ expression: audit-evidence
 description: Stump — full audit chain. A ticket trail must precede a service deployment for the workflow to count as compliant under change-management policy.
 produces:
   - expression: ticket-trail
-  - event: dev.cdevents.service.deployed.0.5.1
+  - event: dev.cdevents.service.deployed.0.3.0

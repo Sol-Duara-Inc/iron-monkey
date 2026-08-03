@@ -17,8 +17,8 @@ import type { CDEventPayload } from '../../src/manifest/types.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMAS_DIR = path.resolve(__dirname, '../../schemas/cdevents');
 
-const BUILD_STARTED = 'dev.cdevents.build.started.0.5.1';
-const BUILD_FINISHED = 'dev.cdevents.build.finished.0.5.1';
+const BUILD_STARTED = 'dev.cdevents.build.started.0.3.0';
+const BUILD_FINISHED = 'dev.cdevents.build.finished.0.3.0';
 
 const config: IronMonkeyConfig = {
   buses: { default: { type: 'rabbitmq', url: 'amqp://localhost' } },

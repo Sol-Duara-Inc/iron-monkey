@@ -5,4 +5,4 @@ expression: verify-with-output
 description: Verification followed by a published test output report.
 produces:
   - expression: verify
-  - event: dev.cdevents.testoutput.published.0.5.1
+  - event: dev.cdevents.testoutput.published.0.3.0

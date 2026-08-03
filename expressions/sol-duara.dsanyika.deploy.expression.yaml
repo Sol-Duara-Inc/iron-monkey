@@ -4,7 +4,7 @@ author: dsanyika
 expression: deploy
 description: Deployment lifecycle — taskrun brackets service operations.
 produces:
-  - event: dev.cdevents.taskrun.started.0.5.1
-  - event: dev.cdevents.service.deployed.0.5.1
-  - event: dev.cdevents.service.published.0.5.1
-  - event: dev.cdevents.taskrun.finished.0.5.1
+  - event: dev.cdevents.taskrun.started.0.3.0
+  - event: dev.cdevents.service.deployed.0.3.0
+  - event: dev.cdevents.service.published.0.3.0
+  - event: dev.cdevents.taskrun.finished.0.3.0

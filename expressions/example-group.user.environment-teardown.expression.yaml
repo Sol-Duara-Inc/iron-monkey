@@ -4,4 +4,4 @@ author: user
 expression: environment-teardown
 description: Environment is destroyed.
 produces:
-  - event: dev.cdevents.environment.deleted.0.5.1
+  - event: dev.cdevents.environment.deleted.0.3.0

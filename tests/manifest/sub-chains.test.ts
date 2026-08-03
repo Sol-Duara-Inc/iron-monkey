@@ -20,8 +20,8 @@ const SCHEMAS_DIR = path.resolve(__dirname, '../../schemas/cdevents');
 const EXPRESSIONS_DIR = path.resolve(__dirname, '../../expressions');
 const WORKFLOWS_DIR = path.resolve(__dirname, '../../examples/workflows');
 
-const BUILD_STARTED = 'dev.cdevents.build.started.0.5.1';
-const BUILD_FINISHED = 'dev.cdevents.build.finished.0.5.1';
+const BUILD_STARTED = 'dev.cdevents.build.started.0.3.0';
+const BUILD_FINISHED = 'dev.cdevents.build.finished.0.3.0';
 
 const config: IronMonkeyConfig = {
   buses: { default: { type: 'rabbitmq', url: 'amqp://localhost' } },
@@ -224,8 +224,8 @@ describe('buildManifest — detached / branch sub-chains', () => {
     const dc = m.detachedChains![0];
     expect(dc.role).toBe('detached');
     expect(dc.events.map((e) => e.type)).toEqual([
-      'dev.cdevents.ticket.created.0.5.1',
-      'dev.cdevents.ticket.updated.0.5.1',
+      'dev.cdevents.ticket.created.0.2.0',
+      'dev.cdevents.ticket.updated.0.2.0',
     ]);
     expect(dc.chainId).not.toBe(m.chainId);
 

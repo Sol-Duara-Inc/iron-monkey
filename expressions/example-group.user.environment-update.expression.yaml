@@ -4,4 +4,4 @@ author: user
 expression: environment-update
 description: Existing environment is modified.
 produces:
-  - event: dev.cdevents.environment.modified.0.5.1
+  - event: dev.cdevents.environment.modified.0.3.0

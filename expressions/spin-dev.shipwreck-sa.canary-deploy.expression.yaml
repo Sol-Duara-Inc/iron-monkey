@@ -8,8 +8,8 @@ description: |
   audit pipeline. Verification gates the traffic cutover — the service is
   not published until the canary tests have passed.
 produces:
-  - event: dev.cdevents.service.deployed.0.5.1
+  - event: dev.cdevents.service.deployed.0.3.0
     detach:
       - expression: service-rollback
   - expression: verify
-  - event: dev.cdevents.service.published.0.5.1
+  - event: dev.cdevents.service.published.0.3.0

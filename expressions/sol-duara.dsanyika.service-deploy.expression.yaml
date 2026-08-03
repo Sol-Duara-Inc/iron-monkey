@@ -4,5 +4,5 @@ author: dsanyika
 expression: service-deploy
 description: Service-only deployment pattern — the service is deployed and published without a surrounding taskrun.
 produces:
-  - event: dev.cdevents.service.deployed.0.5.1
-  - event: dev.cdevents.service.published.0.5.1
+  - event: dev.cdevents.service.deployed.0.3.0
+  - event: dev.cdevents.service.published.0.3.0

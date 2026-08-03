@@ -46,10 +46,10 @@ const configWithAuth: RabbitMQBusConfig = {
 function makePayload() {
   return {
     context: {
-      specversion: '0.5.1',
+      specversion: "0.6.0-draft",
       id: 'evt-1',
       source: 'https://example.com/',
-      type: 'dev.cdevents.build.started.0.5.1',
+      type: 'dev.cdevents.build.started.0.3.0',
       timestamp: new Date().toISOString(),
       chainId: 'chain-1',
     },
@@ -97,13 +97,13 @@ describe('RabbitMQBus', () => {
     it('publishes to the default exchange with event type as routing key', async () => {
       const bus = new RabbitMQBus('default', baseConfig);
       await bus.connect();
-      await bus.emit('dev.cdevents.build.started.0.5.1', 'evt-1', makePayload());
+      await bus.emit('dev.cdevents.build.started.0.3.0', 'evt-1', makePayload());
       expect(mockChannel.assertExchange).toHaveBeenCalledWith('cdevents', 'topic', {
         durable: true,
       });
       expect(mockChannel.publish).toHaveBeenCalledWith(
         'cdevents',
-        'dev.cdevents.build.started.0.5.1',
+        'dev.cdevents.build.started.0.3.0',
         expect.any(Buffer),
         expect.objectContaining({ contentType: 'application/json', persistent: true }),
       );
@@ -112,13 +112,13 @@ describe('RabbitMQBus', () => {
     it('uses the configured exchange and routing key template', async () => {
       const bus = new RabbitMQBus('default', configWithAuth);
       await bus.connect();
-      await bus.emit('dev.cdevents.build.started.0.5.1', 'evt-1', makePayload());
+      await bus.emit('dev.cdevents.build.started.0.3.0', 'evt-1', makePayload());
       expect(mockChannel.assertExchange).toHaveBeenCalledWith('my-exchange', 'topic', {
         durable: true,
       });
       expect(mockChannel.publish).toHaveBeenCalledWith(
         'my-exchange',
-        'events.dev.cdevents.build.started.0.5.1',
+        'events.dev.cdevents.build.started.0.3.0',
         expect.any(Buffer),
         expect.any(Object),
       );
