@@ -58,7 +58,7 @@ export async function loadSchemasFromDir(dir: string): Promise<Map<string, unkno
  * schemas that don't follow this convention (e.g. the shared `baseevent.json`).
  *
  * @param schema - Raw parsed JSON schema object.
- * @returns The event type string (e.g. `'dev.cdevents.build.started.0.1.0'`),
+ * @returns The event type string (e.g. `'dev.cdevents.build.started.0.3.0'`),
  *   or `null` if the schema does not contain a recognisable type enum.
  */
 function extractTypeString(schema: unknown): string | null {

@@ -194,7 +194,7 @@ function cdEvent(
 ): Record<string, unknown> {
   return {
     context: {
-      specversion: '0.5.1',
+      specversion: "0.6.0-draft",
       id,
       source: 'iron-monkey/contract-test',
       type,
@@ -301,7 +301,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
             chainRef: planted, // also planted as a ref-shaped uuid; must not be used as a chainId
             name: 'planted',
             parentChainRef: 'root',
-            expectedEvents: declaredEvents(['dev.cdevents.ticket.created.0.5.1']),
+            expectedEvents: declaredEvents(['dev.cdevents.ticket.created.0.2.0']),
           },
         ],
       });
@@ -365,7 +365,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
             name: 'runtime-extra',
             parentChainRef: 'root',
             linkKind: 'TRIGGER',
-            expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.5.1']),
+            expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
           },
         ],
       });
@@ -397,7 +397,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
             chainRef: `novel-${uuid()}`,
             name: 'bad-parent',
             parentChainRef: `nope-${uuid()}`,
-            expectedEvents: declaredEvents(['dev.cdevents.ticket.created.0.5.1']),
+            expectedEvents: declaredEvents(['dev.cdevents.ticket.created.0.2.0']),
           },
         ],
       });
@@ -452,7 +452,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
         name: 'incident-rollback',
         parentChainId: main.chainId,
         linkKind: 'TRIGGER',
-        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.5.1']),
+        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
       });
       expect(res.status).toBeLessThan(300);
       expect(res.body.status).toBe('added');
@@ -465,7 +465,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
         chainRef: `orphan-${uuid()}`,
         name: 'orphan',
         parentChainId: uuid(), // no such chain
-        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.5.1']),
+        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
       });
       expect(res.status).toBeGreaterThanOrEqual(400);
     });
@@ -518,7 +518,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
         chainRef: `breach-${uuid()}`,
         name: 'never-starts',
         parentChainId: main.chainId,
-        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.5.1'], 1000),
+        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0'], 1000),
       });
       const chainId = String(late.body.chainId);
       expect(chainId).toMatch(UUID_RE);
@@ -543,14 +543,14 @@ describeContract('Sympraxis chain-declaration protocol', () => {
         expect(main).toBeTruthy();
         if (!main) return;
 
-        const order0 = 'dev.cdevents.service.rolledback.0.5.1';
+        const order0 = 'dev.cdevents.service.rolledback.0.3.0';
         const late = await postChains({
           chainRef: `hang-${uuid()}`,
           name: 'stalls-midway',
           parentChainId: main.chainId,
           expectedEvents: [
             { type: order0, order: 0, timeoutMs: 30000 }, // generous: must not breach as not-started
-            { type: 'dev.cdevents.service.published.0.5.1', order: 1, timeoutMs: 1000 }, // short: hang
+            { type: 'dev.cdevents.service.published.0.3.0', order: 1, timeoutMs: 1000 }, // short: hang
           ],
         });
         const chainId = String(late.body.chainId);
@@ -601,7 +601,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
           }
         }
         // An unexpected extra on the chain must NOT breach (observed ⊇ expected).
-        await emitCdEvent(cdEvent(chainId, 'dev.cdevents.incident.detected.0.5.1'));
+        await emitCdEvent(cdEvent(chainId, 'dev.cdevents.incident.detected.0.3.0'));
         // Final expected event carries the END link (self-referential id).
         const lastId = uuid();
         const last = ordered[ordered.length - 1];

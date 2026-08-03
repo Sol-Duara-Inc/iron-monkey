@@ -4,5 +4,5 @@ author: user
 expression: test-case-skipped
 description: Test case queued and then skipped without running.
 produces:
-  - event: dev.cdevents.testcaserun.queued.0.5.1
-  - event: dev.cdevents.testcaserun.skipped.0.5.1
+  - event: dev.cdevents.testcaserun.queued.0.3.0
+  - event: dev.cdevents.testcaserun.skipped.0.2.0

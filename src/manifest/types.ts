@@ -82,7 +82,7 @@ export interface ManifestEvent {
    * RELATION/registry binding key. See {@link module:workflow/chain-tree}.
    */
   treePath?: string;
-  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.1.0`. */
+  /** Fully-qualified CDEvent type string, e.g. `dev.cdevents.build.started.0.3.0`. */
   type: string;
   /** Pipeline/stage identifier from the workflow `pipeline` field. */
   stageId: string;
@@ -131,11 +131,11 @@ export interface ManifestEvent {
 }
 
 /**
- * The `context` block of a CDEvent payload, following the CDEvents 0.5.1
+ * The `context` block of a CDEvent payload, following the CDEvents 0.6.0-draft
  * specification with Iron Monkey extensions for chain linking.
  */
 export interface CDEventContext {
-  /** CloudEvents spec version string (e.g. `'0.5.1'`). */
+  /** CloudEvents spec version string (e.g. `'0.6.0-draft'`). */
   specversion: string;
   /** Unique UUID for this event instance. */
   id: string;

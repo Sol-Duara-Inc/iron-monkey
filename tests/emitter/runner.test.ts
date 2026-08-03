@@ -62,7 +62,7 @@ function makeEvent(overrides: Partial<ManifestEvent> = {}): ManifestEvent {
   return {
     eventId: 'evt-1',
     workflowEventId: 'build-started',
-    type: 'dev.cdevents.build.started.0.5.1',
+    type: 'dev.cdevents.build.started.0.3.0',
     stageId: 'my-pipeline',
     stageTool: 'jenkins',
     concurrent: false,
@@ -72,10 +72,10 @@ function makeEvent(overrides: Partial<ManifestEvent> = {}): ManifestEvent {
     targetEmitTime: Date.now() - 1000, // in the past → no sleep
     payload: {
       context: {
-        specversion: '0.5.1',
+        specversion: "0.6.0-draft",
         id: 'evt-1',
         source: 'https://jenkins.example.com/',
-        type: 'dev.cdevents.build.started.0.5.1',
+        type: 'dev.cdevents.build.started.0.3.0',
         timestamp: new Date().toISOString(),
         chainId: 'chain-1',
       },
@@ -156,7 +156,7 @@ describe('runWorkflow', () => {
     const second = makeEvent({
       eventId: 'evt-2',
       workflowEventId: 'build-finished',
-      type: 'dev.cdevents.build.finished.0.5.1',
+      type: 'dev.cdevents.build.finished.0.3.0',
       payload: {
         ...makeEvent({ eventId: 'evt-2' }).payload,
         context: {
@@ -228,7 +228,7 @@ describe('runWorkflow', () => {
     const normal = makeEvent({
       eventId: 'evt-2',
       workflowEventId: 'build-finished',
-      type: 'dev.cdevents.build.finished.0.5.1',
+      type: 'dev.cdevents.build.finished.0.3.0',
     });
     const manifest = makeManifest([skipped, normal]);
     (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
@@ -242,7 +242,7 @@ describe('runWorkflow', () => {
       (c: unknown[]) => c[0],
     );
     expect(emittedTypes).not.toContain(skipped.type);
-    expect(emittedTypes).toContain('dev.cdevents.build.finished.0.5.1');
+    expect(emittedTypes).toContain('dev.cdevents.build.finished.0.3.0');
     expect(mockBus.emit).toHaveBeenCalledTimes(1);
   });
 

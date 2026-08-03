@@ -14,7 +14,7 @@ const BUS_URL = process.env.IRON_MONKEY_BUS_URL ?? 'amqp://localhost:5672';
 const events: ResolvedEvent[] = [
   {
     id: 'pipelinerun-started',
-    type: 'dev.cdevents.pipelinerun.started.0.5.1',
+    type: 'dev.cdevents.pipelinerun.started.0.3.0',
     tool: 'jenkins',
     source: '',
     pipeline: 'integration-test',
@@ -31,7 +31,7 @@ const events: ResolvedEvent[] = [
   },
   {
     id: 'build-started',
-    type: 'dev.cdevents.build.started.0.5.1',
+    type: 'dev.cdevents.build.started.0.3.0',
     tool: 'jenkins',
     source: '',
     pipeline: 'integration-test',
@@ -42,7 +42,7 @@ const events: ResolvedEvent[] = [
   },
   {
     id: 'build-finished',
-    type: 'dev.cdevents.build.finished.0.5.1',
+    type: 'dev.cdevents.build.finished.0.3.0',
     tool: 'jenkins',
     source: '',
     pipeline: 'integration-test',
@@ -53,7 +53,7 @@ const events: ResolvedEvent[] = [
   },
   {
     id: 'pipelinerun-finished',
-    type: 'dev.cdevents.pipelinerun.finished.0.5.1',
+    type: 'dev.cdevents.pipelinerun.finished.0.3.0',
     tool: 'jenkins',
     source: '',
     pipeline: 'integration-test',

@@ -3,7 +3,7 @@
  * Loads CDEvent JSON schemas and validates event payloads using AJV 2020-12.
  * An `embeddedlinksarray` schema is registered to satisfy `$ref` lookups from
  * official CDEvent schemas while allowing Iron Monkey's simplified
- * `{ type, target }` link shape rather than the full 0.5.1 specification.
+ * `{ type, target }` link shape rather than the full 0.6.0-draft specification.
  */
 
 import { createAjv2020 } from '../util/ajv.js';
@@ -17,7 +17,7 @@ const ajv = createAjv2020({ formats: true, strict: false });
 // embedded (it's a stand-alone link only); only `PATH`, `END`, and `RELATION`
 // are accepted here. Spec: https://github.com/cdevents/spec/blob/main/links.md
 ajv.addSchema({
-  $id: 'https://cdevents.dev/0.5.1/schema/links/embeddedlinksarray',
+  $id: 'https://cdevents.dev/0.6.0-draft/schema/links/embeddedlinksarray',
   type: 'array',
   items: {
     oneOf: [

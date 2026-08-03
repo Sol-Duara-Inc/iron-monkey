@@ -3,7 +3,7 @@ import { isEventItem, isExpressionItem } from '../../src/workflow/types.js';
 
 describe('isEventItem', () => {
   it('returns true for an object with an event key', () => {
-    expect(isEventItem({ event: 'dev.cdevents.build.started.0.5.1' })).toBe(true);
+    expect(isEventItem({ event: 'dev.cdevents.build.started.0.3.0' })).toBe(true);
   });
 
   it('returns false for an object with an expression key', () => {
@@ -17,6 +17,6 @@ describe('isExpressionItem', () => {
   });
 
   it('returns false for an object with an event key', () => {
-    expect(isExpressionItem({ event: 'dev.cdevents.build.started.0.5.1' })).toBe(false);
+    expect(isExpressionItem({ event: 'dev.cdevents.build.started.0.3.0' })).toBe(false);
   });
 });

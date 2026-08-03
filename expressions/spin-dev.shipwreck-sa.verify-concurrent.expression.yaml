@@ -7,15 +7,15 @@ description: |
   suite. The suite's queue state is observable so capacity planners can see
   backlogs. A bare single-case run does not count as verification here.
 produces:
-  - event: dev.cdevents.testsuiterun.queued.0.5.1
-  - event: dev.cdevents.testsuiterun.started.0.5.1
+  - event: dev.cdevents.testsuiterun.queued.0.3.0
+  - event: dev.cdevents.testsuiterun.started.0.3.0
     produces:
       -
-        - event: dev.cdevents.testcaserun.queued.0.5.1
-        - event: dev.cdevents.testcaserun.started.0.5.1
-        - event: dev.cdevents.testcaserun.finished.0.5.1
+        - event: dev.cdevents.testcaserun.queued.0.3.0
+        - event: dev.cdevents.testcaserun.started.0.3.0
+        - event: dev.cdevents.testcaserun.finished.0.3.0
       -
-        - event: dev.cdevents.testcaserun.queued.0.5.1
-        - event: dev.cdevents.testcaserun.started.0.5.1
-        - event: dev.cdevents.testcaserun.finished.0.5.1
-  - event: dev.cdevents.testsuiterun.finished.0.5.1
+        - event: dev.cdevents.testcaserun.queued.0.3.0
+        - event: dev.cdevents.testcaserun.started.0.3.0
+        - event: dev.cdevents.testcaserun.finished.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0

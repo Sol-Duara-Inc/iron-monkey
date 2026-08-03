@@ -4,10 +4,10 @@ import { applyMalformation } from '../../src/injection/malformations.js';
 function makePayload(): Record<string, unknown> {
   return {
     context: {
-      specversion: '0.5.1',
+      specversion: "0.6.0-draft",
       id: 'abc-123',
       source: 'https://example.com/',
-      type: 'dev.cdevents.build.started.0.5.1',
+      type: 'dev.cdevents.build.started.0.3.0',
       timestamp: new Date().toISOString(),
       chainId: 'chain-uuid',
       links: [{ linkType: 'PATH', from: { contextId: 'prev-evt-id' } }],

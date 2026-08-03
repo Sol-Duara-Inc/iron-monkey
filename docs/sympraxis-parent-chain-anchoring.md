@@ -76,10 +76,10 @@ A sub‑chain event:
 ```jsonc
 {
   "context": {
-    "specversion": "0.5.1",
+    "specversion": "0.6.0-draft",
     "id": "8f3a…",                       // this event's context.id — Iron Monkey-minted
     "source": "https://…",
-    "type": "dev.cdevents.ticket.created.0.5.1",
+    "type": "dev.cdevents.ticket.created.0.2.0",
     "timestamp": "2026-05-28T19:05:02Z",
     "chainId": "urn:sol-duara:fallback:wf-ticket:20260528T190501Z:0dfd53",  // THIS chain (UUID when minted; URN on fallback)
     "parentChainId": "b21c…",            // immediate parent chain (UUID or URN) — the new anchor

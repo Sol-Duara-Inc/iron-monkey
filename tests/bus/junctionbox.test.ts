@@ -62,10 +62,10 @@ const fullConfig: JunctionBoxBusConfig = {
 function makePayload(): CDEventPayload {
   return {
     context: {
-      specversion: '0.5.1',
+      specversion: "0.6.0-draft",
       id: 'evt-1',
       source: 'https://jenkins.example.com/',
-      type: 'dev.cdevents.build.started.0.5.1',
+      type: 'dev.cdevents.build.started.0.3.0',
       timestamp: '2026-05-08T00:00:00.000Z',
       chainId: 'chain-1',
     },

@@ -4,9 +4,9 @@ author: user
 expression: deploy-with-notify
 description: Deploy with a detached ticket-association notification chain. The deploy proceeds without waiting on the notification, but the chain is observable.
 produces:
-  - event: dev.cdevents.taskrun.started.0.5.1
+  - event: dev.cdevents.taskrun.started.0.3.0
     detach:
       - expression: ticket-associate
-  - event: dev.cdevents.service.deployed.0.5.1
-  - event: dev.cdevents.service.published.0.5.1
-  - event: dev.cdevents.taskrun.finished.0.5.1
+  - event: dev.cdevents.service.deployed.0.3.0
+  - event: dev.cdevents.service.published.0.3.0
+  - event: dev.cdevents.taskrun.finished.0.3.0

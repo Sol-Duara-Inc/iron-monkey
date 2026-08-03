@@ -19,7 +19,7 @@ workflow:
 
   produces:
     # ── Jenkins (CI: tool 1) ──────────────────────────────────────────────
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jenkins-prod
       source: https://jenkins.example.com/
       pipeline: junction-box-demo
@@ -37,7 +37,7 @@ workflow:
       source: https://jenkins.example.com/
 
     # ── Spinnaker (CD: tool 2) ────────────────────────────────────────────
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: spinnaker-prod
       pipeline: junction-box-demo
 
@@ -56,7 +56,7 @@ workflow:
           source: https://gke.example.com/
 
     # ── Terminal ──────────────────────────────────────────────────────────
-    - event: dev.cdevents.pipelinerun.finished.0.5.1
+    - event: dev.cdevents.pipelinerun.finished.0.3.0
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
       pipeline: junction-box-demo

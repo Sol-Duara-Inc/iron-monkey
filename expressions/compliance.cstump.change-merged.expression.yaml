@@ -4,4 +4,4 @@ author: cstump
 expression: change-merged
 description: Stump — watch every code merge to mainline. Compliance logs each merge as the origin of any subsequent SDLC activity for traceability.
 produces:
-  - event: dev.cdevents.change.merged.0.5.1
+  - event: dev.cdevents.change.merged.0.3.0

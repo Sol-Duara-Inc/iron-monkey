@@ -7,6 +7,6 @@ description: |
   signed before they may be published. Unsigned publication is not an option
   in this group; this is the only "artifact-store" semantics on offer.
 produces:
-  - event: dev.cdevents.artifact.packaged.0.5.1
-  - event: dev.cdevents.artifact.signed.0.5.1
-  - event: dev.cdevents.artifact.published.0.5.1
+  - event: dev.cdevents.artifact.packaged.0.3.0
+  - event: dev.cdevents.artifact.signed.0.3.0
+  - event: dev.cdevents.artifact.published.0.3.0

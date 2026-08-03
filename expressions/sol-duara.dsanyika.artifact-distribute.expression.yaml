@@ -4,5 +4,5 @@ author: dsanyika
 expression: artifact-distribute
 description: Consumer-side fulfillment — a published artifact is downloaded.
 produces:
-  - event: dev.cdevents.artifact.published.0.5.1
-  - event: dev.cdevents.artifact.downloaded.0.5.1
+  - event: dev.cdevents.artifact.published.0.3.0
+  - event: dev.cdevents.artifact.downloaded.0.2.0

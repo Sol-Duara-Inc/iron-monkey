@@ -27,7 +27,7 @@ workflow:
   cdrus:
     version: 1
   produces:
-    - event: dev.cdevents.build.started.0.5.1
+    - event: dev.cdevents.build.started.0.3.0
       tool: jenkins
       source: https://jenkins.example.com/
 `;
@@ -51,7 +51,7 @@ workflow:
   cdrus:
     version: 1
   produces:
-    - event: dev.cdevents.build.started.0.5.1
+    - event: dev.cdevents.build.started.0.3.0
       tool: jenkins
       source: https://jenkins.example.com/
 `);
@@ -70,7 +70,7 @@ workflow:
     version: 1
   bus: default
   produces:
-    - event: dev.cdevents.build.started.0.5.1
+    - event: dev.cdevents.build.started.0.3.0
 `);
     await expect(validateWorkflow(file)).rejects.toThrow("'bus' field is not allowed");
     await unlink(file);
@@ -89,7 +89,7 @@ workflow:
       tool: jenkins
       events:
         - id: e1
-          type: dev.cdevents.build.started.0.1.1
+          type: dev.cdevents.build.started.0.3.0
 `);
     await expect(validateWorkflow(file)).rejects.toThrow("'stages' field is not allowed");
     await unlink(file);
@@ -113,7 +113,7 @@ workflow:
   id: test
   name: test
   produces:
-    - event: dev.cdevents.build.started.0.5.1
+    - event: dev.cdevents.build.started.0.3.0
 `);
     await expect(validateWorkflow(file)).rejects.toThrow('validation failed');
     await unlink(file);
@@ -140,7 +140,7 @@ workflow:
     timeout_ms: 9999
     min_wait_ms: 42
   produces:
-    - event: dev.cdevents.build.started.0.5.1
+    - event: dev.cdevents.build.started.0.3.0
 `);
     const wf = await validateWorkflow(file);
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
@@ -163,7 +163,7 @@ workflow:
     tool: default-tool
     timeout_ms: 9999
   produces:
-    - event: dev.cdevents.build.started.0.5.1
+    - event: dev.cdevents.build.started.0.3.0
       tool: override-tool
       timeout_ms: 1234
 `);
@@ -199,8 +199,8 @@ workflow:
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
     const events = resolveProduces(wf, registry);
     expect(events.length).toBe(4);
-    expect(events[0].type).toBe('dev.cdevents.build.started.0.5.1');
-    expect(events[3].type).toBe('dev.cdevents.build.finished.0.5.1');
+    expect(events[0].type).toBe('dev.cdevents.build.started.0.3.0');
+    expect(events[3].type).toBe('dev.cdevents.build.finished.0.3.0');
     expect(events.every((e) => e.origin === 'expression')).toBe(true);
     await unlink(file);
   });
@@ -226,8 +226,8 @@ workflow:
     const wf = await validateWorkflow(file);
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
     const events = resolveProduces(wf, registry);
-    const deployed = events.find((e) => e.type === 'dev.cdevents.service.deployed.0.5.1');
-    const started = events.find((e) => e.type === 'dev.cdevents.taskrun.started.0.5.1');
+    const deployed = events.find((e) => e.type === 'dev.cdevents.service.deployed.0.3.0');
+    const started = events.find((e) => e.type === 'dev.cdevents.taskrun.started.0.3.0');
     expect(deployed?.tool).toBe('gke');
     expect(deployed?.source).toBe('https://gke.example.com/');
     expect(started?.tool).toBe('spinnaker');
@@ -261,11 +261,11 @@ workflow:
   cdrus:
     version: 1
   produces:
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jenkins
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jfrog
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: spinnaker
 `);
     const wf = await validateWorkflow(file);
@@ -290,11 +290,11 @@ workflow:
   cdrus:
     version: 1
   produces:
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jenkins
-    - event: dev.cdevents.pipelinerun.started.0.5.1
+    - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jfrog
-    - event: dev.cdevents.pipelinerun.finished.0.5.1
+    - event: dev.cdevents.pipelinerun.finished.0.3.0
       tool: jfrog
 `);
     const wf = await validateWorkflow(file);
@@ -326,8 +326,8 @@ workflow:
     const events = resolveProduces(wf, registry);
     // blue-green-deploy: service.deployed + verify(4) + service.published + service.removed = 7
     expect(events.length).toBe(7);
-    expect(events[0].type).toBe('dev.cdevents.service.deployed.0.5.1');
-    expect(events[events.length - 1].type).toBe('dev.cdevents.service.removed.0.5.1');
+    expect(events[0].type).toBe('dev.cdevents.service.deployed.0.3.0');
+    expect(events[events.length - 1].type).toBe('dev.cdevents.service.removed.0.3.0');
   });
 });
 
@@ -338,8 +338,8 @@ describe('resolveProduces — group/author disambiguation on real prod workflows
     const events = resolveProduces(wf, registry);
     // pipelinerun.started (1) + spin-dev/shipwreck-sa/build (9) + service-deploy (2) + pipelinerun.finished (1)
     expect(events.length).toBeGreaterThan(5);
-    expect(events[0].type).toBe('dev.cdevents.pipelinerun.started.0.5.1');
-    expect(events[events.length - 1].type).toBe('dev.cdevents.pipelinerun.finished.0.5.1');
+    expect(events[0].type).toBe('dev.cdevents.pipelinerun.started.0.3.0');
+    expect(events[events.length - 1].type).toBe('dev.cdevents.pipelinerun.finished.0.3.0');
   });
 
   it('parses and resolves prod-payments-blue-green-cutover.yaml without error', async () => {
@@ -349,8 +349,8 @@ describe('resolveProduces — group/author disambiguation on real prod workflows
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
     const events = resolveProduces(wf, registry);
     expect(events.length).toBeGreaterThan(5);
-    expect(events[0].type).toBe('dev.cdevents.pipelinerun.started.0.5.1');
-    expect(events[events.length - 1].type).toBe('dev.cdevents.pipelinerun.finished.0.5.1');
+    expect(events[0].type).toBe('dev.cdevents.pipelinerun.started.0.3.0');
+    expect(events[events.length - 1].type).toBe('dev.cdevents.pipelinerun.finished.0.3.0');
   });
 
   it('parses and resolves prod-checkout-jenkins-spinnaker-canary.yaml without error', async () => {
@@ -367,6 +367,6 @@ describe('resolveProduces — group/author disambiguation on real prod workflows
     const events = resolveProduces(wf, registry);
     // spin-dev/shipwreck-sa/build starts with change.merged (not build.started)
     const first = events.find((e) => e.expressionRef !== undefined);
-    expect(first?.type).toBe('dev.cdevents.change.merged.0.5.1');
+    expect(first?.type).toBe('dev.cdevents.change.merged.0.3.0');
   });
 });

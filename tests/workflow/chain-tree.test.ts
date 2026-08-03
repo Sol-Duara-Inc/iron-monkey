@@ -5,21 +5,21 @@ import type { ExpressionBundle } from '../../src/expressions/types.js';
 import type { WorkflowFile } from '../../src/workflow/types.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
-const PR_STARTED = 'dev.cdevents.pipelinerun.started.0.5.1';
-const TICKET_CREATED = 'dev.cdevents.ticket.created.0.5.1';
-const TICKET_UPDATED = 'dev.cdevents.ticket.updated.0.5.1';
-const TASKRUN_STARTED = 'dev.cdevents.taskrun.started.0.5.1';
-const SERVICE_DEPLOYED = 'dev.cdevents.service.deployed.0.5.1';
-const TASKRUN_FINISHED = 'dev.cdevents.taskrun.finished.0.5.1';
-const PR_FINISHED = 'dev.cdevents.pipelinerun.finished.0.5.1';
-const ARTIFACT_SIGNED = 'dev.cdevents.artifact.signed.0.5.1';
-const TESTOUTPUT_PUBLISHED = 'dev.cdevents.testoutput.published.0.5.1';
-const TS_QUEUED = 'dev.cdevents.testsuiterun.queued.0.5.1';
-const TS_STARTED = 'dev.cdevents.testsuiterun.started.0.5.1';
-const TS_FINISHED = 'dev.cdevents.testsuiterun.finished.0.5.1';
-const TC_QUEUED = 'dev.cdevents.testcaserun.queued.0.5.1';
-const TC_STARTED = 'dev.cdevents.testcaserun.started.0.5.1';
-const TC_FINISHED = 'dev.cdevents.testcaserun.finished.0.5.1';
+const PR_STARTED = 'dev.cdevents.pipelinerun.started.0.3.0';
+const TICKET_CREATED = 'dev.cdevents.ticket.created.0.2.0';
+const TICKET_UPDATED = 'dev.cdevents.ticket.updated.0.2.0';
+const TASKRUN_STARTED = 'dev.cdevents.taskrun.started.0.3.0';
+const SERVICE_DEPLOYED = 'dev.cdevents.service.deployed.0.3.0';
+const TASKRUN_FINISHED = 'dev.cdevents.taskrun.finished.0.3.0';
+const PR_FINISHED = 'dev.cdevents.pipelinerun.finished.0.3.0';
+const ARTIFACT_SIGNED = 'dev.cdevents.artifact.signed.0.3.0';
+const TESTOUTPUT_PUBLISHED = 'dev.cdevents.testoutput.published.0.3.0';
+const TS_QUEUED = 'dev.cdevents.testsuiterun.queued.0.3.0';
+const TS_STARTED = 'dev.cdevents.testsuiterun.started.0.3.0';
+const TS_FINISHED = 'dev.cdevents.testsuiterun.finished.0.3.0';
+const TC_QUEUED = 'dev.cdevents.testcaserun.queued.0.3.0';
+const TC_STARTED = 'dev.cdevents.testcaserun.started.0.3.0';
+const TC_FINISHED = 'dev.cdevents.testcaserun.finished.0.3.0';
 
 const GROUP = 'spin-dev';
 const AUTHOR = 'shipwreck-sa';

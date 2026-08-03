@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cdevents.dev/0.5.1/schema/artifact-packaged-event",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/artifact-packaged-event",
   "properties": {
     "context": {
       "properties": {
@@ -19,8 +19,10 @@
         },
         "type": {
           "type": "string",
-          "enum": ["dev.cdevents.artifact.packaged.0.5.1"],
-          "default": "dev.cdevents.artifact.packaged.0.5.1"
+          "enum": [
+            "dev.cdevents.artifact.packaged.0.3.0"
+          ],
+          "default": "dev.cdevents.artifact.packaged.0.3.0"
         },
         "timestamp": {
           "type": "string",
@@ -41,7 +43,13 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["specversion", "id", "source", "type", "timestamp"]
+      "required": [
+        "specversion",
+        "id",
+        "source",
+        "type",
+        "timestamp"
+      ]
     },
     "subject": {
       "properties": {
@@ -70,7 +78,9 @@
               },
               "additionalProperties": false,
               "type": "object",
-              "required": ["id"]
+              "required": [
+                "id"
+              ]
             },
             "sbom": {
               "properties": {
@@ -82,17 +92,24 @@
               },
               "additionalProperties": false,
               "type": "object",
-              "required": ["uri"]
+              "required": [
+                "uri"
+              ]
             }
           },
           "additionalProperties": false,
           "type": "object",
-          "required": ["change"]
+          "required": [
+            "change"
+          ]
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["id", "content"]
+      "required": [
+        "id",
+        "content"
+      ]
     },
     "customData": {
       "oneOf": [
@@ -111,5 +128,8 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["context", "subject"]
+  "required": [
+    "context",
+    "subject"
+  ]
 }

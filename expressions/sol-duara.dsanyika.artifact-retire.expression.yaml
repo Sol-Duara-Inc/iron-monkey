@@ -4,4 +4,4 @@ author: dsanyika
 expression: artifact-retire
 description: Artifact retired or expired from the registry.
 produces:
-  - event: dev.cdevents.artifact.deleted.0.5.1
+  - event: dev.cdevents.artifact.deleted.0.2.0

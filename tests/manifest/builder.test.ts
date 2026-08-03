@@ -14,7 +14,7 @@ const WORKFLOWS_DIR = path.resolve(__dirname, '../../examples/workflows');
 
 const singleEvent: ResolvedEvent = {
   id: 'build-started',
-  type: 'dev.cdevents.build.started.0.5.1',
+  type: 'dev.cdevents.build.started.0.3.0',
   tool: 'jenkins',
   source: '',
   pipeline: 'my-pipeline',
@@ -25,10 +25,10 @@ const singleEvent: ResolvedEvent = {
 };
 
 const twoEvents: ResolvedEvent[] = [
-  { ...singleEvent, id: 'build-started', type: 'dev.cdevents.build.started.0.5.1' },
+  { ...singleEvent, id: 'build-started', type: 'dev.cdevents.build.started.0.3.0' },
   {
     id: 'build-finished',
-    type: 'dev.cdevents.build.finished.0.5.1',
+    type: 'dev.cdevents.build.finished.0.3.0',
     tool: 'jenkins',
     source: '',
     pipeline: 'my-pipeline',
@@ -94,9 +94,9 @@ describe('buildManifest', () => {
     expect(manifest.events[0].source).toBe('https://custom.example.com/');
   });
 
-  it('emits specversion 0.5.1 in every event context', async () => {
+  it('emits specversion 0.6.0-draft in every event context', async () => {
     const manifest = await buildManifest(meta, [singleEvent], config, { noConduit: true });
-    expect(manifest.events[0].payload.context.specversion).toBe('0.5.1');
+    expect(manifest.events[0].payload.context.specversion).toBe('0.6.0-draft');
   });
 
   it('emits CDEvents-spec PATH links on the second-and-later events', async () => {
@@ -177,7 +177,7 @@ describe('buildManifest — real workflow end-to-end', () => {
 
     expect(manifest.workflowId).toBe('prod-auth-hotfix-fast-path');
     expect(manifest.events.length).toBeGreaterThan(5);
-    expect(manifest.events[0].payload.context.specversion).toBe('0.5.1');
+    expect(manifest.events[0].payload.context.specversion).toBe('0.6.0-draft');
     expect(manifest.events[manifest.events.length - 1].isLast).toBe(true);
     // Every event must have a valid payload type matching the CDEvents format
     for (const e of manifest.events) {

@@ -220,7 +220,7 @@ function absoluteBase(toolSource: string): string {
 }
 
 function nounFromType(type: string): string {
-  // dev.cdevents.taskrun.started.0.5.1 → "taskrun"
+  // dev.cdevents.taskrun.started.0.3.0 → "taskrun"
   const parts = type.split('.');
   const idx = parts.indexOf('cdevents');
   return idx >= 0 && parts[idx + 1] ? parts[idx + 1] : 'event';

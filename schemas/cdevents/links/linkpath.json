@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/links/linkpath",
+  "properties": {
+    "chainId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "linkType": {
+      "type": "string",
+      "enum": [
+        "PATH"
+      ]
+    },
+    "from": {
+      "type": "object",
+      "properties": {
+        "contextId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domainId": {
+          "type": "string",
+          "format": "uri-reference"
+        }
+      },
+      "anyOf": [
+        { "required": ["contextId"] },
+        { "required": ["domainId"] }
+      ]
+    },
+    "to": {
+      "type": "object",
+      "properties": {
+        "contextId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domainId": {
+          "type": "string",
+          "format": "uri-reference"
+        }
+      },
+      "anyOf": [
+        { "required": ["contextId"] },
+        { "required": ["domainId"] }
+      ]
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "chainId",
+    "linkType",
+    "timestamp",
+    "from",
+    "to"
+  ]
+}

@@ -4,6 +4,6 @@ author: user
 expression: test-case
 description: Single test case fully bracketed — queued, started, finished.
 produces:
-  - event: dev.cdevents.testcaserun.queued.0.5.1
-  - event: dev.cdevents.testcaserun.started.0.5.1
-  - event: dev.cdevents.testcaserun.finished.0.5.1
+  - event: dev.cdevents.testcaserun.queued.0.3.0
+  - event: dev.cdevents.testcaserun.started.0.3.0
+  - event: dev.cdevents.testcaserun.finished.0.3.0

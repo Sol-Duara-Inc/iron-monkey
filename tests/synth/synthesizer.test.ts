@@ -5,7 +5,7 @@ import { loadSchemas, validateEvent } from '../../src/schema/validator.js';
 const baseCtx: SynthContext = {
   toolSource: 'https://jenkins.example.com/',
   chainId: 'chain-fixed-1',
-  eventType: 'dev.cdevents.testsuiterun.finished.0.5.1',
+  eventType: 'dev.cdevents.testsuiterun.finished.0.3.0',
   workflowName: 'demo-workflow',
   subjectId: 'subject-1',
   timestamp: '2026-05-08T00:00:00.000Z',
@@ -276,13 +276,13 @@ describe('synthesize', () => {
 describe('synthesize — integration with real CDEvent schemas', () => {
   it('produces schema-valid content for testsuiterun.finished from an empty input', async () => {
     const schemas = await loadSchemas();
-    const schema = schemas.get('dev.cdevents.testsuiterun.finished.0.5.1');
+    const schema = schemas.get('dev.cdevents.testsuiterun.finished.0.3.0');
     expect(schema).toBeDefined();
 
     const result = synthesize({}, schema, baseCtx);
     const payload = {
       context: {
-        specversion: '0.5.1',
+        specversion: "0.6.0-draft",
         id: '11111111-1111-4111-8111-111111111111',
         source: baseCtx.toolSource,
         type: baseCtx.eventType,
@@ -299,14 +299,14 @@ describe('synthesize — integration with real CDEvent schemas', () => {
 
   it('produces schema-valid content for service.deployed from an empty input', async () => {
     const schemas = await loadSchemas();
-    const eventType = 'dev.cdevents.service.deployed.0.5.1';
+    const eventType = 'dev.cdevents.service.deployed.0.3.0';
     const schema = schemas.get(eventType);
     expect(schema).toBeDefined();
 
     const result = synthesize({}, schema, { ...baseCtx, eventType });
     const payload = {
       context: {
-        specversion: '0.5.1',
+        specversion: "0.6.0-draft",
         id: '22222222-2222-4222-8222-222222222222',
         source: baseCtx.toolSource,
         type: eventType,

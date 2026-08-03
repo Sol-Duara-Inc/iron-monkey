@@ -4,4 +4,4 @@ author: user
 expression: test-output-publish
 description: Test output artifact published for downstream consumption.
 produces:
-  - event: dev.cdevents.testoutput.published.0.5.1
+  - event: dev.cdevents.testoutput.published.0.3.0

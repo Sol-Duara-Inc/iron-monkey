@@ -77,7 +77,7 @@ pipelineRun.finished  (terminal)
 
 **Schema lookup by type enum, not filename.** The schema loader reads `context.type.enum[0]` from every `.json` file in the schemas directory and builds a `Map<typeString, schema>`. Filenames are irrelevant. This means any schema dropped into the directory is picked up automatically as long as it contains the correct type enum.
 
-**`context.links` is a plain array.** Per the CDEvents 0.5.1 spec, `links` in the event context is a `LinkEntry[]` (type + target pairs). The loader pre-registers the `links/embeddedlinksarray` AJV sub-schema so that `$ref` resolution works without a filesystem dependency.
+**`context.links` is a plain array.** Per the CDEvents 0.6.0-draft spec, `links` in the event context is a `LinkEntry[]` (type + target pairs). The loader pre-registers the `links/embeddedlinksarray` AJV sub-schema so that `$ref` resolution works without a filesystem dependency.
 
 **chainId as first-class citizen.** The chainId flows through every event payload and every log line. The fallback URN is intentionally non-UUID so downstream UUID validators will flag it.
 
@@ -85,15 +85,15 @@ pipelineRun.finished  (terminal)
 
 ## CDEvent payload shape
 
-Every emitted event follows the CDEvents 0.5.1 envelope:
+Every emitted event follows the CDEvents 0.6.0-draft envelope:
 
 ```json
 {
   "context": {
-    "specversion": "0.5.1",
+    "specversion": "0.6.0-draft",
     "id": "<uuid>",
     "source": "<tool-source-uri>",
-    "type": "dev.cdevents.<noun>.<verb>.0.5.1",
+    "type": "dev.cdevents.<noun>.<verb>.<version>",
     "timestamp": "<iso-8601>",
     "chainId": "<uuid-or-fallback-urn>",
     "links": [

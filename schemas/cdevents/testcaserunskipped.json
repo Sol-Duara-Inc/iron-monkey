@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cdevents.dev/0.5.1/schema/testcaserun-skipped-event",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/testcaserun-skipped-event",
   "properties": {
     "context": {
       "properties": {
@@ -18,8 +18,10 @@
         },
         "type": {
           "type": "string",
-          "enum": ["dev.cdevents.testcaserun.skipped.0.5.1"],
-          "default": "dev.cdevents.testcaserun.skipped.0.5.1"
+          "enum": [
+            "dev.cdevents.testcaserun.skipped.0.2.0"
+          ],
+          "default": "dev.cdevents.testcaserun.skipped.0.2.0"
         },
         "timestamp": {
           "type": "string",
@@ -40,7 +42,13 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["specversion", "id", "source", "type", "timestamp"]
+      "required": [
+        "specversion",
+        "id",
+        "source",
+        "type",
+        "timestamp"
+      ]
     },
     "subject": {
       "properties": {
@@ -70,7 +78,9 @@
               },
               "additionalProperties": false,
               "type": "object",
-              "required": ["id"]
+              "required": [
+                "id"
+              ]
             },
             "testSuiteRun": {
               "type": "object",
@@ -84,12 +94,16 @@
                 }
               },
               "additionalProperties": false,
-              "required": ["id"]
+              "required": [
+                "id"
+              ]
             },
             "testCase": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["id"],
+              "required": [
+                "id"
+              ],
               "properties": {
                 "id": {
                   "type": "string",
@@ -128,7 +142,10 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["id", "content"]
+      "required": [
+        "id",
+        "content"
+      ]
     },
     "customData": {
       "oneOf": [
@@ -147,5 +164,8 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["context", "subject"]
+  "required": [
+    "context",
+    "subject"
+  ]
 }

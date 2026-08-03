@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cdevents.dev/0.5.1/schema/pipelinerun-finished-event",
+  "$id": "https://cdevents.dev/0.6.0-draft/schema/pipelinerun-finished-event",
   "properties": {
     "context": {
       "properties": {
@@ -19,8 +19,8 @@
         },
         "type": {
           "type": "string",
-          "enum": ["dev.cdevents.pipelinerun.finished.0.5.1"],
-          "default": "dev.cdevents.pipelinerun.finished.0.5.1"
+          "enum": ["dev.cdevents.pipelinerun.finished.0.3.0"],
+          "default": "dev.cdevents.pipelinerun.finished.0.3.0"
         },
         "timestamp": {
           "type": "string",

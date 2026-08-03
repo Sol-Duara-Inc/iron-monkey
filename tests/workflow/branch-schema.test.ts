@@ -16,12 +16,12 @@ const ajv = new AjvCtor({ allErrors: true });
 const validateBundle = ajv.compile(expressionBundleSchema);
 const validateWf = ajv.compile(workflowSchema);
 
-const TS_QUEUED = 'dev.cdevents.testsuiterun.queued.0.5.1';
-const TS_STARTED = 'dev.cdevents.testsuiterun.started.0.5.1';
-const TS_FINISHED = 'dev.cdevents.testsuiterun.finished.0.5.1';
-const TC_QUEUED = 'dev.cdevents.testcaserun.queued.0.5.1';
-const TC_STARTED = 'dev.cdevents.testcaserun.started.0.5.1';
-const TC_FINISHED = 'dev.cdevents.testcaserun.finished.0.5.1';
+const TS_QUEUED = 'dev.cdevents.testsuiterun.queued.0.3.0';
+const TS_STARTED = 'dev.cdevents.testsuiterun.started.0.3.0';
+const TS_FINISHED = 'dev.cdevents.testsuiterun.finished.0.3.0';
+const TC_QUEUED = 'dev.cdevents.testcaserun.queued.0.3.0';
+const TC_STARTED = 'dev.cdevents.testcaserun.started.0.3.0';
+const TC_FINISHED = 'dev.cdevents.testcaserun.finished.0.3.0';
 
 const testCaseBranch = [{ event: TC_QUEUED }, { event: TC_STARTED }, { event: TC_FINISHED }];
 
@@ -45,7 +45,7 @@ describe('expression bundle schema — concurrent branches', () => {
       group: 'spin-dev',
       author: 'shipwreck-sa',
       expression: 'ticket-associate',
-      produces: [{ event: 'dev.cdevents.ticket.created.0.5.1' }],
+      produces: [{ event: 'dev.cdevents.ticket.created.0.2.0' }],
     };
     expect(validateBundle(plain)).toBe(true);
   });
@@ -79,12 +79,12 @@ describe('workflow schema — concurrent branches', () => {
         name: 'wf',
         cdrus: { version: 1 },
         produces: [
-          { event: 'dev.cdevents.pipelinerun.started.0.5.1' },
+          { event: 'dev.cdevents.pipelinerun.started.0.3.0' },
           [
-            { event: 'dev.cdevents.build.started.0.5.1' },
-            { event: 'dev.cdevents.build.finished.0.5.1' },
+            { event: 'dev.cdevents.build.started.0.3.0' },
+            { event: 'dev.cdevents.build.finished.0.3.0' },
           ],
-          { event: 'dev.cdevents.pipelinerun.finished.0.5.1' },
+          { event: 'dev.cdevents.pipelinerun.finished.0.3.0' },
         ],
       },
     };
@@ -99,7 +99,7 @@ describe('workflow schema — concurrent branches', () => {
         cdrus: { version: 1 },
         produces: [
           {
-            event: 'dev.cdevents.taskrun.started.0.5.1',
+            event: 'dev.cdevents.taskrun.started.0.3.0',
             produces: [testCaseBranch, testCaseBranch],
             detach: [{ expression: 'ticket-associate' }],
           },
@@ -115,7 +115,7 @@ describe('workflow schema — concurrent branches', () => {
         id: 'wf',
         name: 'wf',
         cdrus: { version: 1 },
-        produces: [{ event: 'dev.cdevents.pipelinerun.started.0.5.1' }],
+        produces: [{ event: 'dev.cdevents.pipelinerun.started.0.3.0' }],
       },
     };
     expect(validateWf(wf)).toBe(true);
@@ -128,7 +128,7 @@ describe('workflow schema — concurrent branches', () => {
         name: 'wf',
         cdrus: { version: 1 },
         bus: 'default',
-        produces: [{ event: 'dev.cdevents.pipelinerun.started.0.5.1' }],
+        produces: [{ event: 'dev.cdevents.pipelinerun.started.0.3.0' }],
       },
     };
     expect(validateWf(wf)).toBe(false);
@@ -145,7 +145,7 @@ describe('workflow schema — concurrent branches', () => {
 //      An earlier IM overlay re-declared it as `integer`, which rejected
 //      fractional millisecond values the canonical schema (and JB) accept,
 //      silently splitting the two schemas. These tests lock the `number` type.
-const BUILD_STARTED = 'dev.cdevents.build.started.0.5.1';
+const BUILD_STARTED = 'dev.cdevents.build.started.0.3.0';
 
 describe('schema — `as` anchor field (§4.9, JB @anchor lockstep)', () => {
   it('workflow event_item accepts `as`', () => {
@@ -178,14 +178,14 @@ describe('schema — `as` anchor field (§4.9, JB @anchor lockstep)', () => {
         cdrus: { version: 1 },
         produces: [
           {
-            event: 'dev.cdevents.taskrun.started.0.5.1',
+            event: 'dev.cdevents.taskrun.started.0.3.0',
             as: 'fanout-start',
             produces: [
               [{ event: TC_STARTED, as: 'branch-a-event' }],
               [{ event: TC_FINISHED, as: 'branch-b-event' }],
             ],
             detach: [
-              { event: 'dev.cdevents.repository.created.0.5.1', as: 'detached-side-effect' },
+              { event: 'dev.cdevents.repository.created.0.3.0', as: 'detached-side-effect' },
             ],
           },
         ],

@@ -8,7 +8,7 @@ Iron Monkey supports five injection modes via the repeatable `--inject` flag.
 --inject <type>:<event-id>[:<args>...]
 ```
 
-`<event-id>` is the `workflowEventId` visible in the manifest (use `--manifest-out` or `dry-run` to see them). IDs are derived from the event's `noun.verb` — for example, `dev.cdevents.build.started.0.5.1` becomes `build-started`. If the same noun.verb appears more than once, collisions are resolved with a numeric suffix (`pipelinerun-started`, `pipelinerun-started-1`, …). Expression bundle events with an explicit `id:` field use that ID directly (e.g. `deployment-started`, `deployment-finished`).
+`<event-id>` is the `workflowEventId` visible in the manifest (use `--manifest-out` or `dry-run` to see them). IDs are derived from the event's `noun.verb` — for example, `dev.cdevents.build.started.0.3.0` becomes `build-started`. If the same noun.verb appears more than once, collisions are resolved with a numeric suffix (`pipelinerun-started`, `pipelinerun-started-1`, …). Expression bundle events with an explicit `id:` field use that ID directly (e.g. `deployment-started`, `deployment-finished`).
 
 ## Targeting sub-chains
 

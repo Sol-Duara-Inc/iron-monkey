@@ -5,4 +5,4 @@ expression: build-merge
 description: Composite CI pattern — build a change, then merge it into the target branch.
 produces:
   - expression: build
-  - event: dev.cdevents.change.merged.0.5.1
+  - event: dev.cdevents.change.merged.0.3.0

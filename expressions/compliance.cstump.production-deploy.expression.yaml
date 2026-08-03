@@ -4,4 +4,4 @@ author: cstump
 expression: production-deploy
 description: Stump — receipt that a service was published to production. Compliance logs every service.published event for SOX evidence and quarterly review.
 produces:
-  - event: dev.cdevents.service.published.0.5.1
+  - event: dev.cdevents.service.published.0.3.0
