@@ -282,7 +282,7 @@ describe('synthesize — integration with real CDEvent schemas', () => {
     const result = synthesize({}, schema, baseCtx);
     const payload = {
       context: {
-        specversion: "0.6.0-draft",
+        specversion: '0.6.0-draft',
         id: '11111111-1111-4111-8111-111111111111',
         source: baseCtx.toolSource,
         type: baseCtx.eventType,
@@ -306,7 +306,7 @@ describe('synthesize — integration with real CDEvent schemas', () => {
     const result = synthesize({}, schema, { ...baseCtx, eventType });
     const payload = {
       context: {
-        specversion: "0.6.0-draft",
+        specversion: '0.6.0-draft',
         id: '22222222-2222-4222-8222-222222222222',
         source: baseCtx.toolSource,
         type: eventType,

@@ -55,7 +55,7 @@ describe('createBus', () => {
     await expect(
       bus.emit('dev.cdevents.build.started.0.3.0', 'evt-1', {
         context: {
-          specversion: "0.6.0-draft",
+          specversion: '0.6.0-draft',
           id: 'evt-1',
           source: 'https://example.com/',
           type: 'dev.cdevents.build.started.0.3.0',

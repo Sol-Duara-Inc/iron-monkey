@@ -16,7 +16,7 @@ function makeManifest(eventIds: string[]): Manifest {
     targetEmitTime: Date.now() + i * 1000,
     payload: {
       context: {
-        specversion: "0.6.0-draft",
+        specversion: '0.6.0-draft',
         id: `uuid-${i}`,
         source: 'test/source',
         type: `dev.cdevents.test.${id}.0.1.0`,
@@ -116,7 +116,7 @@ function withDetached(main: Manifest, subIds: string[]): Manifest {
       targetEmitTime: Date.now() + i * 1000,
       payload: {
         context: {
-          specversion: "0.6.0-draft",
+          specversion: '0.6.0-draft',
           id: `sub-uuid-${i}`,
           source: 'test/source',
           type: `dev.cdevents.test.${id}.0.1.0`,

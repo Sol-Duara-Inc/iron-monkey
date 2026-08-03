@@ -4,7 +4,7 @@ import { applyMalformation } from '../../src/injection/malformations.js';
 function makePayload(): Record<string, unknown> {
   return {
     context: {
-      specversion: "0.6.0-draft",
+      specversion: '0.6.0-draft',
       id: 'abc-123',
       source: 'https://example.com/',
       type: 'dev.cdevents.build.started.0.3.0',

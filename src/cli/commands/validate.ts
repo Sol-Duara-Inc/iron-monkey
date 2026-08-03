@@ -31,6 +31,28 @@ export function validateCommand(): Command {
     logger.info({ workflowId: workflow.workflow.id }, 'workflow is valid');
 
     const registry = loadExpressionRegistry();
+
+    // Name-hint enforcement (RFC §4.1.1). `validate` is the publication gate:
+    // violations are hard errors here, while plain runs only skip-with-warning.
+    // Diagnostics are advisory and never fail validation.
+    const findings = registry.hintFindings();
+    for (const finding of findings) {
+      for (const d of finding.result.diagnostics) {
+        logger.warn({ identity: finding.identity, file: finding.file }, `name-hint: ${d.message}`);
+      }
+    }
+    const violating = findings.filter((f) => f.skipped);
+    if (violating.length > 0) {
+      for (const f of violating) {
+        for (const v of f.result.violations) {
+          console.error(`✗ ${f.identity}: ${v.message}`);
+        }
+      }
+      throw new Error(
+        `${violating.length} expression(s) in the store have unsatisfied name hints (RFC §4.1.1)`,
+      );
+    }
+
     const mainChain = resolveChainTree(workflow, registry);
     const busName = resolveBusName(config, options.bus as string | undefined);
 

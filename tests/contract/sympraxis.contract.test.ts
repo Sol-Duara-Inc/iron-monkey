@@ -194,7 +194,7 @@ function cdEvent(
 ): Record<string, unknown> {
   return {
     context: {
-      specversion: "0.6.0-draft",
+      specversion: '0.6.0-draft',
       id,
       source: 'iron-monkey/contract-test',
       type,

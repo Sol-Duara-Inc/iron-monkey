@@ -1,0 +1,76 @@
+{
+  "$comment": "CDrus name-hint keyword table (RFC §4.1.1). Derived from the CDEvents subject/predicate catalog in schemas/cdevents. A subject appears here with its full predicate set; `begin`/`end` name the begin/end predicate pair for subjects that have one (both null for flat-predicate subjects). Hint evaluation is performed against a declared table version; a new table version governs new publications and must not retroactively invalidate expressions already accepted. Update via a reviewed table-version bump, never by hot-swapping.",
+  "version": "0.1.0",
+  "subjects": {
+    "artifact": {
+      "predicates": ["deleted", "downloaded", "packaged", "published", "signed"],
+      "begin": null,
+      "end": null
+    },
+    "branch": {
+      "predicates": ["created", "deleted"],
+      "begin": null,
+      "end": null
+    },
+    "build": {
+      "predicates": ["finished", "queued", "started"],
+      "begin": "started",
+      "end": "finished"
+    },
+    "change": {
+      "predicates": ["abandoned", "created", "merged", "reviewed", "updated"],
+      "begin": null,
+      "end": null
+    },
+    "environment": {
+      "predicates": ["created", "deleted", "modified"],
+      "begin": null,
+      "end": null
+    },
+    "incident": {
+      "predicates": ["detected", "reported", "resolved"],
+      "begin": null,
+      "end": null
+    },
+    "pipelinerun": {
+      "predicates": ["finished", "queued", "started"],
+      "begin": "started",
+      "end": "finished"
+    },
+    "repository": {
+      "predicates": ["created", "deleted", "modified"],
+      "begin": null,
+      "end": null
+    },
+    "service": {
+      "predicates": ["deployed", "published", "removed", "rolledback", "upgraded"],
+      "begin": null,
+      "end": null
+    },
+    "taskrun": {
+      "predicates": ["finished", "started"],
+      "begin": "started",
+      "end": "finished"
+    },
+    "testcaserun": {
+      "predicates": ["finished", "queued", "skipped", "started"],
+      "begin": "started",
+      "end": "finished"
+    },
+    "testoutput": {
+      "predicates": ["published"],
+      "begin": null,
+      "end": null
+    },
+    "testsuiterun": {
+      "predicates": ["finished", "queued", "started"],
+      "begin": "started",
+      "end": "finished"
+    },
+    "ticket": {
+      "predicates": ["closed", "created", "updated"],
+      "begin": null,
+      "end": null
+    }
+  }
+}
