@@ -7,9 +7,13 @@
  * assumptions about server internals, only the contract Iron Monkey depends on
  * to emit `detach` / parallel chains.
  *
- * SINGLE SOURCE OF TRUTH: `junction-box/docs/sympraxis-chain-protocol.md`
- * (converged 2026-05-28). This suite is that doc's executable form and ships
- * with it; if they disagree, the doc wins and this file is the bug.
+ * SINGLE SOURCE OF TRUTH: the Proleptic Event Chain Protocol
+ * (`cdevents-object-inheritance/reference/proleptic-event-chain-protocol.md`,
+ * successor to the Sympraxis Chain-Declaration Protocol of 2026-05-28) plus
+ * the coordinate contract ratified 2026-08-04 (axes `p`/`s`/`d`; roles
+ * `main`/`blocking`/`detached`; goldens in
+ * `conduit-go/pkg/cdrus/testdata/goldens/`). This suite is the executable
+ * form; if they disagree, the doc wins and this file is the bug.
  *
  * This is a TDD hand-off: expect FAILURES until Sympraxis implements the doc.
  *
@@ -234,23 +238,28 @@ function assertValidChainSet(body: Record<string, unknown>): {
   expect(new Set(ids).size, 'chainIds distinct').toBe(ids.length);
 
   for (const c of chains) {
-    expect(['main', 'detached', 'concurrent'], `unknown role '${c.role}'`).toContain(c.role);
+    // `blocking` is the ratified role for spawn chains; `concurrent` is its
+    // pre-ratification name, accepted transitionally.
+    expect(['main', 'detached', 'blocking', 'concurrent'], `unknown role '${c.role}'`).toContain(
+      c.role,
+    );
     for (const e of c.expectedEvents) {
       expect(typeof e.type).toBe('string');
       expect(typeof e.order).toBe('number');
       expect(typeof e.timeoutMs, 'timeoutMs drives breach deadlines').toBe('number');
       expect(typeof e.treePath).toBe('string');
-      // Every treePath segment is `<axis><index>` (axis ∈ {p,d}). Catches a
-      // server returning bare `2.1.0` with no axis prefix — even for main members.
+      // Every treePath segment is `<axis><index>` (axis ∈ {p,s,d} — ratified
+      // 2026-08-04; the `b` axis is retired). Catches a server returning bare
+      // `2.1.0` with no axis prefix — even for main members.
       const segs = String(e.treePath).split('.');
       segs.forEach((seg) =>
-        expect(seg, `treePath segment '${seg}' must match <axis><index>`).toMatch(/^[pd]\d+$/),
+        expect(seg, `treePath segment '${seg}' must match <axis><index>`).toMatch(/^[psd]\d+$/),
       );
-      // chainRef is a prefix of its members' treePaths (root = no detach axis).
+      // chainRef is a prefix of its members' treePaths (root = no spawn/detach axis).
       if (c.chainRef === 'root') {
         expect(
-          segs.some((seg) => seg.startsWith('d')),
-          `main member ${e.treePath} must have no detach axis`,
+          segs.some((seg) => seg.startsWith('d') || seg.startsWith('s')),
+          `main member ${e.treePath} must have no spawn/detach axis`,
         ).toBe(false);
       } else {
         expect(String(e.treePath).startsWith(c.chainRef)).toBe(true);

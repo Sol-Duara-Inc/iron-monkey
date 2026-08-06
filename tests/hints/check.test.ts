@@ -130,6 +130,19 @@ describe('extractHints — exact-token matching', () => {
     expect(extractHints('my-favorite-expression', TABLE)).toEqual([]);
     expect(extractHints('deploy', TABLE)).toEqual([]); // 'deploy' is not a CDEvents subject
   });
+
+  it('does not treat Object prototype keys as subjects (own-key matching only)', () => {
+    // `'constructor' in table.subjects` is true via the prototype chain; a
+    // phantom hint here would make the name unsatisfiable and reject the doc.
+    expect(extractHints('my-constructor-job', TABLE)).toEqual([]);
+    expect(extractHints('to-string-valueof-hasownproperty', TABLE)).toEqual([]);
+    const result = checkNameHints(
+      { expression: 'my-constructor-job', produces: [ev('dev.cdevents.change.created')] },
+      TABLE,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.hints).toEqual([]);
+  });
 });
 
 // ── spellingDiagnostics ───────────────────────────────────────────────────────
@@ -155,6 +168,11 @@ describe('spellingDiagnostics', () => {
   it('does not warn when no run spells a subject', () => {
     expect(spellingDiagnostics('my-test-case-job', TABLE)).toEqual([]);
     expect(spellingDiagnostics('my-test-run-job', TABLE)).toEqual([]);
+  });
+
+  it('does not warn when a token run spells an Object prototype key', () => {
+    expect(spellingDiagnostics('construc-tor', TABLE)).toEqual([]);
+    expect(spellingDiagnostics('has-own-property', TABLE)).toEqual([]);
   });
 });
 
