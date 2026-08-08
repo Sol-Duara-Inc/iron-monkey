@@ -752,23 +752,33 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       return byRef;
     }
 
-    it.runIf(Boolean(findWorkflowFile(WORKFLOW_ID)))(
-      'divergent documents under one workflow id are a red test, not a discovery',
-      async () => {
-        const local = await localDerivation(findWorkflowFile(WORKFLOW_ID)!);
-        const res = await postChains({ workflowId: WORKFLOW_ID });
-        expect(res.status).toBe(200);
-        const chains = chainsOf(res.body);
+    // Guide v2 §4 defines the shared set as BOTH workflows — the gated deploy
+    // AND the fanout — so the gate runs per shared workflow, each one skipped
+    // independently when its fixture is absent from the mirror.
+    const SHARED_SET: [string, string | undefined][] = [
+      ['primary', WORKFLOW_ID],
+      ['fanout', FANOUT_WORKFLOW_ID ?? 'build-fanout'],
+    ];
 
-        expect(chains.map((c) => c.chainRef).sort()).toEqual([...local.keys()].sort());
-        for (const c of chains) {
-          const server = [...c.expectedEvents]
-            .sort((a, b) => a.order - b.order)
-            .map((e) => ({ treePath: e.treePath, order: e.order, type: e.type }));
-          expect(server, `chain ${c.chainRef}`).toEqual(local.get(c.chainRef));
-        }
-      },
-    );
+    for (const [label, workflowId] of SHARED_SET) {
+      it.runIf(Boolean(workflowId && findWorkflowFile(workflowId)))(
+        `divergent documents under one workflow id are a red test, not a discovery (${label})`,
+        async () => {
+          const local = await localDerivation(findWorkflowFile(workflowId!)!);
+          const res = await postChains({ workflowId });
+          expect(res.status).toBe(200);
+          const chains = chainsOf(res.body);
+
+          expect(chains.map((c) => c.chainRef).sort()).toEqual([...local.keys()].sort());
+          for (const c of chains) {
+            const server = [...c.expectedEvents]
+              .sort((a, b) => a.order - b.order)
+              .map((e) => ({ treePath: e.treePath, order: e.order, type: e.type }));
+            expect(server, `chain ${c.chainRef}`).toEqual(local.get(c.chainRef));
+          }
+        },
+      );
+    }
   });
 
   // ── §3 instanceId — presence and stability across one run's responses ──────
