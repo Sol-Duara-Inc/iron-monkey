@@ -186,8 +186,10 @@ export interface CDEventPayload {
  *   the parent.
  * - `'blocking'` — a spawn chain, monitored under its parent; its breach ROLLS
  *   UP to the parent, and the spawning chain's completion gates on it. The
- *   receiver-side rollup is the receiver's job; the producer-side wait lands
- *   in Phase 2.
+ *   receiver-side rollup is the receiver's job; the producer honors the wait
+ *   both in the timing plan (siblings scheduled past blocking ends) and
+ *   structurally in the emitter (the next sibling is not emitted until every
+ *   blocking chain settles).
  */
 export interface DetachedManifestChain {
   /** How the receiver monitors this chain: `'detached'` (independent) or `'blocking'` (spawn; breach rolls up to parent). */

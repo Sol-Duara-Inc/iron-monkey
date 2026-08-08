@@ -11,7 +11,7 @@ export function addCommonFlags(cmd: Command): Command {
     )
     .option(
       '--interval <ms>',
-      'override min_wait_ms and timeout_ms on every event for fixed pacing',
+      'exact per-event emission interval, spawned chains included (blocking waits still apply)',
       parseInt,
     )
     .option('--seed <int>', 'seed for deterministic IDs and timing', parseInt)

@@ -17,7 +17,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { IdAllocator } from './id-allocator.js';
-import { TimingAllocator } from './timing.js';
+import { planTiming } from './timing.js';
 import { buildPathLink, buildEndLink, buildRelationLink } from '../links/builder.js';
 import { registerRun, assertRegisterMatchesLocal } from '../chain/register.js';
 import { flattenChains } from '../workflow/chain-tree.js';
@@ -87,9 +87,13 @@ interface BuildContext {
   /** Pre-acquired `chainRef` → chain ID map for every sub-chain (Conduit or fallback). */
   chainIds: Map<string, ChainIdResult>;
   synth: boolean;
-  interval?: number;
+  /**
+   * Absolute planned emit time per `treePath`, produced by {@link planTiming}
+   * BEFORE building — the plan already honors RFC §4.7 blocking waits, so
+   * payload timestamps and `targetEmitTime` agree with the wait semantics.
+   */
+  plannedTimes: Map<string, number>;
   workflowName: string;
-  seed?: number;
 }
 
 /** A built chain's events plus the lookups needed to wire RELATION links from it. */
@@ -135,14 +139,13 @@ function buildEvent(
   prevEventId: string | undefined,
   isLastInChain: boolean,
   addEndLink: boolean,
-  timingAlloc: TimingAllocator,
   ctx: BuildContext,
 ): ManifestEvent {
   const eventId = ctx.idAlloc.nextId();
-  const targetEmitTime =
-    typeof ctx.interval === 'number' && ctx.interval >= 0
-      ? timingAlloc.nextExactEmitTime(ctx.interval)
-      : timingAlloc.nextEmitTime(re.min_wait_ms, re.timeout_ms);
+  const targetEmitTime = ctx.plannedTimes.get(re.treePath);
+  if (targetEmitTime === undefined) {
+    throw new Error(`internal: no planned emit time for treePath '${re.treePath}'`);
+  }
   const timestamp = new Date(targetEmitTime).toISOString();
 
   // Config tool source overrides blank workflow source; workflow source overrides config when set.
@@ -226,7 +229,6 @@ function buildChain(
   chain: ResolvedChain,
   chainId: string,
   endLast: boolean,
-  timingAlloc: TimingAllocator,
   ctx: BuildContext,
 ): BuiltChain {
   const events: ManifestEvent[] = [];
@@ -235,7 +237,7 @@ function buildChain(
     const re = chain.events[i];
     const isLast = i === chain.events.length - 1;
     const prevEventId = i > 0 ? events[i - 1].eventId : undefined;
-    const me = buildEvent(re, chainId, prevEventId, isLast, endLast, timingAlloc, ctx);
+    const me = buildEvent(re, chainId, prevEventId, isLast, endLast, ctx);
     events.push(me);
     byTreePath.set(re.treePath, me);
   }
@@ -252,11 +254,9 @@ function buildSpawns(
   parentChain: ResolvedChain,
   parentBuilt: BuiltChain,
   parentChainId: string,
-  spawnIndexBase: number,
   ctx: BuildContext,
   out: DetachedManifestChain[],
 ): void {
-  let spawnIndex = spawnIndexBase;
   for (const spawn of parentChain.spawns) {
     // Each sub-chain's id is acquired up front (Conduit → fallback cascade) and
     // looked up here by chainRef. A missing entry should not happen (all spawns
@@ -265,12 +265,8 @@ function buildSpawns(
     const subChainId =
       acquired?.chainId ?? generateFallbackChainId(`${ctx.workflowName}:${spawn.chainRef}`);
     const subChainIdSource = acquired?.source ?? 'fallback';
-    const subTiming = new TimingAllocator(
-      ctx.seed === undefined ? undefined : ctx.seed + spawnIndex + 1,
-    );
-    spawnIndex += 1;
 
-    const built = buildChain(spawn, subChainId, true, subTiming, ctx);
+    const built = buildChain(spawn, subChainId, true, ctx);
 
     // RELATION: the spawning event (at spawn.anchorPath in the parent chain) →
     // this sub-chain's first event. Append to the parent event's link list.
@@ -297,7 +293,7 @@ function buildSpawns(
     });
 
     // Nested detach/branch within this sub-chain.
-    buildSpawns(spawn, built, subChainId, 0, ctx, out);
+    buildSpawns(spawn, built, subChainId, ctx, out);
   }
 }
 
@@ -386,6 +382,11 @@ export async function buildManifest(
   const schemas = await loadSchemas(config.schemasPath);
   const targetBus = opts.busName ?? process.env.IRON_MONKEY_BUS_NAME ?? 'default';
 
+  // Phase 2: the timing PLAN runs first, honoring §4.7 blocking waits — the
+  // next sibling after a spawning event is scheduled past the latest Blocking
+  // chain end (recursively); detached chains never shift anything.
+  const plannedTimes = planTiming(mainChain, { seed: opts.seed, interval: opts.interval });
+
   const ctx: BuildContext = {
     config,
     schemas,
@@ -393,9 +394,8 @@ export async function buildManifest(
     idAlloc: new IdAllocator(opts.seed),
     chainIds,
     synth: opts.synth !== false,
-    interval: opts.interval,
+    plannedTimes,
     workflowName: workflowMeta.name,
-    seed: opts.seed,
   };
 
   const runId = uuidv4();
@@ -403,11 +403,10 @@ export async function buildManifest(
   // Main chain first: drains the shared id allocator before any sub-chain, so
   // main event ids are identical to the pre-sub-chain behaviour. Its END link
   // is attached by the runner after injections, so endLast is false here.
-  const mainTiming = new TimingAllocator(opts.seed);
-  const mainBuilt = buildChain(mainChain, chainId, false, mainTiming, ctx);
+  const mainBuilt = buildChain(mainChain, chainId, false, ctx);
 
   const detachedChains: DetachedManifestChain[] = [];
-  buildSpawns(mainChain, mainBuilt, chainId, 0, ctx, detachedChains);
+  buildSpawns(mainChain, mainBuilt, chainId, ctx, detachedChains);
 
   return {
     runId,

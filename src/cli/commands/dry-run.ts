@@ -25,17 +25,13 @@ export function dryRunCommand(): Command {
     const registry = loadExpressionRegistry();
     const mainChain = resolveChainTree(workflow, registry);
 
-    const interval = options.interval as number | undefined;
-    if (typeof interval === 'number' && interval >= 0) {
-      for (const e of mainChain.events) {
-        e.min_wait_ms = interval;
-        e.timeout_ms = interval;
-      }
-    }
-
     const injections = parseInjections((options.inject as string[]) ?? []);
     const busName = resolveBusName(config, options.bus as string | undefined);
 
+    // Same builder options as the run path (emitter/runner.ts), so a dry-run
+    // with the same seed/interval is a faithful preview of the run's plan —
+    // interval reaches the planner as exact-interval mode, spawned chains
+    // included (the old approach mutated main-chain timing fields only).
     const manifest = await buildManifest(
       { id: workflow.workflow.id, name: workflow.workflow.name },
       mainChain,
@@ -45,6 +41,7 @@ export function dryRunCommand(): Command {
         seed: options.seed as number | undefined,
         busName,
         synth: options.synth !== false,
+        interval: options.interval as number | undefined,
       },
     );
 
