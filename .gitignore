@@ -51,3 +51,4 @@ repomix-output.*
 
 # Optional prettier cache
 .prettier_cache
+bench/rounds/

@@ -5,7 +5,7 @@ workflow:
   author: shipwreck-sa
   name: Checkout Service — Production Canary Release
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       service: checkout
       strategy: canary
@@ -37,10 +37,10 @@ workflow:
       tool: spinnaker-prod
       source: https://spinnaker.spin-dev.io/
       overrides:
-        service.deployed:
+        dev.cdevents.service.deployed:
           tool: gke-prod
           source: https://gke.spin-dev.io/checkout
-        service.published:
+        dev.cdevents.service.published:
           tool: gke-prod
           source: https://gke.spin-dev.io/checkout
 

@@ -1,0 +1,40 @@
+{
+  "source": "nightly-verify.workflow.yaml",
+  "notes": "Workflow derivation: the bare `verify` ref resolves against the workflow's (quality-engineering, msommer) context to verify-spawn's expression; expansion nests beneath p0, carrying its spawn chains — anchors gain the p0 prefix. The workflow's own testsuiterun.finished (as: suite-done) follows at p1.",
+  "chains": [
+    {
+      "chainRef": "root",
+      "role": "main",
+      "parentChainRef": null,
+      "spawningEventPath": null,
+      "expectedEvents": [
+        { "treePath": "p0.p0", "event": "dev.cdevents.testsuiterun.queued", "order": 0 },
+        { "treePath": "p0.p1", "event": "dev.cdevents.testsuiterun.started", "order": 1 },
+        { "treePath": "p0.p2", "event": "dev.cdevents.testsuiterun.finished", "order": 2 },
+        { "treePath": "p1", "event": "dev.cdevents.testsuiterun.finished", "order": 3 }
+      ]
+    },
+    {
+      "chainRef": "p0.p1.s0",
+      "role": "blocking",
+      "parentChainRef": "root",
+      "spawningEventPath": "p0.p1",
+      "expectedEvents": [
+        { "treePath": "p0.p1.s0.p0", "event": "dev.cdevents.testcaserun.queued", "order": 0 },
+        { "treePath": "p0.p1.s0.p1", "event": "dev.cdevents.testcaserun.started", "order": 1 },
+        { "treePath": "p0.p1.s0.p2", "event": "dev.cdevents.testcaserun.finished", "order": 2 }
+      ]
+    },
+    {
+      "chainRef": "p0.p1.s1",
+      "role": "blocking",
+      "parentChainRef": "root",
+      "spawningEventPath": "p0.p1",
+      "expectedEvents": [
+        { "treePath": "p0.p1.s1.p0", "event": "dev.cdevents.testcaserun.queued", "order": 0 },
+        { "treePath": "p0.p1.s1.p1", "event": "dev.cdevents.testcaserun.started", "order": 1 },
+        { "treePath": "p0.p1.s1.p2", "event": "dev.cdevents.testcaserun.finished", "order": 2 }
+      ]
+    }
+  ]
+}

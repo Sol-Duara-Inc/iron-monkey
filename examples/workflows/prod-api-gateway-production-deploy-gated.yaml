@@ -5,7 +5,7 @@ workflow:
   author: shipwreck-sa
   name: API Gateway — Gated Production Deploy with Change Ticket
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       service: api-gateway
       strategy: gated-production-deploy
@@ -41,16 +41,16 @@ workflow:
       tool: spinnaker-prod
       source: https://spinnaker.spin-dev.io/
       overrides:
-        ticket.created:
+        dev.cdevents.ticket.created:
           tool: servicenow
           source: https://servicenow.spin-dev.io/
-        ticket.updated:
+        dev.cdevents.ticket.updated:
           tool: servicenow
           source: https://servicenow.spin-dev.io/
-        service.deployed:
+        dev.cdevents.service.deployed:
           tool: gke-prod
           source: https://gke.spin-dev.io/api-gateway
-        service.published:
+        dev.cdevents.service.published:
           tool: gke-prod
           source: https://gke.spin-dev.io/api-gateway
 

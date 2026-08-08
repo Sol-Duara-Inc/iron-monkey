@@ -1,0 +1,11 @@
+# RFC §7.4 — Detached spawned chain, flat form: ONE chain whose items run in
+# declared order.
+group: payment-engineering
+author: mchen
+expression: store-notify-flat
+produces:
+  - event: dev.cdevents.build.finished
+    detach:
+      - event: dev.cdeventsx.mytool-notification.dispatched
+      - expression: data-platform/jpatel/artifact-store
+  - event: dev.cdevents.pipelinerun.finished

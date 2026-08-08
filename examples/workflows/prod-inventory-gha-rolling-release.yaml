@@ -5,7 +5,7 @@ workflow:
   author: shipwreck-sa
   name: Inventory Service — Production Rolling Release via GitHub Actions
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       service: inventory
       strategy: rolling
@@ -30,10 +30,10 @@ workflow:
 
     - expression: deploy
       overrides:
-        service.deployed:
+        dev.cdevents.service.deployed:
           tool: gke-prod
           source: https://gke.spin-dev.io/inventory
-        service.published:
+        dev.cdevents.service.published:
           tool: gke-prod
           source: https://gke.spin-dev.io/inventory
 

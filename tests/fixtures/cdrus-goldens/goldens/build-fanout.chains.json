@@ -1,0 +1,55 @@
+{
+  "source": "build-fanout.workflow.yaml",
+  "notes": "Nested-detach fanout: two Detached sibling chains p1.d0 and p1.d1 spawn off the build.finished event, each running a single artifact.signed event. Content-identical siblings are legal and expected — disambiguated by distinct chainId and treePath, never merged by content (the IM machine gate's highest-value case).",
+  "chains": [
+    {
+      "chainRef": "root",
+      "expectedEvents": [
+        {
+          "event": "dev.cdevents.build.started",
+          "order": 0,
+          "treePath": "p0"
+        },
+        {
+          "event": "dev.cdevents.build.finished",
+          "order": 1,
+          "treePath": "p1"
+        },
+        {
+          "event": "dev.cdevents.pipelinerun.finished",
+          "order": 2,
+          "treePath": "p2"
+        }
+      ],
+      "parentChainRef": null,
+      "role": "main",
+      "spawningEventPath": null
+    },
+    {
+      "chainRef": "p1.d0",
+      "expectedEvents": [
+        {
+          "event": "dev.cdevents.artifact.signed",
+          "order": 0,
+          "treePath": "p1.d0.p0"
+        }
+      ],
+      "parentChainRef": "root",
+      "role": "detached",
+      "spawningEventPath": "p1"
+    },
+    {
+      "chainRef": "p1.d1",
+      "expectedEvents": [
+        {
+          "event": "dev.cdevents.artifact.signed",
+          "order": 0,
+          "treePath": "p1.d1.p0"
+        }
+      ],
+      "parentChainRef": "root",
+      "role": "detached",
+      "spawningEventPath": "p1"
+    }
+  ]
+}

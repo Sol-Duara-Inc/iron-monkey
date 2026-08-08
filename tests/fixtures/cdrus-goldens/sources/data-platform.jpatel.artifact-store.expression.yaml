@@ -1,0 +1,10 @@
+# Registry fixture: resolution target for the cross-group reference in
+# store-notify-flat and store-notify. Name hint 'artifact' (flat subject)
+# satisfied by the artifact events.
+group: data-platform
+author: jpatel
+expression: artifact-store
+description: Package and publish the artifact.
+produces:
+  - event: dev.cdevents.artifact.packaged
+  - event: dev.cdevents.artifact.published

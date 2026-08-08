@@ -1,0 +1,13 @@
+# RFC §4.8 — Detached spawned chains, nested form: two chains off one event,
+# cross-group references, and an extension event type.
+group: payment-engineering
+author: mchen
+expression: store-notify
+produces:
+  - event: dev.cdevents.build.finished
+    detach:
+      - - event: dev.cdeventsx.mytool-notification.dispatched
+        - expression: data-platform/jpatel/artifact-store
+      - - expression: bac/wjones/stakeholder-notifier
+        - expression: bac/wjones/change-request
+  - event: dev.cdevents.pipelinerun.finished

@@ -2,13 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { validateWorkflow, resolveProduces } from '../../src/workflow/parser.js';
-import { loadExpressionRegistry } from '../../src/expressions/loader.js';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXPRESSIONS_DIR = path.resolve(__dirname, '../../expressions');
-const WORKFLOWS_DIR = path.resolve(__dirname, '../../examples/workflows');
+import { validateWorkflow } from '../../src/workflow/parser.js';
 
 async function writeTmpYaml(content: string): Promise<string> {
   const dir = await mkdir(path.join(os.tmpdir(), 'iron-monkey-test'), { recursive: true }).then(
@@ -25,7 +19,7 @@ workflow:
   id: test-wf
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - event: dev.cdevents.build.started.0.3.0
       tool: jenkins
@@ -49,7 +43,7 @@ workflow:
   author: shipwreck-sa
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - event: dev.cdevents.build.started.0.3.0
       tool: jenkins
@@ -67,7 +61,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   bus: default
   produces:
     - event: dev.cdevents.build.started.0.3.0
@@ -82,7 +76,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   stages:
     - id: build
       type: ci
@@ -101,7 +95,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
 `);
     await expect(validateWorkflow(file)).rejects.toThrow('validation failed');
     await unlink(file);
@@ -126,247 +120,13 @@ workflow:
   });
 });
 
-describe('resolveProduces — defaults cascade', () => {
-  it('applies workflow.defaults when produces item omits the field', async () => {
-    const file = await writeTmpYaml(`
-workflow:
-  id: test
-  name: test
-  cdrus:
-    version: 1
-  defaults:
-    tool: default-tool
-    source: https://default.example.com/
-    timeout_ms: 9999
-    min_wait_ms: 42
-  produces:
-    - event: dev.cdevents.build.started.0.3.0
-`);
-    const wf = await validateWorkflow(file);
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    expect(events[0].tool).toBe('default-tool');
-    expect(events[0].source).toBe('https://default.example.com/');
-    expect(events[0].timeout_ms).toBe(9999);
-    expect(events[0].min_wait_ms).toBe(42);
-    await unlink(file);
-  });
-
-  it('event-level fields override workflow.defaults', async () => {
-    const file = await writeTmpYaml(`
-workflow:
-  id: test
-  name: test
-  cdrus:
-    version: 1
-  defaults:
-    tool: default-tool
-    timeout_ms: 9999
-  produces:
-    - event: dev.cdevents.build.started.0.3.0
-      tool: override-tool
-      timeout_ms: 1234
-`);
-    const wf = await validateWorkflow(file);
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    expect(events[0].tool).toBe('override-tool');
-    expect(events[0].timeout_ms).toBe(1234);
-    await unlink(file);
-  });
-});
-
-describe('resolveProduces — expression items', () => {
-  it('inlines expression events from the registry (dsanyika/build → 4 events)', async () => {
-    // Author-qualified ref `dsanyika/build` resolves under the workflow's
-    // own group (sol-duara) to (sol-duara, dsanyika, build). Without the
-    // workflow's group set, the candidate identity would be ('', 'dsanyika',
-    // 'build') which never resolves — author-qualified refs do not fall
-    // through to the std-lib by design.
-    const file = await writeTmpYaml(`
-workflow:
-  id: test
-  group: sol-duara
-  author: dsanyika
-  name: test
-  cdrus:
-    version: 1
-  produces:
-    - expression: dsanyika/build
-      tool: jenkins
-`);
-    const wf = await validateWorkflow(file);
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    expect(events.length).toBe(4);
-    expect(events[0].type).toBe('dev.cdevents.build.started.0.3.0');
-    expect(events[3].type).toBe('dev.cdevents.build.finished.0.3.0');
-    expect(events.every((e) => e.origin === 'expression')).toBe(true);
-    await unlink(file);
-  });
-
-  it('applies overrides to specific events within an expression', async () => {
-    const file = await writeTmpYaml(`
-workflow:
-  id: test
-  group: sol-duara
-  author: dsanyika
-  name: test
-  cdrus:
-    version: 1
-  produces:
-    - expression: dsanyika/deploy
-      tool: spinnaker
-      source: https://spinnaker.example.com/
-      overrides:
-        service.deployed:
-          tool: gke
-          source: https://gke.example.com/
-`);
-    const wf = await validateWorkflow(file);
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    const deployed = events.find((e) => e.type === 'dev.cdevents.service.deployed.0.3.0');
-    const started = events.find((e) => e.type === 'dev.cdevents.taskrun.started.0.3.0');
-    expect(deployed?.tool).toBe('gke');
-    expect(deployed?.source).toBe('https://gke.example.com/');
-    expect(started?.tool).toBe('spinnaker');
-    await unlink(file);
-  });
-
-  it('fails with clear error when expression bundle is not found', async () => {
-    const file = await writeTmpYaml(`
-workflow:
-  id: test
-  name: test
-  cdrus:
-    version: 1
-  produces:
-    - expression: nonexistent
-      tool: jenkins
-`);
-    const wf = await validateWorkflow(file);
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    expect(() => resolveProduces(wf, registry)).toThrow(
-      "No expression bundle resolved for 'nonexistent'",
-    );
-    await unlink(file);
-  });
-
-  it('derives unique IDs for duplicate event types', async () => {
-    const file = await writeTmpYaml(`
-workflow:
-  id: test
-  name: test
-  cdrus:
-    version: 1
-  produces:
-    - event: dev.cdevents.pipelinerun.started.0.3.0
-      tool: jenkins
-    - event: dev.cdevents.pipelinerun.started.0.3.0
-      tool: jfrog
-    - event: dev.cdevents.pipelinerun.started.0.3.0
-      tool: spinnaker
-`);
-    const wf = await validateWorkflow(file);
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    const ids = events.map((e) => e.id);
-    const unique = new Set(ids);
-    expect(unique.size).toBe(ids.length);
-    expect(ids[0]).toBe('pipelinerun-started');
-    expect(ids[1]).toBe('pipelinerun-started-1');
-    expect(ids[2]).toBe('pipelinerun-started-2');
-    await unlink(file);
-  });
-});
-
-describe('resolveProduces — cross-tool workflow', () => {
-  it('allows multiple pipelineRun.started events across tools', async () => {
-    const file = await writeTmpYaml(`
-workflow:
-  id: test
-  name: test
-  cdrus:
-    version: 1
-  produces:
-    - event: dev.cdevents.pipelinerun.started.0.3.0
-      tool: jenkins
-    - event: dev.cdevents.pipelinerun.started.0.3.0
-      tool: jfrog
-    - event: dev.cdevents.pipelinerun.finished.0.3.0
-      tool: jfrog
-`);
-    const wf = await validateWorkflow(file);
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    expect(events).toHaveLength(3);
-    expect(events[0].tool).toBe('jenkins');
-    expect(events[1].tool).toBe('jfrog');
-    await unlink(file);
-  });
-});
-
-describe('resolveProduces — composite expressions (expression refs in produces)', () => {
-  it('expands dsanyika/blue-green-deploy including nested verify events', async () => {
-    const file = await writeTmpYaml(`
-workflow:
-  id: test
-  group: sol-duara
-  author: dsanyika
-  name: test
-  cdrus:
-    version: 1
-  produces:
-    - expression: dsanyika/blue-green-deploy
-      tool: spinnaker
-`);
-    const wf = await validateWorkflow(file);
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    // blue-green-deploy: service.deployed + verify(4) + service.published + service.removed = 7
-    expect(events.length).toBe(7);
-    expect(events[0].type).toBe('dev.cdevents.service.deployed.0.3.0');
-    expect(events[events.length - 1].type).toBe('dev.cdevents.service.removed.0.3.0');
-  });
-});
-
-describe('resolveProduces — group/author disambiguation on real prod workflows', () => {
-  it('parses and resolves prod-auth-hotfix-fast-path.yaml without error', async () => {
-    const wf = await validateWorkflow(path.join(WORKFLOWS_DIR, 'prod-auth-hotfix-fast-path.yaml'));
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    // pipelinerun.started (1) + spin-dev/shipwreck-sa/build (9) + service-deploy (2) + pipelinerun.finished (1)
-    expect(events.length).toBeGreaterThan(5);
-    expect(events[0].type).toBe('dev.cdevents.pipelinerun.started.0.3.0');
-    expect(events[events.length - 1].type).toBe('dev.cdevents.pipelinerun.finished.0.3.0');
-  });
-
-  it('parses and resolves prod-payments-blue-green-cutover.yaml without error', async () => {
-    const wf = await validateWorkflow(
-      path.join(WORKFLOWS_DIR, 'prod-payments-blue-green-cutover.yaml'),
-    );
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    expect(events.length).toBeGreaterThan(5);
-    expect(events[0].type).toBe('dev.cdevents.pipelinerun.started.0.3.0');
-    expect(events[events.length - 1].type).toBe('dev.cdevents.pipelinerun.finished.0.3.0');
-  });
-
-  it('parses and resolves prod-checkout-jenkins-spinnaker-canary.yaml without error', async () => {
-    const wf = await validateWorkflow(
-      path.join(WORKFLOWS_DIR, 'prod-checkout-jenkins-spinnaker-canary.yaml'),
-    );
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    expect(() => resolveProduces(wf, registry)).not.toThrow();
-  });
-
-  it('prod-auth workflow disambiguates bare "build" to spin-dev/shipwreck-sa/build', async () => {
-    const wf = await validateWorkflow(path.join(WORKFLOWS_DIR, 'prod-auth-hotfix-fast-path.yaml'));
-    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
-    // spin-dev/shipwreck-sa/build starts with change.merged (not build.started)
-    const first = events.find((e) => e.expressionRef !== undefined);
-    expect(first?.type).toBe('dev.cdevents.change.merged.0.3.0');
+describe('validateWorkflow — unparsable YAML', () => {
+  it('throws a clear parse error for invalid YAML', async () => {
+    const { writeFile } = await import('fs/promises');
+    const { makeTmpDir } = await import('../helpers.js');
+    const dir = await makeTmpDir('im-wf');
+    const bad = path.join(dir, 'broken.yaml');
+    await writeFile(bad, 'workflow: [unclosed: {\n', 'utf-8');
+    await expect(validateWorkflow(bad)).rejects.toThrow(/Failed to parse workflow YAML/);
   });
 });

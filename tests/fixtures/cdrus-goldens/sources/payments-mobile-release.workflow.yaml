@@ -1,0 +1,21 @@
+# RFC §7.3 — Workflow binding a composite Expression to concrete tools.
+workflow:
+  id: payments-mobile-release
+  group: payment-engineering
+  author: mchen
+  name: Payments Mobile Release Pipeline
+  cdrus:
+    version: 0.1.0
+  defaults:
+    source: https://ci.example.com
+  produces:
+    - expression: payment-engineering/mchen/build-deploy
+      overrides:
+        dev.cdevents.build.started:
+          tool: jenkins
+          content:
+            trigger: scheduled
+        dev.cdevents.deployment.started:
+          tool: spinnaker
+          content:
+            strategy: blue-green

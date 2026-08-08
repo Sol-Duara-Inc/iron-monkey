@@ -1,0 +1,20 @@
+{
+  "$comment": "Vendored CDEvents version catalog for event-type resolution (RFC §6.1/§6.2 step 5). Current versions verified against github.com/cdevents/spec @ 0.6.0-draft (2026-07-31 validation pass); earlier entries support range/exact resolution of historically published subject-schema versions and track upstream releases. Update by reviewed bump, never at run time. Extension types (dev.cdeventsx.*) never resolve here — they pass through opaquely.",
+  "subjects": {
+    "approval": { "closed": ["0.1.0"], "created": ["0.1.0"], "updated": ["0.1.0"] },
+    "artifact": { "deleted": ["0.2.0"], "downloaded": ["0.2.0"], "packaged": ["0.1.1", "0.2.0", "0.3.0"], "published": ["0.1.1", "0.2.0", "0.3.0"], "signed": ["0.2.0", "0.3.0"] },
+    "branch": { "created": ["0.2.0", "0.3.0"], "deleted": ["0.2.0", "0.3.0"] },
+    "build": { "finished": ["0.1.1", "0.2.0", "0.3.0"], "queued": ["0.1.1", "0.2.0", "0.3.0"], "started": ["0.1.1", "0.2.0", "0.3.0"] },
+    "change": { "abandoned": ["0.2.0", "0.3.0"], "created": ["0.2.0", "0.3.0", "0.4.0"], "merged": ["0.2.0", "0.3.0"], "reviewed": ["0.2.0", "0.3.0"], "updated": ["0.2.0", "0.3.0"] },
+    "environment": { "created": ["0.2.0", "0.3.0"], "deleted": ["0.2.0", "0.3.0"], "modified": ["0.2.0", "0.3.0"] },
+    "incident": { "detected": ["0.2.0", "0.3.0"], "reported": ["0.2.0", "0.3.0"], "resolved": ["0.2.0", "0.3.0"] },
+    "pipelinerun": { "finished": ["0.1.1", "0.2.0", "0.3.0"], "queued": ["0.1.1", "0.2.0", "0.3.0"], "started": ["0.1.1", "0.2.0", "0.3.0"] },
+    "repository": { "created": ["0.2.0", "0.3.0"], "deleted": ["0.2.0", "0.3.0"], "modified": ["0.2.0", "0.3.0"] },
+    "service": { "deployed": ["0.1.1", "0.2.0", "0.3.0"], "published": ["0.2.0", "0.3.0"], "removed": ["0.2.0", "0.3.0"], "rolledback": ["0.2.0", "0.3.0"], "upgraded": ["0.2.0", "0.3.0"] },
+    "taskrun": { "finished": ["0.2.0", "0.3.0"], "started": ["0.2.0", "0.3.0"] },
+    "testcaserun": { "finished": ["0.2.0", "0.3.0"], "queued": ["0.2.0", "0.3.0"], "skipped": ["0.2.0"], "started": ["0.2.0", "0.3.0"] },
+    "testoutput": { "published": ["0.2.0", "0.3.0"] },
+    "testsuiterun": { "finished": ["0.2.0", "0.3.0"], "queued": ["0.2.0", "0.3.0"], "started": ["0.2.0", "0.3.0"] },
+    "ticket": { "closed": ["0.1.0", "0.2.0"], "created": ["0.1.0", "0.2.0"], "updated": ["0.1.0", "0.2.0"] }
+  }
+}

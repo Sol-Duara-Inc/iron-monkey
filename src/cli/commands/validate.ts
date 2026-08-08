@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { addCommonFlags } from '../flags.js';
+import { createCommandContext } from '../context.js';
 
 export function validateCommand(): Command {
   const cmd = new Command('validate')
@@ -11,21 +12,11 @@ export function validateCommand(): Command {
   cmd.action(async (workflowPath: string, options: Record<string, unknown>) => {
     const { validateWorkflow } = await import('../../workflow/parser.js');
     const { resolveChainTree } = await import('../../workflow/chain-tree.js');
-    const { loadConfig, resolveBusName } = await import('../../config/loader.js');
+    const { resolveBusName } = await import('../../config/loader.js');
     const { loadExpressionRegistry } = await import('../../expressions/loader.js');
     const { buildManifest } = await import('../../manifest/builder.js');
-    const { createLogger, setLogger } = await import('../../logger/index.js');
 
-    const logger = createLogger({
-      level: options.logLevel as 'info',
-      format: options.logFormat as 'json',
-    });
-    setLogger(logger);
-
-    const config = await loadConfig({
-      configPath: options.config as string | undefined,
-      cliOverrides: { busName: options.bus as string | undefined },
-    });
+    const { logger, config } = await createCommandContext(options);
 
     const workflow = await validateWorkflow(workflowPath);
     logger.info({ workflowId: workflow.workflow.id }, 'workflow is valid');
@@ -54,6 +45,9 @@ export function validateCommand(): Command {
     }
 
     const mainChain = resolveChainTree(workflow, registry);
+    for (const d of mainChain.diagnostics ?? []) {
+      logger.warn({ diagnostic: d }, 'resolution diagnostic (RFC §6.2)');
+    }
     const busName = resolveBusName(config, options.bus as string | undefined);
 
     const manifest = await buildManifest(

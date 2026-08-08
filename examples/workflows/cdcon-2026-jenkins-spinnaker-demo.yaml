@@ -5,7 +5,7 @@ workflow:
   author: dsanyika
   name: cdCon 2026 — Junction Box End-to-End Demo (Jenkins → Spinnaker → GKE)
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       occasion: cdCon May 2026 (Minneapolis)
       purpose: Junction Box happy-path demonstration — full CI/CD chain across Jenkins, Spinnaker, and GKE
@@ -48,10 +48,10 @@ workflow:
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
       overrides:
-        service.deployed:
+        dev.cdevents.service.deployed:
           tool: gke-prod
           source: https://gke.example.com/
-        service.published:
+        dev.cdevents.service.published:
           tool: gke-prod
           source: https://gke.example.com/
 

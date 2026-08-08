@@ -65,6 +65,21 @@ describe('parseHintTable — shape validation', () => {
     );
   });
 
+  it('rejects explicit empty-string begin/end', () => {
+    expect(() =>
+      parseHintTable({
+        version: '0.1.0',
+        subjects: { build: { ...subject, begin: '' } },
+      }),
+    ).toThrow(/'begin' must be a non-empty string or null/);
+    expect(() =>
+      parseHintTable({
+        version: '0.1.0',
+        subjects: { build: { ...subject, end: '' } },
+      }),
+    ).toThrow(/'end' must be a non-empty string or null/);
+  });
+
   it('requires begin and end to be paired', () => {
     expect(() =>
       parseHintTable({
@@ -77,7 +92,7 @@ describe('parseHintTable — shape validation', () => {
         version: '0.1.0',
         subjects: { build: { ...subject, begin: 5 } },
       }),
-    ).toThrow(/'begin' must be a string or null/);
+    ).toThrow(/'begin' must be a non-empty string or null/);
   });
 
   it('accepts a well-formed table and normalizes missing begin/end to null', () => {
@@ -125,5 +140,16 @@ describe('name-hint table — drift against the CDEvents catalog', () => {
       expect(entry.begin).toBe(paired ? 'started' : null);
       expect(entry.end).toBe(paired ? 'finished' : null);
     }
+  });
+});
+
+describe('loadHintTable — unparsable file', () => {
+  it('throws a clear parse error for invalid JSON', async () => {
+    const { writeFile } = await import('fs/promises');
+    const { makeTmpDir } = await import('../helpers.js');
+    const dir = await makeTmpDir('im-hint-table');
+    const bad = path.join(dir, 'broken.json');
+    await writeFile(bad, '{ not json', 'utf-8');
+    expect(() => loadHintTable(bad)).toThrow(/Failed to parse name-hint table/);
   });
 });

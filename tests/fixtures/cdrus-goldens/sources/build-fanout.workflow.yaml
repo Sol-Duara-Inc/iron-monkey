@@ -1,0 +1,17 @@
+# The IM suite's SYMPRAXIS_FANOUT_WORKFLOW_ID fixture: two sibling detached
+# chains with IDENTICAL expectedEvents — disambiguated by position (treePath),
+# never by content.
+workflow:
+  id: build-fanout
+  group: platform
+  author: okafor
+  name: Build with async scans (fan-out)
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1200000}
+  produces:
+    - event: dev.cdevents.build.started
+    - event: dev.cdevents.build.finished
+      detach:
+        - - event: dev.cdevents.artifact.signed
+        - - event: dev.cdevents.artifact.signed
+    - event: dev.cdevents.pipelinerun.finished

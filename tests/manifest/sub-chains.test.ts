@@ -36,6 +36,7 @@ function ev(treePath: string, order: number, type: string, id: string): Resolved
     order,
     workflowEventId: id,
     type,
+    resolvedType: type,
     tool: 'jenkins',
     source: '',
     pipeline: 'p',
@@ -47,7 +48,7 @@ function ev(treePath: string, order: number, type: string, id: string): Resolved
 }
 
 /** main: build.started (p0, spawns detach) → build.finished (p1). */
-function gatedTree(role: 'detached' | 'concurrent'): ResolvedChain {
+function gatedTree(role: 'detached' | 'blocking'): ResolvedChain {
   const child: ResolvedChain = {
     role,
     chainRef: 'p0.d',
@@ -124,26 +125,26 @@ describe('buildManifest — detached / branch sub-chains', () => {
     expect(m.detachedChains![0].events.map((e) => e.treePath)).toEqual(['p0.d0.p0', 'p0.d0.p1']);
   });
 
-  it('models a concurrent branch with role "concurrent"', async () => {
-    const m = await buildManifest(meta, gatedTree('concurrent'), config, { noConduit: true });
-    expect(m.detachedChains![0].role).toBe('concurrent');
+  it('models a Blocking spawn chain with role "blocking"', async () => {
+    const m = await buildManifest(meta, gatedTree('blocking'), config, { noConduit: true });
+    expect(m.detachedChains![0].role).toBe('blocking');
   });
 
   it('disambiguates two content-identical sibling branches by distinct chainIds', async () => {
     const mkBranch = (ref: string): ResolvedChain => ({
-      role: 'concurrent',
+      role: 'blocking',
       chainRef: ref,
       parentChainRef: 'root',
       anchorPath: 'p0',
       linkKind: 'TRIGGER',
-      events: [ev(`${ref}0.p0`, 0, BUILD_STARTED, `${ref}-0`)],
+      events: [ev(`${ref}.p0`, 0, BUILD_STARTED, `${ref}-0`)],
       spawns: [],
     });
     const main: ResolvedChain = {
       role: 'main',
       chainRef: 'root',
       events: [ev('p0', 0, BUILD_STARTED, 'm0')],
-      spawns: [mkBranch('p0.b0'), mkBranch('p0.b1')],
+      spawns: [mkBranch('p0.s0'), mkBranch('p0.s1')],
     };
     const m = await buildManifest(meta, main, config, { noConduit: true });
     expect(m.detachedChains).toHaveLength(2);

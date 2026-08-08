@@ -8,6 +8,7 @@
 
 import { createAjv2020 } from '../util/ajv.js';
 import { loadSchemasFromDir, getDefaultSchemasDir } from './loader.js';
+import { formatAjvErrorLine } from '../util/yaml-file.js';
 
 const ajv = createAjv2020({ formats: true, strict: false });
 
@@ -109,11 +110,7 @@ export function validateEvent(payload: unknown, schema: unknown): ValidationResu
   const validate = s.$id && ajv.getSchema(s.$id) ? ajv.getSchema(s.$id)! : ajv.compile(s);
   const valid = validate(payload);
   if (!valid) {
-    const errors =
-      validate.errors?.map(
-        (e: { instancePath: string; message?: string }) =>
-          `  ${e.instancePath || '(root)'}: ${e.message}`,
-      ) ?? [];
+    const errors = (validate.errors ?? []).map(formatAjvErrorLine);
     return { valid: false, errors };
   }
   return { valid: true };

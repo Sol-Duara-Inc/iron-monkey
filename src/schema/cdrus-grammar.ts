@@ -2,36 +2,39 @@
  * @module schema/cdrus-grammar
  * Single source of truth for the CDrus grammar at runtime.
  *
- * The recursive produce/detach/branch grammar is owned by the canonical CDrus
- * JSON Schemas in `schemas/cdrus/` (`workflow.schema.json`,
- * `expression.schema.json`). Rather than hand-maintain a second copy — which
- * silently drifts (the `concurrent_branch` form had to be back-ported by hand
- * once already) — this module LOADS the canonical schemas and applies a small,
- * explicit Iron Monkey OVERLAY:
+ * The recursive produces/spawn/detach grammar is owned by the canonical CDrus
+ * 0.1.0 JSON Schemas in `schemas/cdrus/` (`workflow.schema.json`,
+ * `expression.schema.json`, JSON Schema 2020-12). Rather than hand-maintain a
+ * second copy — which silently drifts — this module LOADS the canonical schemas
+ * and applies a small, explicit Iron Monkey OVERLAY:
  *
  *  - **Extensions** IM adds that the language spec deliberately omits:
- *    event-level `subject` seeding and `defaults.content`. Timing
- *    (`timeout_ms` / `min_wait_ms`) is now CANONICAL on the workflow side
- *    (the CDrus workflow schema types it `number` on `event_item`,
- *    `expression_item`, `event_override`, and `defaults`), so the workflow
- *    overlay no longer re-declares it — re-declaring once shadowed canonical's
- *    `number` with `integer` and wrongly rejected fractional values. On the
- *    EXPRESSION-BUNDLE side, where the canonical grammar omits timing, IM still
- *    adds it — as `number`, matching the workflow convention so both schemas
- *    accept the same values.
- *  - **Relaxations** IM needs as a permissive *emitter* (Iron Mike + Chaos
- *    Monkey) of a stricter spec: `group` / `author` optional; event-type
- *    `pattern` and `source` `format: uri` dropped to plain non-empty strings.
+ *    event-level `subject` seeding, `defaults.content`, and (expression-bundle
+ *    side only) per-event `id` / timing / tool / source / pipeline. Timing is
+ *    canonical on the workflow side.
+ *  - **Relaxations** IM needs as a permissive *emitter* of a stricter spec:
+ *    `group` / `author` optional on workflows; `source` `format: uri` dropped
+ *    to a plain non-empty string.
  *
- * The recursive structure (`produce_item` = event | expression | concurrent
- * branch, with nested `produces` / `detach`) is taken verbatim from canonical,
- * so it can never fall behind the spec again. Everything IM changes is right
- * here, in one visible diff. `additionalProperties: false` is preserved on the
- * item shapes, so field typos are still rejected.
+ * Two deliberate NON-relaxations (changed at CDrus 0.1.0 adoption):
  *
- * `format` keywords are stripped because the loaders compile with a bare
- * `new Ajv()` (no `ajv-formats`); an undefined `format` would otherwise throw
- * at compile time. `$id` is stripped to avoid cross-compile ref collisions.
+ *  - The `event` type **pattern is enforced** (core + `dev.cdeventsx.*`
+ *    extended forms, embedded/colon/range/versionless versions). Malformed
+ *    types now fail at validation instead of surfacing later at manifest
+ *    build. Purpose-built malformation still happens downstream via
+ *    `--inject` — never by authoring invalid YAML.
+ *  - Expression-bundle `expression_item` is **spec-pure** (`expression` only,
+ *    `additionalProperties: false`): tool binding belongs to the Workflow
+ *    layer (RFC §5.5). Workflow-side expression references keep their
+ *    canonical binding fields (tool/source/pipeline/timing/overrides).
+ *
+ * The recursive structure (chain_item = event | expression reference, with
+ * nested `produces` and the flat-or-nested `spawn` / `detach` spawned-chain
+ * forms) is taken verbatim from canonical, so it can never fall behind the
+ * spec. Everything IM changes is right here, in one visible diff.
+ *
+ * `format` keywords are stripped because the CDrus loaders compile without
+ * `ajv-formats`; `$id` is stripped to avoid cross-compile ref collisions.
  */
 
 import { readFileSync } from 'fs';
@@ -65,11 +68,9 @@ function stripKeys(node: unknown, keys: string[]): void {
 /**
  * Timing fields for the EXPRESSION-BUNDLE overlay only. The canonical CDrus
  * workflow schema already defines `timeout_ms` / `min_wait_ms` (as `number`) on
- * its event/expression/override items, so the workflow overlay leaves them
- * alone; the canonical expression grammar omits them, so IM adds them here.
- * Typed `number` (NOT `integer`) so it matches canonical/workflow exactly — an
- * `integer` here would reject fractional millisecond values the workflow side
- * accepts, splitting the two schemas.
+ * its event/expression/override items; the canonical expression grammar omits
+ * them, so IM adds them here. Typed `number` (NOT `integer`) so both schemas
+ * accept the same values.
  */
 const TIMING = {
   timeout_ms: { type: 'number', minimum: 0 },
@@ -94,13 +95,14 @@ function loosen(props: SchemaObj | undefined, key: string): void {
 }
 
 /**
- * Builds the runtime workflow schema = canonical workflow grammar + IM overlay.
+ * Builds the runtime workflow schema = canonical 0.1.0 workflow grammar + IM
+ * overlay.
  */
 function buildWorkflowSchema(): SchemaObj {
   const s = readCanonical('workflow');
   stripKeys(s, ['$id', 'format']);
 
-  const defs = s.definitions as SchemaObj;
+  const defs = s.$defs as SchemaObj;
   const wf = (s.properties as SchemaObj).workflow as SchemaObj;
 
   // Relaxation: group/author are optional for Iron Monkey workflows.
@@ -112,20 +114,19 @@ function buildWorkflowSchema(): SchemaObj {
   defaultsProps.content = { type: 'object', additionalProperties: true };
   loosen(defaultsProps, 'source');
 
-  // event_item: timing + `as` are canonical (number / string in the CDrus
-  // workflow schema); IM only adds `subject` seeding and loosens event/source.
+  // event_item: timing + `as` + the event pattern are canonical; IM adds
+  // `subject` seeding and loosens source. The event pattern is KEPT.
   const eventItem = defs.event_item as SchemaObj;
   const evProps = eventItem.properties as SchemaObj;
   Object.assign(evProps, { subject: { ...SUBJECT } });
-  loosen(evProps, 'event');
   loosen(evProps, 'source');
 
-  // expression_item: timing is canonical; IM only loosens source.
+  // expression_item: binding fields are canonical; IM only loosens source.
   const exprItem = defs.expression_item as SchemaObj;
   const exProps = exprItem.properties as SchemaObj;
   loosen(exProps, 'source');
 
-  // event_override: timing is canonical; IM only loosens source.
+  // event_override: canonical (incl. pipeline at 0.1.0); IM only loosens source.
   const override = defs.event_override as SchemaObj;
   const ovProps = override.properties as SchemaObj;
   loosen(ovProps, 'source');
@@ -134,17 +135,20 @@ function buildWorkflowSchema(): SchemaObj {
 }
 
 /**
- * Builds the runtime expression-bundle schema = canonical expression grammar +
- * IM overlay. Mirrors the workflow overlay; the canonical expression event_item
- * is bare (event / produces / detach), so IM's per-event fields are merged in.
+ * Builds the runtime expression-bundle schema = canonical 0.1.0 expression
+ * grammar + IM overlay. The canonical event_item is bare (event /
+ * event_schema_uri / as / produces / spawn / detach), so IM's per-event fields
+ * are merged in. `expression_item` is left spec-pure — references carry no
+ * binding; binding belongs to the Workflow layer.
  */
 function buildExpressionBundleSchema(): SchemaObj {
   const s = readCanonical('expression');
   stripKeys(s, ['$id', 'format']);
 
-  const defs = s.definitions as SchemaObj;
+  const defs = s.$defs as SchemaObj;
 
-  // event_item: + id + timing + subject + tool/source/pipeline; loosen event.
+  // event_item: + id + timing + subject + tool/source/pipeline. The event
+  // pattern is KEPT (core + extended forms).
   const eventItem = defs.event_item as SchemaObj;
   const evProps = eventItem.properties as SchemaObj;
   Object.assign(evProps, {
@@ -154,18 +158,6 @@ function buildExpressionBundleSchema(): SchemaObj {
     tool: { ...LOOSE_STRING },
     source: { ...LOOSE_STRING },
     pipeline: { ...LOOSE_STRING },
-  });
-  loosen(evProps, 'event');
-
-  // expression_item: canonical allows only `expression`; IM adds defaults that
-  // cascade onto the inlined sub-expression's events.
-  const exprItem = defs.expression_item as SchemaObj;
-  const exProps = exprItem.properties as SchemaObj;
-  Object.assign(exProps, {
-    tool: { ...LOOSE_STRING },
-    source: { ...LOOSE_STRING },
-    pipeline: { ...LOOSE_STRING },
-    ...TIMING,
   });
 
   return s;

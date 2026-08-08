@@ -20,7 +20,6 @@ vi.mock('../../src/config/loader.js', () => ({
 
 vi.mock('../../src/workflow/parser.js', () => ({
   validateWorkflow: vi.fn(),
-  resolveProduces: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock('../../src/expressions/loader.js', () => ({
@@ -65,7 +64,6 @@ function makeEvent(overrides: Partial<ManifestEvent> = {}): ManifestEvent {
     type: 'dev.cdevents.build.started.0.3.0',
     stageId: 'my-pipeline',
     stageTool: 'jenkins',
-    concurrent: false,
     source: 'https://jenkins.example.com/',
     chainId: 'chain-1',
     targetBus: 'default',

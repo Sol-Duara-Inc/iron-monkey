@@ -1,0 +1,10 @@
+# Registry fixture: resolution target for store-notify's
+# bac/wjones/change-request reference. Name hint 'change' (flat subject)
+# satisfied by change.created.
+group: bac
+author: wjones
+expression: change-request
+description: A change has been created and merged.
+produces:
+  - event: dev.cdevents.change.created
+  - event: dev.cdevents.change.merged

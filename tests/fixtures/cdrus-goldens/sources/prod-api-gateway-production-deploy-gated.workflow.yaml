@@ -1,0 +1,14 @@
+# The IM contract suite's default fixture (SYMPRAXIS_WORKFLOW_ID): main chain
+# + ONE flat-detached chain — the protocol doc's worked example, in CDrus
+# 0.1.0 grammar. Keep in lockstep with iron-monkey's copy.
+workflow:
+  id: prod-api-gateway-production-deploy-gated
+  group: platform
+  author: okafor
+  name: Prod API Gateway production deploy (gated)
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1200000}
+  produces:
+    - event: dev.cdevents.pipelinerun.started
+    - expression: production-deploy
+    - event: dev.cdevents.pipelinerun.finished

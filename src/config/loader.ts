@@ -10,6 +10,7 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
+import { formatAjvErrors } from '../util/yaml-file.js';
 import { createAjv } from '../util/ajv.js';
 import { configSchema } from './schema.js';
 import type { IronMonkeyConfig, LoadConfigOptions } from './types.js';
@@ -76,13 +77,7 @@ async function loadFileConfig(filePath: string): Promise<Partial<IronMonkeyConfi
 
   const valid = validateConfigSchema(parsed);
   if (!valid) {
-    const errors = validateConfigSchema.errors
-      ?.map(
-        (e: { instancePath: string; message?: string }) =>
-          `  ${e.instancePath || '(root)'}: ${e.message}`,
-      )
-      .join('\n');
-    throw new Error(`Config validation failed:\n${errors}`);
+    throw new Error(`Config validation failed:\n${formatAjvErrors(validateConfigSchema.errors)}`);
   }
 
   return parsed as Partial<IronMonkeyConfig>;

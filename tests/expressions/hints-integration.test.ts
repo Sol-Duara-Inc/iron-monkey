@@ -1,21 +1,14 @@
-import { describe, it, expect } from 'vitest';
-import { writeFile, mkdir } from 'fs/promises';
+import { describe, it, expect, vi } from 'vitest';
+import { writeFile } from 'fs/promises';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
+import { makeTmpDir as sharedTmpDir } from '../helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DIR = path.resolve(__dirname, '../../expressions');
 
-async function makeTmpDir(): Promise<string> {
-  const dir = path.join(
-    os.tmpdir(),
-    `iron-monkey-hints-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
-  await mkdir(dir, { recursive: true });
-  return dir;
-}
+const makeTmpDir = () => sharedTmpDir('iron-monkey-hints');
 
 const HEADER = 'group: test-group\nauthor: tester\n';
 
@@ -38,7 +31,7 @@ describe('loadExpressionRegistry — name-hint enforcement', () => {
     expect(findings[0].skipped).toBe(true);
     expect(findings[0].identity).toBe('test-group/tester/build');
     expect(findings[0].result.violations[0].hint).toBe('build');
-    expect(() => registry.resolve('build')).toThrow(/No expression bundle found/);
+    expect(() => registry.resolve('build')).toThrow(/Unknown expression identity: no bundle found/);
   });
 
   it('loads a bundle whose hint is satisfied by delegation', async () => {
@@ -110,5 +103,38 @@ describe('bundled expressions — name-hint compliance sentinel', () => {
     // Both still resolve — diagnostics never affect acceptance.
     expect(() => registry.resolve('example-group/user/pipeline-run')).not.toThrow();
     expect(() => registry.resolve('example-group/user/test-output-publish')).not.toThrow();
+  });
+});
+
+// ── fail-soft when the keyword table is unavailable ───────────────────────────
+
+describe('loadExpressionRegistry — hint table unavailable', () => {
+  it('loads even hint-violating bundles when the table cannot be loaded (fail-soft)', async () => {
+    vi.resetModules();
+    vi.doMock('../../src/hints/index.js', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../../src/hints/index.js')>();
+      return {
+        ...actual,
+        loadHintTable: () => {
+          throw new Error('simulated: table missing');
+        },
+      };
+    });
+    const { loadExpressionRegistry: loadWithBrokenTable } =
+      await import('../../src/expressions/loader.js');
+
+    const dir = await makeTmpDir();
+    // 'build' hint would normally be violated (only queued) → skip. With the
+    // table unavailable, the gate is OFF and the bundle loads.
+    await writeFile(
+      path.join(dir, 'bad.yaml'),
+      `${HEADER}expression: build\nproduces:\n  - event: dev.cdevents.build.queued.0.3.0\n`,
+      'utf-8',
+    );
+    const registry = loadWithBrokenTable(dir);
+    expect(registry.list().map((b) => b.name)).toEqual(['build']);
+    expect(registry.hintFindings()).toEqual([]);
+    vi.doUnmock('../../src/hints/index.js');
+    vi.resetModules();
   });
 });

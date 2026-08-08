@@ -4,10 +4,9 @@
  * per-pitch overrides to produce one RunOptions object per pitch.
  */
 
-import { readFile } from 'fs/promises';
-import yaml from 'js-yaml';
 import type { RepertoireFile, RepertoirePitch } from './types.js';
 import type { RunOptions } from '../emitter/runner.js';
+import { readTextFileSync, parseYaml } from '../util/yaml-file.js';
 
 /**
  * Reads and YAML-parses a repertoire file. Throws with a clear message if the
@@ -17,19 +16,8 @@ import type { RunOptions } from '../emitter/runner.js';
  * @returns The parsed {@link RepertoireFile}.
  */
 export async function loadRepertoire(filePath: string): Promise<RepertoireFile> {
-  let raw: string;
-  try {
-    raw = await readFile(filePath, 'utf-8');
-  } catch {
-    throw new Error(`Cannot read repertoire file: ${filePath}`);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = yaml.load(raw);
-  } catch (err) {
-    throw new Error(`Invalid YAML in repertoire file ${filePath}: ${(err as Error).message}`);
-  }
+  const raw = readTextFileSync(filePath, 'Cannot read repertoire file');
+  const parsed = parseYaml(raw, (cause) => `Invalid YAML in repertoire file ${filePath}: ${cause}`);
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`Repertoire file ${filePath} must be a YAML object`);

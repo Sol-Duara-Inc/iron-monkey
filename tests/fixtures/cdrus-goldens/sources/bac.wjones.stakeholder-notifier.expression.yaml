@@ -1,0 +1,8 @@
+# Registry fixture: resolution target for store-notify's second
+# detached chain.
+group: bac
+author: wjones
+expression: stakeholder-notifier
+description: Notify stakeholders via the notification extension.
+produces:
+  - event: dev.cdeventsx.mytool-notification.dispatched

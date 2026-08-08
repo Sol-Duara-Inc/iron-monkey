@@ -1,26 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
 import { getLogger } from '../../src/logger/index.js';
+import { makeTmpDir as sharedTmpDir, bundleYaml } from '../helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DIR = path.resolve(__dirname, '../../expressions');
 
-async function makeTmpDir(): Promise<string> {
-  const dir = path.join(
-    os.tmpdir(),
-    `iron-monkey-expr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
-  await mkdir(dir, { recursive: true });
-  return dir;
-}
-
-function minimalBundle(name: string, group = 'sol-duara', author = 'dsanyika'): string {
-  return `group: ${group}\nauthor: ${author}\nexpression: ${name}\nproduces:\n  - event: dev.cdevents.build.started.0.3.0\n`;
-}
+const makeTmpDir = () => sharedTmpDir('iron-monkey-expr');
+const minimalBundle = (name: string, group?: string, author?: string): string =>
+  bundleYaml(name, { group, author });
 
 // ── bundled directory ─────────────────────────────────────────────────────────
 
@@ -140,7 +131,7 @@ describe('loadExpressionRegistry — error cases', () => {
   it('fails with clear error on unresolvable reference', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
     expect(() => registry.resolve('nonexistent')).toThrow(
-      "No expression bundle found for 'nonexistent'",
+      "Unknown expression identity: no bundle found for 'nonexistent'",
     );
   });
 
@@ -187,12 +178,14 @@ describe('loadExpressionRegistry — error cases', () => {
     // The good bundle is indexed and resolvable; the bad one is absent.
     expect(registry.list().map((b) => b.name)).toEqual(['good-one']);
     expect(registry.resolve('good-one').expression).toBe('good-one');
-    expect(() => registry.resolve('bad')).toThrow("No expression bundle found for 'bad'");
+    expect(() => registry.resolve('bad')).toThrow(
+      "Unknown expression identity: no bundle found for 'bad'",
+    );
   });
 
   it('accepts duplicate noun.verb events without explicit ids', async () => {
     // Position is identity. Downstream code allocates unique positional ids at
-    // expansion time — see resolveProduces in src/workflow/parser.ts.
+    // expansion time — see resolveChainTree in src/workflow/chain-tree.ts.
     const dir = await makeTmpDir();
     await writeFile(
       path.join(dir, 'collision.yaml'),
@@ -261,5 +254,46 @@ describe('loadExpressionRegistry — path-style disambiguation', () => {
 
     const bundle = registry.resolveWithContext('shared', { group: 'org-b', author: 'bob' });
     expect(bundle.author).toBe('bob');
+  });
+});
+
+// ── resilience and resolution edge paths ──────────────────────────────────────
+
+describe('loadExpressionRegistry — resilience edge paths', () => {
+  it('uses the bundled default directory when no dir or env override is given', () => {
+    const saved = process.env.IRON_MONKEY_EXPRESSIONS;
+    delete process.env.IRON_MONKEY_EXPRESSIONS;
+    try {
+      const registry = loadExpressionRegistry();
+      expect(registry.list().length).toBeGreaterThan(0);
+    } finally {
+      if (saved !== undefined) process.env.IRON_MONKEY_EXPRESSIONS = saved;
+    }
+  });
+
+  it('yields an empty registry for a nonexistent directory; resolution fails clearly', () => {
+    const registry = loadExpressionRegistry('/no/such/dir/anywhere');
+    expect(registry.list()).toEqual([]);
+    expect(() => registry.resolve('anything')).toThrow(
+      /Unknown expression identity: no bundle found/,
+    );
+  });
+
+  it('skips an unreadable entry (a directory named *.yaml) with a warning', async () => {
+    const dir = await makeTmpDir();
+    await mkdir(path.join(dir, 'imposter.yaml'), { recursive: true });
+    await writeFile(path.join(dir, 'good.yaml'), minimalBundle('good-two'), 'utf-8');
+    const warn = vi.spyOn(getLogger(), 'warn').mockImplementation(() => {});
+    const registry = loadExpressionRegistry(dir);
+    expect(registry.list().map((b) => b.name)).toEqual(['good-two']);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('rejects a 4+-part reference in resolveWithContext', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    expect(() => registry.resolveWithContext('a/b/c/d', { group: 'g', author: 'a' })).toThrow(
+      /Invalid expression reference/,
+    );
   });
 });

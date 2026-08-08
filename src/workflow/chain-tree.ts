@@ -1,44 +1,43 @@
 /**
  * @module workflow/chain-tree
- * Resolves a workflow's `produces` / `detach` grammar into a TREE of Sympraxis
- * chains — the producer-side foundation for emitting detached / parallel
- * streams. Unlike {@link resolveProduces} (which flattens and DROPS `detach`),
- * this builder:
+ * Resolves a workflow's CDrus 0.1.0 `produces` / `spawn` / `detach` grammar
+ * into a TREE of Proleptic-protocol chains — the producer-side foundation for
+ * emitting spawned streams. Implements the coordinate contract ratified
+ * 2026-08-04 (ground truth: `conduit-go/docs/engine/chain-derivation.md` and
+ * the goldens in `conduit-go/pkg/cdrus/testdata/goldens/`, mirrored under
+ * `tests/fixtures/cdrus-goldens/`):
  *
- *  - **nests** expression expansions: an `expression:` ref keeps its index on
- *    its axis, and its bundle's `produces` become children *beneath* that index
- *    (never inline-flattened — flattening renumbers siblings and silently
- *    re-binds unrelated chains);
- *  - **descends into `detach`**: each `detach:` list is lifted into its own
- *    {@link ResolvedChain} ({@link ResolvedChain.spawns}), never merged into the
- *    spawning chain's linear sequence;
- *  - **resolves array entries as concurrent branches**: an array element under
- *    `produces` becomes its own chain (role `concurrent`) on the `b` axis, with
- *    its own chainId, spawned like a detach. The emitter emits each chain's
- *    events identically; the difference is purely how the RECEIVER monitors it
- *    (see {@link ResolvedChain.role}) — a `concurrent` branch is monitored under
- *    its parent (its breach rolls up to the parent); a `detached` chain is not;
- *  - computes a positional, axis-prefixed **`treePath`** — the Sympraxis binding
- *    key. Every segment is `<axis><index>`, axis ∈ {`p` = produces, `d` =
- *    detach, `b` = concurrent branch}, segments joined by `.` (e.g. `p0`,
- *    `p1.p0.p1`, `p1.p1.p0.d0.p0`, `p1.b0.p2`). Top-level `produces` is the `p` axis.
- *
- * Chain anchoring (mirrors `junction-box/docs/sympraxis-chain-protocol.md`,
- * rule c): the main chain's `chainRef` is the sentinel `root`; a detached chain
- * spawned by the event at path `P` has `chainRef` = `${P}.d` and is always a
- * string-prefix of its member events' `treePath`s.
- *
- * NOTE on the spec's worked example: the protocol doc currently renders the
- * detached `ticket-associate` events as `…d0` / `…d1` (expression flattened).
- * That contradicts the doc's own rule (a) "expansion nests" and Junction Box's
- * actual transformer (which recurses into the expression, adding a level). This
- * builder follows rule (a) + JB's real behaviour — `…d0.p0` / `…d0.p1` — so the
- * doc's worked example should be corrected to match.
+ *  - **Axes**: every member path segment is `<axis><index>`, axis ∈ {`p` =
+ *    produces (same chain), `s` = spawn (Blocking), `d` = detach (Detached)}.
+ *    The retired `b` axis is never emitted; a nested list at a chain position
+ *    (inside `produces`) is a hard error — RFC-legal documents attach spawned
+ *    chains to an event via `spawn:` or `detach:`.
+ *  - **Flat form = ONE chain**: an event at path `P` with a flat `spawn:` /
+ *    `detach:` list spawns a single chain anchored `${P}.s` / `${P}.d` (a
+ *    string-prefix anchor, deliberately not a well-formed segment); entry *i*
+ *    sits at `${P}.s{i}` / `${P}.d{i}`, and an `expression:` entry nests its
+ *    bundle beneath its slot (`${P}.d0.p0`, …).
+ *  - **Nested form = one chain PER inner list**: anchors `${P}.s{i}` /
+ *    `${P}.d{i}` (well-formed segments — sibling chains must be distinct);
+ *    inner-list items sit on a `p`-run beneath each anchor (`${P}.s0.p0`, …).
+ *    The two forms MUST NOT be mixed within one list (RFC §4.7/§4.8).
+ *  - **Roles**: `main` (spine) | `blocking` (spawn — the receiver monitors it
+ *    under its parent; breach rolls up) | `detached` (independent). The
+ *    emitter produces every chain's events identically; Phase 2 adds the
+ *    producer-side blocking wait.
+ *  - **Expansion NESTS** (never inline-flattens): an `expression:` ref keeps
+ *    its authored index on its axis and its bundle's produces become children
+ *    beneath that index; resolution context swaps to the referenced bundle.
+ *    References are spec-pure — `produces`/`spawn`/`detach` on a reference is
+ *    rejected (RFC §4.3).
  */
 
 import { nounVerbFromType } from '../expressions/loader.js';
+import { loadEventCatalog, resolveEventType, parseTypeKey } from '../schema/catalog.js';
+import type { ResolvedEventType, TypeKey } from '../schema/catalog.js';
 import { deepMerge } from '../util/deep-merge.js';
 import type { ExpressionRegistry } from '../expressions/loader.js';
+import type { ExpressionBundle } from '../expressions/types.js';
 import type { WorkflowFile } from './types.js';
 
 /** A single expected event within a resolved chain, addressed by `treePath`. */
@@ -49,8 +48,20 @@ export interface ResolvedChainEvent {
   order: number;
   /** Human label (noun-verb slug, de-duplicated within the chain). NOT the key. */
   workflowEventId: string;
-  /** Fully-qualified CDEvent type string. */
+  /**
+   * The AUTHORED event-type string, any §6.1 form, verbatim. This is the
+   * derivation/register currency — the daemon derives from the same authored
+   * strings, so parity (goldens, `assertRegisterMatchesLocal`) compares this,
+   * never the resolved form.
+   */
   type: string;
+  /**
+   * The concrete wire type after §6.1 version resolution (§6.2 step 5):
+   * canonical embedded-version spelling for core types, the authored string
+   * verbatim for `dev.cdeventsx.*` pass-through. The manifest builder stamps
+   * this on `context.type` and looks the payload schema up by it.
+   */
+  resolvedType: string;
   /** Tool identifier resolved through the field cascade. */
   tool: string;
   /** CDEvents source URI (empty when unset; manifest builder falls back). */
@@ -67,6 +78,11 @@ export interface ResolvedChainEvent {
   origin: 'event' | 'expression';
   /** Path-style expression reference when `origin` is `'expression'`. */
   expressionRef?: string;
+  /**
+   * Author-given anchor from the item's `as:` (RFC §4.9), carried through
+   * resolution for the resolution root's anchor surface. Pure metadata.
+   */
+  as?: string;
 }
 
 /**
@@ -78,33 +94,50 @@ export interface ResolvedChainEvent {
  */
 export interface ResolvedChain {
   /**
-   * `'main'` (workflow spine), `'detached'` (independent side-chain), or
-   * `'concurrent'` (a branch monitored under its parent). All three are emitted
-   * identically — each with its own chainId; `detached` vs `concurrent` differs
-   * only in how the RECEIVER monitors it: a `concurrent` child's breach rolls up
-   * to its parent (and the parent completes when its concurrent children do); a
-   * `detached` child is monitored independently and its breach does not roll up.
-   * The emitter does not join or block — it just emits each chain's events.
+   * `'main'` (workflow spine), `'blocking'` (a spawn chain the receiver
+   * monitors under its parent — its breach rolls up, and the spawning chain's
+   * completion gates on it), or `'detached'` (independent — no rollup). All
+   * three are emitted identically today, each with its own chainId; the
+   * producer-side blocking wait lands in Phase 2.
    */
-  role: 'main' | 'detached' | 'concurrent';
-  /** Binding key / anchor: `'root'` for main, `${anchorPath}.d` for detached. */
+  role: 'main' | 'detached' | 'blocking';
+  /**
+   * Binding key / anchor: `'root'` for main; `${anchorPath}.s` / `.d` for a
+   * flat-form chain; `${anchorPath}.s{i}` / `.d{i}` for nested-form chains.
+   */
   chainRef: string;
-  /** `chainRef` of the chain whose event spawned this one (detached chains only). */
+  /** `chainRef` of the chain whose event spawned this one (spawned chains only). */
   parentChainRef?: string;
-  /** `treePath` of the spawning event (detached chains only). */
+  /** `treePath` of the spawning event (spawned chains only). */
   anchorPath?: string;
   /** Relation kind from the spawning event to this chain's first event. */
   linkKind?: string;
   /** Ordered expected events belonging to THIS chain. */
   events: ResolvedChainEvent[];
-  /** Chains spawned by `detach:` on events within this chain. */
+  /** Chains spawned by `spawn:` / `detach:` on events within this chain. */
   spawns: ResolvedChain[];
+  /**
+   * The §4.9 reference dictionary over the WHOLE resolved tree — anchor name
+   * → every carrier, in resolved-tree (depth-first) order. Root chain only;
+   * always present there (possibly empty). Anchors need not be unique, and a
+   * missing name simply resolves to no carriers ({@link resolveAnchor}).
+   */
+  anchors?: Map<string, ResolvedChainEvent[]>;
+  /**
+   * §6.2 MUST-report, NON-FATAL findings for the whole tree, in report
+   * order: defaults-conflict notes (a default colliding with an explicitly
+   * set value — the explicit value wins, §5.3), then §5.4 override keys that
+   * matched no event in their resolved subtree. Root chain only; always
+   * present there.
+   */
+  diagnostics?: string[];
 }
 
 // ── Structural item shapes (cover both workflow-level and bundle-level items) ─
 interface AnyEventItem {
   event: string;
   id?: string;
+  as?: string;
   tool?: string;
   source?: string;
   pipeline?: string;
@@ -113,11 +146,13 @@ interface AnyEventItem {
   content?: Record<string, unknown>;
   subject?: { id?: string; content?: Record<string, unknown> };
   produces?: ProduceNode[];
+  spawn?: ProduceNode[];
   detach?: ProduceNode[];
 }
 interface OverrideFields {
   tool?: string;
   source?: string;
+  pipeline?: string;
   timeout_ms?: number;
   min_wait_ms?: number;
   content?: Record<string, unknown>;
@@ -131,15 +166,16 @@ interface AnyExprItem {
   min_wait_ms?: number;
   content?: Record<string, unknown>;
   overrides?: Record<string, OverrideFields>;
-  detach?: ProduceNode[];
+  produces?: unknown;
+  spawn?: unknown;
+  detach?: unknown;
 }
 type AnyProduceItem = AnyEventItem | AnyExprItem;
 /**
- * A produces/detach entry: an event/expression item, OR an array of entries —
- * a CONCURRENT BRANCH. Each branch becomes its own chain (its own chainId). The
- * emitter only produces each chain's events; the receiver (Sympraxis, which
- * holds the same YAML) monitors a concurrent branch under its parent — the
- * branch's breach rolls up to the parent. No join on the emitter side.
+ * A raw grammar node. Arrays are legal ONLY as the inner lists of a nested-form
+ * `spawn:` / `detach:` (one spawned chain per inner list); at any chain
+ * position (a `produces` list, or a spawned chain's own body) an array is the
+ * retired concurrent-branch grammar and is rejected with a migration hint.
  */
 type ProduceNode = AnyProduceItem | ProduceNode[];
 
@@ -169,6 +205,55 @@ interface WalkCtx {
     min_wait_ms?: number;
     content?: Record<string, unknown>;
   };
+  /** §4.9 reference dictionary: anchor name → carriers, resolved-tree DF order. */
+  anchors: Map<string, ResolvedChainEvent[]>;
+  /** §6.2 MUST-report, non-fatal findings (conflicts, unmatched overrides). */
+  diagnostics: string[];
+  /** Resolution stack of expression identities for cycle detection (§6.2). */
+  stack: string[];
+  /**
+   * §5.4 override maps by object identity → the declaring reference's name
+   * and the keys that matched at least one event. Inherited pass-through
+   * keeps the object identity, so nested references without their own
+   * overrides mark the DECLARING reference's keys used. Insertion order is
+   * the reporting order for unmatched keys.
+   */
+  overrideReg: Map<Record<string, OverrideFields>, { ref: string; used: Set<string> }>;
+}
+
+/**
+ * Matches §5.4 override keys against an event's RESOLVED identity: same
+ * namespace, subject, and predicate; a versionless key matches any version;
+ * a versioned key must equal the resolved version (extension events match
+ * their authored version, since they resolve opaquely). Namespaces never
+ * cross, and colon-RANGE keys have no normal form so they never match.
+ */
+function lookupOverride(
+  overrides: Record<string, OverrideFields> | undefined,
+  resolved: ResolvedEventType,
+): { override: OverrideFields; key: string } | undefined {
+  if (!overrides) return undefined;
+  const ev: TypeKey = {
+    ns: resolved.extension ? 'cdeventsx' : 'cdevents',
+    subject: resolved.subject,
+    predicate: resolved.predicate,
+    version: resolved.extension
+      ? (parseTypeKey(resolved.authored)?.version ?? '')
+      : resolved.version,
+  };
+  for (const [key, fields] of Object.entries(overrides)) {
+    const kk = parseTypeKey(key);
+    if (kk === null) continue; // malformed keys surface via unmatched reporting
+    if (
+      kk.ns === ev.ns &&
+      kk.subject === ev.subject &&
+      kk.predicate === ev.predicate &&
+      (kk.version === '' || kk.version === ev.version)
+    ) {
+      return { override: fields, key };
+    }
+  }
+  return undefined;
 }
 
 /** Joins a path segment, omitting the leading dot at the root. */
@@ -196,24 +281,109 @@ export function resolveChainTree(
   registry: ExpressionRegistry,
 ): ResolvedChain {
   const wf = workflow.workflow;
+  return resolveRoot(
+    wf.produces as unknown as ProduceNode[],
+    { group: wf.group ?? '', author: wf.author ?? '' },
+    wf.defaults ?? {},
+    registry,
+  );
+}
+
+/**
+ * Resolves a top-level Expression into its chain tree — RFC §6.2's
+ * expression-rooted resolution, where the Expression itself is the resolution
+ * root (its own `(group, author)` is the context, and its top-level `produces`
+ * is the root chain's `p` axis). Coordinates are identical to a workflow
+ * rooted at the same produces list, which is what makes golden parity between
+ * expression-rooted and workflow-rooted derivations byte-comparable.
+ *
+ * @param bundle - The Expression to resolve (its identity supplies context).
+ * @param registry - Expression registry used to expand references.
+ * @returns The main chain (`chainRef: 'root'`) with its spawned sub-chains.
+ */
+export function resolveExpressionTree(
+  bundle: ExpressionBundle,
+  registry: ExpressionRegistry,
+): ResolvedChain {
+  return resolveRoot(
+    bundle.produces as unknown as ProduceNode[],
+    { group: bundle.group, author: bundle.author },
+    {},
+    registry,
+  );
+}
+
+/** Shared root-resolution core for workflow- and expression-rooted trees. */
+function resolveRoot(
+  produces: ProduceNode[],
+  resolution: { group: string; author: string },
+  defaults: WalkCtx['defaults'],
+  registry: ExpressionRegistry,
+): ResolvedChain {
   const main: ResolvedChain = { role: 'main', chainRef: 'root', events: [], spawns: [] };
   const ctx: WalkCtx = {
     registry,
-    resolution: { group: wf.group ?? '', author: wf.author ?? '' },
-    defaults: wf.defaults ?? {},
+    resolution,
+    defaults,
+    anchors: new Map(),
+    diagnostics: [],
+    stack: [],
+    overrideReg: new Map(),
   };
-  walk(wf.produces as unknown as ProduceNode[], 'p', '', main, new Map(), ctx, {});
+  walk(produces, 'p', '', main, new Map(), ctx, {});
+  // §5.4 override keys that bound nothing — a silent no-op is how a pipeline
+  // owner ships unbound events without noticing (§6.2 report posture:
+  // diagnostic, not failure). Reported after all conflicts, in declaration
+  // order of the references that carry them.
+  for (const [overrides, reg] of ctx.overrideReg) {
+    for (const key of Object.keys(overrides)) {
+      if (!reg.used.has(key)) {
+        ctx.diagnostics.push(
+          `override key "${key}" on reference ${reg.ref} matched no event in its resolved subtree`,
+        );
+      }
+    }
+  }
+  main.anchors = ctx.anchors;
+  main.diagnostics = ctx.diagnostics;
   return main;
 }
 
 /**
- * Walks one `produces` (`axis: 'p'`) or `detach` (`axis: 'd'`) item list,
- * appending event leaves to `chain`, recursing into nested `produces` on the
- * same chain, and lifting `detach` lists into freshly-spawned detached chains.
+ * Resolves a §4.9 anchor reference against a resolved tree: the list of
+ * every event carrying `name`, in resolved-tree (depth-first) order — empty
+ * when none do. Total and uniform: always a list, never a lookup failure.
+ */
+export function resolveAnchor(root: ResolvedChain, name: string): ResolvedChainEvent[] {
+  return root.anchors?.get(name) ?? [];
+}
+
+/**
+ * Flattens a resolved tree into a list of every chain it contains — the root
+ * first, then spawned chains depth-first in declaration order. The shared
+ * walker for golden-parity comparison, the contract suite's machine gate, and
+ * any consumer that needs "all chains of a run" without re-writing the
+ * recursion.
+ */
+export function flattenChains(root: ResolvedChain): ResolvedChain[] {
+  const out: ResolvedChain[] = [];
+  const visit = (chain: ResolvedChain): void => {
+    out.push(chain);
+    chain.spawns.forEach(visit);
+  };
+  visit(root);
+  return out;
+}
+
+/**
+ * Walks one chain-position item list — a `produces` list (`axis: 'p'`) or the
+ * entries of a flat-form spawned chain (`axis: 's'` / `'d'`) — appending event
+ * leaves to `chain`, recursing into nested `produces` on the same chain, and
+ * lifting `spawn:` / `detach:` lists into freshly-spawned chains.
  */
 function walk(
   items: ProduceNode[],
-  axis: 'p' | 'd',
+  axis: 'p' | 's' | 'd',
   basePath: string,
   chain: ResolvedChain,
   idSeen: Map<string, number>,
@@ -223,26 +393,46 @@ function walk(
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
 
-    // An array entry is a CONCURRENT BRANCH: its own chain (role `concurrent`)
-    // on the `b` axis, spawned just like a detach. No join — the emitter only
-    // produces each chain's events with its chainId; the receiver monitors a
-    // concurrent branch under its parent (its breach rolls up to the parent).
+    // A nested list at a chain position is the retired concurrent-branch
+    // grammar (pre-0.1.0 `b` axis) — schema-illegal in CDrus 0.1.0. Spawning
+    // requires a triggering event; fail with a migration hint.
     if (Array.isArray(item)) {
-      chain.spawns.push(buildBranch(item, basePath, i, chain.chainRef, ctx, inherited));
-      continue;
+      throw new Error(
+        `Nested list at ${basePath || 'top level'} (item ${i}): a chain position holds events ` +
+          `and expression references only. The concurrent-branch grammar is retired — attach ` +
+          `the list to the spawning event's 'spawn:' (Blocking) or 'detach:' (Detached) instead ` +
+          `(RFC §4.7/§4.8).`,
+      );
     }
 
     const path = appendSeg(basePath, `${axis}${i}`);
 
     if (isEvt(item)) {
+      // §6.2 step 5: resolve the event version against the vendored catalog.
+      // Unknown core types and unsatisfiable ranges are §6.2 MUST-report
+      // failures; the authored string stays on `type` (derivation parity),
+      // the resolution lands on `resolvedType` (the wire).
+      let resolved: ResolvedEventType;
+      try {
+        resolved = resolveEventType(item.event, loadEventCatalog());
+      } catch (err) {
+        throw new Error(`Event at ${path}: ${(err as Error).message}`);
+      }
       const nv = nounVerbFromType(item.event);
-      const override =
-        inherited.overrides?.[item.event] ?? inherited.overrides?.[item.id ?? nv] ?? {};
+      // §5.4 override keys match by RESOLVED type identity across equivalent
+      // §6.1 spellings (canonical lookupOverride semantics) — never by
+      // workflowEventId, and never across namespaces.
+      const matched = lookupOverride(inherited.overrides, resolved);
+      if (matched && inherited.overrides) {
+        ctx.overrideReg.get(inherited.overrides)?.used.add(matched.key);
+      }
+      const override = matched?.override ?? {};
 
       const tool = override.tool ?? item.tool ?? inherited.tool ?? ctx.defaults.tool ?? '';
       const source =
         override.source ?? item.source ?? inherited.source ?? ctx.defaults.source ?? '';
-      const pipeline = item.pipeline ?? inherited.pipeline ?? ctx.defaults.pipeline ?? '';
+      const pipeline =
+        override.pipeline ?? item.pipeline ?? inherited.pipeline ?? ctx.defaults.pipeline ?? '';
       const timeout_ms =
         override.timeout_ms ??
         item.timeout_ms ??
@@ -264,13 +454,72 @@ function walk(
         override.content ?? {},
       );
 
+      // §6.2 defaults-conflict reporting (§5.3: the explicit value wins, and
+      // defaults MUST NOT override it — surfaced, never fatal). A value the
+      // OVERRIDE set is exempt: overrides are the sanctioned shadowing
+      // mechanism, not a collision.
+      const itemContent = item.subject?.content ?? item.content;
+      const inheritedContentSet =
+        inherited.content !== undefined && Object.keys(inherited.content).length > 0;
+      const conflict = (
+        field: string,
+        defaultSet: boolean,
+        explicitSet: boolean,
+        overrideSet: boolean,
+      ): void => {
+        if (defaultSet && explicitSet && !overrideSet) {
+          ctx.diagnostics.push(
+            `conflicting binding: ${field} set in defaults and explicitly on ${path}; ` +
+              `the explicit value wins (§5.3)`,
+          );
+        }
+      };
+      const d = ctx.defaults;
+      conflict(
+        'tool',
+        d.tool !== undefined,
+        item.tool !== undefined || inherited.tool !== undefined,
+        override.tool !== undefined,
+      );
+      conflict(
+        'source',
+        d.source !== undefined,
+        item.source !== undefined || inherited.source !== undefined,
+        override.source !== undefined,
+      );
+      conflict(
+        'pipeline',
+        d.pipeline !== undefined,
+        item.pipeline !== undefined || inherited.pipeline !== undefined,
+        override.pipeline !== undefined,
+      );
+      conflict(
+        'timeout_ms',
+        d.timeout_ms !== undefined,
+        item.timeout_ms !== undefined || inherited.timeout_ms !== undefined,
+        override.timeout_ms !== undefined,
+      );
+      conflict(
+        'min_wait_ms',
+        d.min_wait_ms !== undefined,
+        item.min_wait_ms !== undefined || inherited.min_wait_ms !== undefined,
+        override.min_wait_ms !== undefined,
+      );
+      conflict(
+        'content',
+        d.content !== undefined,
+        itemContent !== undefined || inheritedContentSet,
+        override.content !== undefined,
+      );
+
       const workflowEventId = allocateId((item.id ?? nv).replace('.', '-'), idSeen);
 
-      chain.events.push({
+      const rce: ResolvedChainEvent = {
         treePath: path,
         order: chain.events.length,
         workflowEventId,
         type: item.event,
+        resolvedType: resolved.wireType,
         tool,
         source,
         pipeline,
@@ -282,21 +531,49 @@ function walk(
         },
         origin: inherited.fromExpr ? 'expression' : 'event',
         expressionRef: inherited.exprRef,
-      });
+        as: item.as,
+      };
+      chain.events.push(rce);
+      // §4.9: every carrier joins the root dictionary, in resolved-tree
+      // (depth-first) order — the walk order IS that order.
+      if (item.as !== undefined) {
+        ctx.anchors.set(item.as, [...(ctx.anchors.get(item.as) ?? []), rce]);
+      }
 
       // Nested produces continue the SAME chain (depth-first, p axis).
       if (item.produces?.length) {
         walk(item.produces, 'p', path, chain, idSeen, ctx, inherited);
       }
-      // A detach list is a NEW parallel chain — never part of this sequence.
+      // spawn/detach lists spawn NEW chains — never part of this sequence.
+      if (item.spawn?.length) {
+        chain.spawns.push(
+          ...buildSpawnedChains(item.spawn, 'blocking', path, chain.chainRef, ctx, inherited),
+        );
+      }
       if (item.detach?.length) {
-        chain.spawns.push(buildDetached(item.detach, path, chain.chainRef, ctx, inherited));
+        chain.spawns.push(
+          ...buildSpawnedChains(item.detach, 'detached', path, chain.chainRef, ctx, inherited),
+        );
       }
     } else {
       // Expression reference — NESTS: its bundle's produces become children
       // beneath this item's path (p axis), with the resolved bundle's identity
       // as the new resolution context (bare refs swap context on recursion).
       const bundle = ctx.registry.resolveWithContext(item.expression, ctx.resolution);
+      // §6.2 cycle-check: the resolution stack holds every expression identity
+      // currently being expanded; re-entry is the circular-reference MUST.
+      const identity = `${bundle.group}/${bundle.author}/${bundle.expression}`;
+      if (ctx.stack.includes(identity)) {
+        throw new Error(
+          `circular expression reference: ${identity} already on the resolution stack ` +
+            `(${[...ctx.stack, identity].join(' -> ')})`,
+        );
+      }
+      // Register this reference's override keys up front, so a reference whose
+      // keys never match anything still surfaces in the diagnostics (§5.4).
+      if (item.overrides !== undefined && !ctx.overrideReg.has(item.overrides)) {
+        ctx.overrideReg.set(item.overrides, { ref: item.expression, used: new Set() });
+      }
       const childInherited: Inherited = {
         tool: item.tool ?? inherited.tool,
         source: item.source ?? inherited.source,
@@ -312,78 +589,104 @@ function walk(
         ...ctx,
         resolution: { group: bundle.group, author: bundle.author },
       };
-      walk(
-        bundle.produces as unknown as ProduceNode[],
-        'p',
-        path,
-        chain,
-        idSeen,
-        childCtx,
-        childInherited,
-      );
-      // Defensive: a detach attached directly to an expression reference.
-      if (item.detach?.length) {
-        chain.spawns.push(buildDetached(item.detach, path, chain.chainRef, ctx, inherited));
+      // Spec-pure references (RFC §4.3): chain-bearing keys belong to the
+      // events inside the referenced Expression, never to the call site.
+      for (const forbidden of ['produces', 'spawn', 'detach'] as const) {
+        if (item[forbidden] !== undefined) {
+          throw new Error(
+            `Expression reference '${item.expression}' at ${path} must not carry ` +
+              `'${forbidden}' — declare it on the events inside the referenced Expression ` +
+              `(RFC §4.3).`,
+          );
+        }
+      }
+      ctx.stack.push(identity);
+      try {
+        walk(
+          bundle.produces as unknown as ProduceNode[],
+          'p',
+          path,
+          chain,
+          idSeen,
+          childCtx,
+          childInherited,
+        );
+      } finally {
+        ctx.stack.pop();
       }
     }
   }
 }
 
 /**
- * Builds a concurrent-branch chain from an array entry — same spawn mechanism as
- * {@link buildDetached}, on the `b` axis, but role `concurrent` (the receiver
- * monitors it under its parent; its breach rolls up). No join is recorded: the
- * emitter only produces the chain (its own chainId).
+ * Builds the spawned chain(s) declared by one `spawn:` (Blocking) or `detach:`
+ * (Detached) list, per the ratified dual-form rule (RFC §4.7/§4.8):
  *
- * @param branchItems   - The branch's own ordered items (a sequential p-run).
- * @param anchorPath    - treePath of the forking event (whose `produces` holds
- *                        this branch); the RELATION source.
- * @param index         - Position of this branch among its siblings → `b{index}`.
- * @param parentChainRef - `chainRef` of the chain that forked this branch.
+ * - **Flat form** (no element is an array): ONE chain anchored
+ *   `${anchorPath}.<axis>` — a string-prefix anchor, deliberately not a
+ *   well-formed segment. Entry *i* sits at `${anchorPath}.<axis>{i}`; an
+ *   `expression:` entry nests its bundle beneath its slot.
+ * - **Nested form** (every element is an array): one chain PER inner list,
+ *   anchored `${anchorPath}.<axis>{i}` (well-formed segments — sibling chains
+ *   must be distinct). Inner-list items run on a `p`-run beneath the anchor.
+ * - Mixing the two forms in one list is an error.
+ *
+ * The axis letter and role travel together: `s`/`blocking`, `d`/`detached`.
+ * Both kinds are emitted identically; they differ only in receiver-side breach
+ * rollup (and, once Phase 2 lands, the producer-side wait for `blocking`).
+ *
+ * @param list          - The raw `spawn:`/`detach:` value.
+ * @param role          - `'blocking'` for spawn, `'detached'` for detach.
+ * @param anchorPath    - treePath of the spawning event (the RELATION source).
+ * @param parentChainRef - `chainRef` of the chain whose event spawns these.
  */
-function buildBranch(
-  branchItems: ProduceNode[],
+function buildSpawnedChains(
+  list: ProduceNode[],
+  role: 'blocking' | 'detached',
   anchorPath: string,
-  index: number,
   parentChainRef: string,
   ctx: WalkCtx,
   inherited: Inherited,
-): ResolvedChain {
-  const branchPath = appendSeg(anchorPath, `b${index}`);
-  const br: ResolvedChain = {
-    role: 'concurrent',
-    chainRef: branchPath,
-    parentChainRef,
-    anchorPath,
-    linkKind: 'TRIGGER',
-    events: [],
-    spawns: [],
-  };
-  // The branch's own items are a sequential (p-axis) run based at the branch path.
-  walk(branchItems, 'p', branchPath, br, new Map(), ctx, inherited);
-  return br;
-}
+): ResolvedChain[] {
+  const axis = role === 'blocking' ? 's' : 'd';
+  const keyword = role === 'blocking' ? 'spawn' : 'detach';
+  const arrayCount = list.filter((el) => Array.isArray(el)).length;
 
-/** Builds a detached chain from a `detach:` list anchored at `anchorPath`. */
-function buildDetached(
-  detachItems: ProduceNode[],
-  anchorPath: string,
-  parentChainRef: string,
-  ctx: WalkCtx,
-  inherited: Inherited,
-): ResolvedChain {
-  const det: ResolvedChain = {
-    role: 'detached',
-    chainRef: `${anchorPath}.d`,
-    parentChainRef,
-    anchorPath,
-    linkKind: 'TRIGGER',
-    events: [],
-    spawns: [],
-  };
-  // The detach list is its own ordered sequence on the `d` axis, based at the
-  // spawning event's path — so its events sit under `${anchorPath}.d{k}` and the
-  // chainRef `${anchorPath}.d` is a prefix of every member's treePath.
-  walk(detachItems, 'd', anchorPath, det, new Map(), ctx, inherited);
-  return det;
+  if (arrayCount > 0 && arrayCount < list.length) {
+    throw new Error(
+      `'${keyword}' at ${anchorPath} mixes flat and nested forms — declare ONE chain as a flat ` +
+        `list of chain items, or one chain PER nested list, never both (RFC §4.7/§4.8).`,
+    );
+  }
+
+  if (arrayCount === 0) {
+    // Flat form: one chain; entries on the spawn axis based at the anchor.
+    const chain: ResolvedChain = {
+      role,
+      chainRef: `${anchorPath}.${axis}`,
+      parentChainRef,
+      anchorPath,
+      linkKind: 'TRIGGER',
+      events: [],
+      spawns: [],
+    };
+    walk(list, axis, anchorPath, chain, new Map(), ctx, inherited);
+    return [chain];
+  }
+
+  // Nested form: one chain per inner list; members on a p-run beneath each anchor.
+  return (list as ProduceNode[][]).map((inner, i) => {
+    const chainRef = appendSeg(anchorPath, `${axis}${i}`);
+    const chain: ResolvedChain = {
+      role,
+      chainRef,
+      parentChainRef,
+      anchorPath,
+      linkKind: 'TRIGGER',
+      events: [],
+      spawns: [],
+    };
+    walk(inner, 'p', chainRef, chain, new Map(), ctx, inherited);
+    return chain;
+  });
 }

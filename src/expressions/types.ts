@@ -39,12 +39,26 @@ export interface BundleEventItem {
   source?: string;
   /** Default pipeline name for this event. */
   pipeline?: string;
+  /** Optional URI to the event's JSON Schema (CDrus 0.1.0). */
+  event_schema_uri?: string;
+  /** Optional author-given anchor labeling this event (RFC §4.9). */
+  as?: string;
   /**
-   * Observable side-chain items. Emitted detached from the main sequence — the
-   * main chain does not wait on them. Used for async scans, audit trails, and
-   * rollback paths that must be observable but must not block the critical path.
+   * Same-chain children fired depth-first before this event's next sibling
+   * (RFC §4.6). Never spawns a chain.
    */
-  detach?: BundleProducesItem[];
+  produces?: BundleProducesItem[];
+  /**
+   * Blocking spawned chains this event triggers (RFC §4.7). Flat form declares
+   * ONE chain; nested form declares one chain per inner list. The spawning
+   * chain waits on every Blocking chain.
+   */
+  spawn?: BundleProducesItem[] | BundleProducesItem[][];
+  /**
+   * Detached spawned chains this event triggers (RFC §4.8). Same dual form as
+   * `spawn`; the spawning chain does not wait.
+   */
+  detach?: BundleProducesItem[] | BundleProducesItem[][];
 }
 
 /**
@@ -57,20 +71,13 @@ export interface BundleExpressionRef {
    * Path-style CDrus reference: `'verify'`, `'dsanyika/verify'`, or
    * `'sol-duara/dsanyika/verify'`. Resolved against the registry at parse time
    * using the enclosing bundle's group/author as the disambiguation context.
+   *
+   * Spec-pure at CDrus 0.1.0: a reference carries no binding fields and no
+   * `produces`/`spawn`/`detach` — those belong to the events declared inside
+   * the referenced Expression's own definition (RFC §4.3). Tool binding
+   * belongs to the Workflow layer (RFC §5.5).
    */
   expression: string;
-  /** Default tool identifier applied to all events in the sub-expression. */
-  tool?: string;
-  /** Default source URI applied to all events in the sub-expression. */
-  source?: string;
-  /** Default pipeline name applied to all events in the sub-expression. */
-  pipeline?: string;
-  /** Default timeout applied to all events in the sub-expression. */
-  timeout_ms?: number;
-  /** Default min wait applied to all events in the sub-expression. */
-  min_wait_ms?: number;
-  /** Observable side-chain items attached to this expression reference. */
-  detach?: BundleProducesItem[];
 }
 
 /** Discriminated union of the two produces item forms within an expression bundle. */

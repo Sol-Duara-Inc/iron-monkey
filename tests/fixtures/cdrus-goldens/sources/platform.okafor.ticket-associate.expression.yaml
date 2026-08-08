@@ -1,0 +1,9 @@
+# IM contract-suite fixture: the ticket gate (used on the produces axis AND
+# as the detached audit chain in the gated workflow).
+group: platform
+author: okafor
+expression: ticket-associate
+description: Associate and update the change ticket.
+produces:
+  - event: dev.cdevents.ticket.created
+  - event: dev.cdevents.ticket.updated

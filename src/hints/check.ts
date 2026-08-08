@@ -73,7 +73,9 @@ export function extractHints(name: string, table: HintTable): string[] {
   const seen = new Set<string>();
   const hints: string[] = [];
   for (const token of tokenizeName(name)) {
-    if (token in table.subjects && !seen.has(token)) {
+    // Object.hasOwn, not `in`: a token like 'constructor' or 'toString' walks
+    // the prototype chain under `in` and becomes a phantom unsatisfiable hint.
+    if (Object.hasOwn(table.subjects, token) && !seen.has(token)) {
       seen.add(token);
       hints.push(token);
     }
@@ -97,7 +99,7 @@ export function spellingDiagnostics(name: string, table: HintTable): HintDiagnos
     for (let end = start + 2; end <= tokens.length; end++) {
       const run = tokens.slice(start, end);
       const spelled = run.join('');
-      if (spelled in table.subjects) {
+      if (Object.hasOwn(table.subjects, spelled)) {
         diagnostics.push({
           kind: 'hyphenated-subject',
           tokens: run,

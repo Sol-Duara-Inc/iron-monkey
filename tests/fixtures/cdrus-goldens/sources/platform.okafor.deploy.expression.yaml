@@ -1,0 +1,12 @@
+# IM contract-suite fixture: deploy with the detached audit-ticket chain
+# (flat detach: ONE chain, anchor <spawning>.d — live-protocol congruent).
+group: platform
+author: okafor
+expression: deploy
+description: Deploy with a detached ticket-audit chain.
+produces:
+  - event: dev.cdevents.taskrun.started
+    detach:
+      - expression: ticket-associate
+  - event: dev.cdevents.service.deployed
+  - event: dev.cdevents.taskrun.finished

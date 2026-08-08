@@ -1,0 +1,16 @@
+# RFC §4.7 — Blocking spawned chains, nested form (one chain per nested list).
+group: quality-engineering
+author: msommer
+expression: verify
+description: A suite that runs two test cases in parallel.
+produces:
+  - event: dev.cdevents.testsuiterun.queued
+  - event: dev.cdevents.testsuiterun.started
+    spawn:
+      - - event: dev.cdevents.testcaserun.queued
+        - event: dev.cdevents.testcaserun.started
+        - event: dev.cdevents.testcaserun.finished
+      - - event: dev.cdevents.testcaserun.queued
+        - event: dev.cdevents.testcaserun.started
+        - event: dev.cdevents.testcaserun.finished
+  - event: dev.cdevents.testsuiterun.finished

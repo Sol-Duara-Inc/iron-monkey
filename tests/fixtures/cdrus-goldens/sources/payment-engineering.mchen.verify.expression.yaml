@@ -1,0 +1,9 @@
+# Registry fixture: resolution target for build.expression.yaml's bare
+# `verify` reference (same group/author context).
+group: payment-engineering
+author: mchen
+expression: verify
+description: Case-level verification.
+produces:
+  - event: dev.cdevents.testcaserun.started
+  - event: dev.cdevents.testcaserun.finished

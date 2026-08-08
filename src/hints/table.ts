@@ -49,11 +49,15 @@ export function parseHintTable(data: unknown): HintTable {
     }
     const begin = s.begin ?? null;
     const end = s.end ?? null;
-    if (begin !== null && typeof begin !== 'string') {
-      throw new Error(`name-hint table subject '${name}': 'begin' must be a string or null`);
+    if (begin !== null && (typeof begin !== 'string' || begin.length === 0)) {
+      throw new Error(
+        `name-hint table subject '${name}': 'begin' must be a non-empty string or null`,
+      );
     }
-    if (end !== null && typeof end !== 'string') {
-      throw new Error(`name-hint table subject '${name}': 'end' must be a string or null`);
+    if (end !== null && (typeof end !== 'string' || end.length === 0)) {
+      throw new Error(
+        `name-hint table subject '${name}': 'end' must be a non-empty string or null`,
+      );
     }
     if ((begin === null) !== (end === null)) {
       throw new Error(`name-hint table subject '${name}': 'begin' and 'end' must be paired`);

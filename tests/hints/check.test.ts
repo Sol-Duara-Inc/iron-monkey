@@ -130,6 +130,19 @@ describe('extractHints — exact-token matching', () => {
     expect(extractHints('my-favorite-expression', TABLE)).toEqual([]);
     expect(extractHints('deploy', TABLE)).toEqual([]); // 'deploy' is not a CDEvents subject
   });
+
+  it('does not treat Object prototype keys as subjects (own-key matching only)', () => {
+    // `'constructor' in table.subjects` is true via the prototype chain; a
+    // phantom hint here would make the name unsatisfiable and reject the doc.
+    expect(extractHints('my-constructor-job', TABLE)).toEqual([]);
+    expect(extractHints('to-string-valueof-hasownproperty', TABLE)).toEqual([]);
+    const result = checkNameHints(
+      { expression: 'my-constructor-job', produces: [ev('dev.cdevents.change.created')] },
+      TABLE,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.hints).toEqual([]);
+  });
 });
 
 // ── spellingDiagnostics ───────────────────────────────────────────────────────
@@ -155,6 +168,11 @@ describe('spellingDiagnostics', () => {
   it('does not warn when no run spells a subject', () => {
     expect(spellingDiagnostics('my-test-case-job', TABLE)).toEqual([]);
     expect(spellingDiagnostics('my-test-run-job', TABLE)).toEqual([]);
+  });
+
+  it('does not warn when a token run spells an Object prototype key', () => {
+    expect(spellingDiagnostics('construc-tor', TABLE)).toEqual([]);
+    expect(spellingDiagnostics('has-own-property', TABLE)).toEqual([]);
   });
 });
 
@@ -320,5 +338,23 @@ describe('checkNameHints — hint-free and diagnostic-only names', () => {
     expect(
       checkNameHints({ expression: 'anything', produces: [{ junk: true }, null, 'str'] }, TABLE).ok,
     ).toBe(true);
+  });
+});
+
+describe('subjectPredicateOf — namespace edge cases', () => {
+  it('returns null for dev.* namespaces that are not cdevents/cdeventsx', () => {
+    expect(subjectPredicateOf('dev.other.build.started')).toBeNull();
+    expect(subjectPredicateOf('dev.cdeventsy.build.started')).toBeNull();
+  });
+});
+
+describe('checkNameHints — non-string grammar values are ignored', () => {
+  it('ignores non-string event and expression fields without throwing', () => {
+    const result = checkNameHints(
+      { expression: 'build', produces: [{ event: 42 }, { expression: 99 }] },
+      TABLE,
+    );
+    expect(result.ok).toBe(false); // hint present, nothing usable satisfies it
+    expect(result.violations[0].found).toEqual([]);
   });
 });

@@ -1,0 +1,8 @@
+# RFC §4.1 — minimal Expression.
+group: payment-engineering
+author: mchen
+expression: change-request
+description: A change has been created and merged.
+produces:
+  - event: dev.cdevents.change.created
+  - event: dev.cdevents.change.merged

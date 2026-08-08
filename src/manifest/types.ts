@@ -88,11 +88,6 @@ export interface ManifestEvent {
   stageId: string;
   /** Tool identifier from the workflow `tool` field. */
   stageTool: string;
-  /**
-   * When `true` this event should be emitted in parallel with adjacent events
-   * that also have `concurrent: true`.
-   */
-  concurrent: boolean;
   /** CDEvents `context.source` URI identifying the originating tool. */
   source: string;
   /** The Sympraxis chain ID shared by all events in this run. */
@@ -179,24 +174,27 @@ export interface CDEventPayload {
 }
 
 /**
- * A pre-allocated detached or concurrent-branch sub-chain within a manifest.
+ * A pre-allocated detached or blocking spawned sub-chain within a manifest.
  * Each sub-chain is its own Sympraxis chain (its own {@link chainId}), spawned
  * by an event in a parent chain. The spawning event carries a `RELATION` link
  * to this chain's first event; this chain's events carry their own internal
  * `PATH` links and an `END` link on the last event.
  *
  * The role determines how the RECEIVER monitors the chain (it does NOT change
- * how the emitter throws it — both are emitted identically):
- * - `'detached'`   — monitored independently; its breach does NOT roll up to
+ * how the emitter throws it — both are emitted identically today):
+ * - `'detached'` — monitored independently; its breach does NOT roll up to
  *   the parent.
- * - `'concurrent'` — monitored under its parent; its breach ROLLS UP to the
- *   parent (and the parent completes when its concurrent children complete).
- *   The emitter does not join or block — joining/rollup is the receiver's job.
+ * - `'blocking'` — a spawn chain, monitored under its parent; its breach ROLLS
+ *   UP to the parent, and the spawning chain's completion gates on it. The
+ *   receiver-side rollup is the receiver's job; the producer honors the wait
+ *   both in the timing plan (siblings scheduled past blocking ends) and
+ *   structurally in the emitter (the next sibling is not emitted until every
+ *   blocking chain settles).
  */
 export interface DetachedManifestChain {
-  /** How the receiver monitors this chain: `'detached'` (independent) or `'concurrent'` (breach rolls up to parent). */
-  role: 'detached' | 'concurrent';
-  /** Positional binding key (chain anchor) from the chain tree, e.g. `'p1.p1.p0.d'`, `'p1.b0'`. */
+  /** How the receiver monitors this chain: `'detached'` (independent) or `'blocking'` (spawn; breach rolls up to parent). */
+  role: 'detached' | 'blocking';
+  /** Positional binding key (chain anchor) from the chain tree, e.g. `'p1.p1.p0.d'`, `'p1.s0'`. */
   chainRef: string;
   /** This chain's own Sympraxis chain ID, stamped on every one of its events. */
   chainId: string;
@@ -221,6 +219,13 @@ export interface DetachedManifestChain {
 export interface Manifest {
   /** UUID uniquely identifying this manifest (and the Iron Monkey run). */
   runId: string;
+  /**
+   * The daemon's boot-minted authority identity (`conduitd:user@host:pid:boot`),
+   * pinned at batch register (Proleptic §3). Absent for offline/bus-authority
+   * runs. A later same-run response carrying a different instanceId means the
+   * minting authority restarted — a run-scoped failure, never a silent fallback.
+   */
+  instanceId?: string;
   /** The workflow `id` field from the YAML. */
   workflowId: string;
   /** The workflow `name` field from the YAML. */
@@ -239,10 +244,10 @@ export interface Manifest {
   /** Ordered list of CDEvents to emit on the MAIN chain, with timing and chain-link wiring resolved. */
   events: ManifestEvent[];
   /**
-   * Detached / concurrent-branch sub-chains spawned by events in the main (or a
+   * Detached / blocking sub-chains spawned by events in the main (or a
    * nested) chain, flattened across all nesting levels. Each is its own chain
    * with its own `chainId`; parentage is expressed via `parentChainId`. Absent
-   * when the workflow declares no `detach` / concurrent branches.
+   * when the workflow declares no `spawn` / `detach` chains.
    */
   detachedChains?: DetachedManifestChain[];
 }

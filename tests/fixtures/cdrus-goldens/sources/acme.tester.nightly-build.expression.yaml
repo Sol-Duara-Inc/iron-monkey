@@ -1,0 +1,11 @@
+# The corpus's dedicated §4.1.1 violating fixture: the name token 'build' is
+# a hint on a paired subject (begin build.started / end build.finished), but
+# the document declares neither and no build-named reference delegates it.
+# Loads structurally, fails hints — keeps the skip-and-record path covered
+# (index skip, catalog-load skip, save-path hard reject) now that the RFC's
+# example expressions were renamed clean (store-notify / store-notify-flat).
+group: acme
+author: tester
+expression: nightly-build
+produces:
+  - event: dev.cdevents.change.created.0.3.0

@@ -1,0 +1,67 @@
+{
+  "source": "prod-api-gateway-production-deploy-gated.workflow.yaml",
+  "notes": "Gated production deploy: a pipelinerun brackets a ticket-gated production-deploy expression. production-deploy resolves to ticket-associate inline (p1.p0.p0/p1) then deploy (p1.p1.*), whose taskrun.started detaches an audit ticket-associate chain (anchor p1.p1.p0.d, members p1.p1.p0.d0.p0/.d0.p1). The worked example of the Proleptic protocol doc.",
+  "chains": [
+    {
+      "chainRef": "root",
+      "expectedEvents": [
+        {
+          "event": "dev.cdevents.pipelinerun.started",
+          "order": 0,
+          "treePath": "p0"
+        },
+        {
+          "event": "dev.cdevents.ticket.created",
+          "order": 1,
+          "treePath": "p1.p0.p0"
+        },
+        {
+          "event": "dev.cdevents.ticket.updated",
+          "order": 2,
+          "treePath": "p1.p0.p1"
+        },
+        {
+          "event": "dev.cdevents.taskrun.started",
+          "order": 3,
+          "treePath": "p1.p1.p0"
+        },
+        {
+          "event": "dev.cdevents.service.deployed",
+          "order": 4,
+          "treePath": "p1.p1.p1"
+        },
+        {
+          "event": "dev.cdevents.taskrun.finished",
+          "order": 5,
+          "treePath": "p1.p1.p2"
+        },
+        {
+          "event": "dev.cdevents.pipelinerun.finished",
+          "order": 6,
+          "treePath": "p2"
+        }
+      ],
+      "parentChainRef": null,
+      "role": "main",
+      "spawningEventPath": null
+    },
+    {
+      "chainRef": "p1.p1.p0.d",
+      "expectedEvents": [
+        {
+          "event": "dev.cdevents.ticket.created",
+          "order": 0,
+          "treePath": "p1.p1.p0.d0.p0"
+        },
+        {
+          "event": "dev.cdevents.ticket.updated",
+          "order": 1,
+          "treePath": "p1.p1.p0.d0.p1"
+        }
+      ],
+      "parentChainRef": "root",
+      "role": "detached",
+      "spawningEventPath": "p1.p1.p0"
+    }
+  ]
+}

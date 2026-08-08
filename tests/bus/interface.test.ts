@@ -1,3 +1,15 @@
+/**
+ * NOTE ON KAFKA (decision 2026-08-07): the Kafka adapter is ADMINISTRATIVE,
+ * not a pitching path. It exists so Iron Monkey can clean up after itself
+ * during Junction Box tests and demos — clearing queues / resetting
+ * consumer-group offsets via `purge`, restarting a demo from a clean slate,
+ * and the status queries that support that. Unit tests therefore only need
+ * to cover adapter selection here plus the purge/status surface;
+ * `src/bus/kafka.ts` is deliberately EXCLUDED from unit-coverage goals
+ * (see vitest.config.ts). Do not chase coverage on it with mock theater —
+ * real-broker behavior belongs to an integration harness if/when a
+ * Kafka-backed pitching target actually appears.
+ */
 import { describe, it, expect } from 'vitest';
 import { createBus } from '../../src/bus/interface.js';
 import { RabbitMQBus } from '../../src/bus/rabbit.js';

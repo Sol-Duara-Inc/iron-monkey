@@ -1,0 +1,39 @@
+{
+  "source": "verify-spawn.expression.yaml",
+  "notes": "RFC §4.7 — nested spawn: one Blocking chain per inner list, anchors p1.s0/p1.s1, members on a p-run beneath each anchor.",
+  "chains": [
+    {
+      "chainRef": "root",
+      "role": "main",
+      "parentChainRef": null,
+      "spawningEventPath": null,
+      "expectedEvents": [
+        { "treePath": "p0", "event": "dev.cdevents.testsuiterun.queued", "order": 0 },
+        { "treePath": "p1", "event": "dev.cdevents.testsuiterun.started", "order": 1 },
+        { "treePath": "p2", "event": "dev.cdevents.testsuiterun.finished", "order": 2 }
+      ]
+    },
+    {
+      "chainRef": "p1.s0",
+      "role": "blocking",
+      "parentChainRef": "root",
+      "spawningEventPath": "p1",
+      "expectedEvents": [
+        { "treePath": "p1.s0.p0", "event": "dev.cdevents.testcaserun.queued", "order": 0 },
+        { "treePath": "p1.s0.p1", "event": "dev.cdevents.testcaserun.started", "order": 1 },
+        { "treePath": "p1.s0.p2", "event": "dev.cdevents.testcaserun.finished", "order": 2 }
+      ]
+    },
+    {
+      "chainRef": "p1.s1",
+      "role": "blocking",
+      "parentChainRef": "root",
+      "spawningEventPath": "p1",
+      "expectedEvents": [
+        { "treePath": "p1.s1.p0", "event": "dev.cdevents.testcaserun.queued", "order": 0 },
+        { "treePath": "p1.s1.p1", "event": "dev.cdevents.testcaserun.started", "order": 1 },
+        { "treePath": "p1.s1.p2", "event": "dev.cdevents.testcaserun.finished", "order": 2 }
+      ]
+    }
+  ]
+}

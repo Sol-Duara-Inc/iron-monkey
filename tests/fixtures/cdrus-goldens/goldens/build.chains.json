@@ -1,0 +1,20 @@
+{
+  "source": "build.expression.yaml",
+  "notes": "Expansion NESTS: the bare `verify` ref resolves in-context to payment-engineering/mchen/verify, keeps its authored slot p2.p0 (structural), and its events sit beneath — all on the main chain (no s/d segments).",
+  "chains": [
+    {
+      "chainRef": "root",
+      "role": "main",
+      "parentChainRef": null,
+      "spawningEventPath": null,
+      "expectedEvents": [
+        { "treePath": "p0", "event": "dev.cdevents.change.created", "order": 0 },
+        { "treePath": "p1", "event": "dev.cdevents.build.queued", "order": 1 },
+        { "treePath": "p2", "event": "dev.cdevents.build.started", "order": 2 },
+        { "treePath": "p2.p0.p0", "event": "dev.cdevents.testcaserun.started", "order": 3 },
+        { "treePath": "p2.p0.p1", "event": "dev.cdevents.testcaserun.finished", "order": 4 },
+        { "treePath": "p3", "event": "dev.cdevents.build.finished", "order": 5 }
+      ]
+    }
+  ]
+}

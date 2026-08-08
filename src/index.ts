@@ -14,18 +14,35 @@
  * over config loading, manifest building, injection, and bus management.
  */
 
-export { validateWorkflow, resolveProduces } from './workflow/parser.js';
-export { resolveChainTree } from './workflow/chain-tree.js';
+export { validateWorkflow } from './workflow/parser.js';
+export {
+  resolveChainTree,
+  resolveExpressionTree,
+  flattenChains,
+  resolveAnchor,
+} from './workflow/chain-tree.js';
 export { WorkflowSource, FileWorkflowSource } from './workflow/source.js';
 export type { WorkflowDefinition } from './workflow/source.js';
 export { loadConfig, resolveBusName } from './config/loader.js';
-export { loadExpressionRegistry } from './expressions/loader.js';
+export { loadExpressionRegistry, createRegistry } from './expressions/loader.js';
 export { buildManifest } from './manifest/builder.js';
 export { parseInjections } from './injection/parser.js';
 export { applyInjections } from './injection/apply.js';
-export { acquireChainId } from './chain/acquire.js';
+export { registerRun, assertRegisterMatchesLocal, ConduitAnsweredError } from './chain/register.js';
+export type { RegisterResult, RegisteredChain, ChainIdResult } from './chain/register.js';
 export { generateFallbackChainId } from './chain/fallback.js';
 export { loadSchemas, validateEvent } from './schema/validator.js';
+export {
+  loadEventCatalog,
+  parseEventCatalog,
+  resolveEventType,
+  subjectPredicateOfType,
+  parseTypeKey,
+  compareVersions,
+} from './schema/catalog.js';
+export type { EventCatalog, ResolvedEventType, TypeKey } from './schema/catalog.js';
+export { validateWorkflowDoc } from './workflow/schema.js';
+export { validateBundleDoc } from './expressions/schema.js';
 export { createBus } from './bus/interface.js';
 export { runWorkflow, runWorkflows } from './emitter/runner.js';
 export type { WorkflowRunResult } from './emitter/runner.js';

@@ -13,6 +13,13 @@ export default defineConfig({
         'src/config/types.ts',
         'src/expressions/types.ts',
         'src/manifest/types.ts',
+        // Administrative adapter, not a pitching path: kafka.ts exists so IM
+        // can clean up after itself during JB tests/demos (purge queues, reset
+        // consumer-group offsets, status checks). Excluded from unit-coverage
+        // goals by decision (2026-08-07); real-broker behavior belongs to an
+        // integration harness if/when a Kafka-backed target appears. See the
+        // note in tests/bus/interface.test.ts.
+        'src/bus/kafka.ts',
       ],
       thresholds: {
         lines: 80,

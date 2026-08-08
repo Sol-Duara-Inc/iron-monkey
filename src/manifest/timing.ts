@@ -55,10 +55,28 @@ export class TimingAllocator {
    * @param seed - Optional integer seed. When supplied, the jitter applied to
    *   each default-cadence delay is generated deterministically so that
    *   repeated runs produce identical `targetEmitTime` sequences.
+   * @param baseTime - Epoch ms the clock starts from. Defaults to now; the
+   *   timing PLANNER passes a spawning event's planned time here so a spawned
+   *   chain's schedule is anchored at its trigger.
    */
-  constructor(seed?: number) {
-    this.lastTime = Date.now();
+  constructor(seed?: number, baseTime?: number) {
+    this.lastTime = baseTime ?? Date.now();
     this.seed = seed;
+  }
+
+  /**
+   * Advances the clock to `epochMs` when that is later than the current
+   * cursor — the blocking-wait primitive (RFC §4.7): the spawning event's
+   * next sibling is scheduled no earlier than the end of every Blocking
+   * spawned chain. A no-op when the cursor is already past `epochMs`.
+   */
+  advanceTo(epochMs: number): void {
+    if (epochMs > this.lastTime) this.lastTime = epochMs;
+  }
+
+  /** The current clock position (epoch ms of the last allocated time). */
+  current(): number {
+    return this.lastTime;
   }
 
   /**
@@ -139,4 +157,87 @@ export class TimingAllocator {
 function seededRandom(seed: number, counter: number): number {
   const x = Math.sin(seed * 9301 + counter * 49297 + 233) * 1000003;
   return x - Math.floor(x);
+}
+
+// ── the timing plan (Phase 2: producer-side blocking wait) ───────────────────
+
+/** The minimal chain shape the planner walks (matches ResolvedChain). */
+export interface PlannableEvent {
+  treePath: string;
+  min_wait_ms: number;
+  timeout_ms: number;
+}
+export interface PlannableChain {
+  role: string;
+  anchorPath?: string;
+  events: PlannableEvent[];
+  spawns: PlannableChain[];
+}
+
+/** Options mirrored from manifest construction. */
+export interface PlanOptions {
+  seed?: number;
+  /** Exact per-event interval override; when set, no jitter (see builder). */
+  interval?: number;
+}
+
+/**
+ * Plans an absolute `targetEmitTime` for EVERY event in the tree, honoring
+ * RFC §4.7 blocking waits:
+ *
+ * - Each chain runs on its own allocator. A spawned chain's clock is anchored
+ *   at its spawning event's planned time (a chain cannot begin before its
+ *   trigger).
+ * - After an event that spawns Blocking chains, the spawning chain's clock
+ *   advances to the LATEST end of those chains before the next sibling is
+ *   scheduled — recursively, so a blocking chain's own trailing blocking
+ *   children extend its end.
+ * - Detached chains are planned (their events get times) but never advance
+ *   any clock and never extend a chain's end.
+ *
+ * Seed assignment replicates the builder's historical per-chain scheme
+ * (`seed + localIndex + 1`, indices restarting per parent chain) so seeded
+ * runs without blocking chains keep their exact pre-Phase-2 gap sequences.
+ *
+ * @returns Map of `treePath` → absolute epoch ms.
+ */
+export function planTiming(main: PlannableChain, opts: PlanOptions): Map<string, number> {
+  const times = new Map<string, number>();
+
+  /** Plans one chain; returns its END (last event or latest trailing blocking end). */
+  function planChain(chain: PlannableChain, alloc: TimingAllocator): number {
+    let localSpawnIndex = 0;
+    const spawnSeed = (): number | undefined =>
+      opts.seed === undefined ? undefined : opts.seed + ++localSpawnIndex;
+
+    let chainEnd = alloc.current();
+    const byAnchor = new Map<string, PlannableChain[]>();
+    for (const spawn of chain.spawns) {
+      const anchor = spawn.anchorPath ?? '';
+      byAnchor.set(anchor, [...(byAnchor.get(anchor) ?? []), spawn]);
+    }
+
+    for (const event of chain.events) {
+      const t =
+        typeof opts.interval === 'number' && opts.interval >= 0
+          ? alloc.nextExactEmitTime(opts.interval)
+          : alloc.nextEmitTime(event.min_wait_ms, event.timeout_ms);
+      times.set(event.treePath, t);
+      chainEnd = Math.max(chainEnd, t);
+
+      for (const spawn of byAnchor.get(event.treePath) ?? []) {
+        const subAlloc = new TimingAllocator(spawnSeed(), t);
+        const subEnd = planChain(spawn, subAlloc);
+        if (spawn.role === 'blocking') {
+          // §4.7: the next sibling waits; the chain's own completion is gated.
+          alloc.advanceTo(subEnd);
+          chainEnd = Math.max(chainEnd, subEnd);
+        }
+      }
+    }
+    return chainEnd;
+  }
+
+  planChain(main, new TimingAllocator(opts.seed));
+  return times;
 }

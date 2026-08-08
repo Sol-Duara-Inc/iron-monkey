@@ -145,6 +145,9 @@ export async function runWorkflow(
   const workflow = await resolvedSource.getWorkflow();
   const registry = loadExpressionRegistry();
   const mainChain = resolveChainTree(workflow, registry);
+  for (const d of mainChain.diagnostics ?? []) {
+    logger.warn({ diagnostic: d }, 'resolution diagnostic (RFC §6.2)');
+  }
 
   // NOTE: the interval override is applied at scheduling time by the manifest
   // builder (via BuildManifestOptions.interval → TimingAllocator), not by
@@ -230,21 +233,24 @@ export async function runWorkflow(
 }
 
 /**
- * Emits a full run: the main chain in order (honouring concurrency groups),
- * plus every detached / concurrent-branch sub-chain.
+ * Emits a full run: the main chain in order, plus every spawned sub-chain —
+ * with RFC §4.7 blocking semantics enforced STRUCTURALLY (Phase 2):
  *
- * Sub-chains are **fire-and-forget**: when the emitter reaches a spawning event
- * it captures that instant as the sub-chain's T-0 (a sub-chain can have no
- * timestamp before the event that triggers it), emits the parent, then launches
- * the sub-chain WITHOUT awaiting it — the main chain proceeds immediately. Each
- * sub-chain runs on its own rebased timeline and may itself spawn further
- * chains. All launched chains (and their descendants) are drained before the
- * run returns, so failures surface and the process exits cleanly.
+ * - **Blocking** chains (`role: 'blocking'`, from `spawn:`): after emitting a
+ *   spawning event, the emitter launches its blocking chains and AWAITS their
+ *   completion — including their own nested blocking descendants — before the
+ *   next sibling fires. The timing plan already scheduled the sibling past the
+ *   nominal blocking end; the await makes it true under chaos too (a `late`
+ *   injection inside a blocking chain genuinely stalls the spawning chain).
+ * - **Detached** chains (`detach:`): fire-and-forget. They never gate any
+ *   sibling or any chain's completion — not even their own parent sub-chain's
+ *   resolution — and are drained only before the run returns, so failures
+ *   still surface and the process exits cleanly.
  *
- * Detached and concurrent chains are emitted IDENTICALLY here — the emitter
- * never joins, blocks, or rolls anything up. The role only tells the receiver
- * how to MONITOR the chain: a `concurrent` child's breach rolls up to its
- * parent; a `detached` child's does not. That distinction is the receiver's job.
+ * Each sub-chain runs on its own rebased timeline anchored at the instant its
+ * spawning event was emitted (a chain cannot begin before its trigger).
+ * There is no join event and no merged result — the wait is purely a gate on
+ * the spawning chain's progress (RFC §4.7).
  */
 export async function executeManifest(
   manifest: Manifest,
@@ -259,73 +265,50 @@ export async function executeManifest(
     spawnsByParent.set(sub.parentEventId, list);
   }
 
-  /**
-   * Launches (does not await) every sub-chain spawned by `eventId`, rebased so
-   * its first event fires at `spawnInstant`. Returns the launched tasks so the
-   * caller can drain them; each task internally drains its own descendants.
-   */
-  const launchSpawns = (eventId: string, spawnInstant: number): Promise<void>[] =>
-    (spawnsByParent.get(eventId) ?? []).map((sub) => emitSubChain(sub, spawnInstant));
+  /** Detached chains launched anywhere in the run; drained before returning. */
+  const detachedDrain: Promise<void>[] = [];
 
-  async function emitSubChain(sub: DetachedManifestChain, spawnInstant: number): Promise<void> {
-    // Rebase: anchor the sub-chain's first event at the spawn instant; every
-    // later event keeps its relative gap. The chain cannot begin before its
-    // parent event was reached.
-    const firstTarget = sub.events[0]?.targetEmitTime ?? spawnInstant;
-    const offset = spawnInstant - firstTarget;
-    const descendants: Promise<void>[] = [];
+  /** Emits one sub-chain, its planned times shifted by the run's drift. */
+  async function emitSubChain(sub: DetachedManifestChain, offset: number): Promise<void> {
     for (const ev of sub.events) {
       await emitEvent(ev, bus, logger, ev.targetEmitTime + offset);
-      descendants.push(...launchSpawns(ev.eventId, Date.now()));
-    }
-    await Promise.allSettled(descendants);
-  }
-
-  const tasks: Promise<void>[] = [];
-  for (const group of groupByConcurrency(manifest.events)) {
-    if (group.concurrent) {
-      const spawnInstant = Date.now();
-      await Promise.all(group.events.map((e) => emitEvent(e, bus, logger)));
-      for (const e of group.events) tasks.push(...launchSpawns(e.eventId, spawnInstant));
-    } else {
-      for (const event of group.events) {
-        const spawnInstant = Date.now(); // reached the parent, before it is sent
-        await emitEvent(event, bus, logger);
-        tasks.push(...launchSpawns(event.eventId, spawnInstant));
-      }
+      await gateOnSpawns(ev);
     }
   }
 
-  // Drain all detached / branch chains (and their descendants) before returning.
-  await Promise.allSettled(tasks);
-}
-
-/** A run of consecutive manifest events that share the same `concurrent` flag. */
-interface EventGroup {
-  /** Whether all events in this group should be emitted simultaneously. */
-  concurrent: boolean;
-  /** The manifest events that belong to this group. */
-  events: ManifestEvent[];
-}
-
-/**
- * Splits a flat list of manifest events into consecutive runs that share the
- * same `concurrent` flag value, enabling mixed sequential/parallel emission.
- */
-function groupByConcurrency(events: ManifestEvent[]): EventGroup[] {
-  const groups: EventGroup[] = [];
-  let current: EventGroup | null = null;
-
-  for (const event of events) {
-    if (!current || current.concurrent !== event.concurrent) {
-      current = { concurrent: event.concurrent, events: [event] };
-      groups.push(current);
-    } else {
-      current.events.push(event);
+  /**
+   * Launches every chain spawned by `event`: detached chains join the
+   * run-level drain (they gate NOTHING — not even their parent sub-chain's
+   * resolution); blocking chains are AWAITED here, which recursively covers
+   * their own blocking descendants (§4.7). Emission failures are recorded on
+   * the events themselves, so settlement — not success — is what gates.
+   *
+   * Rebase: the plan anchors a spawned chain at its spawning event's PLANNED
+   * time, so the runtime shift is `actual spawn instant − planned spawn
+   * time`. Anchoring on the parent (rather than the sub-chain's first event)
+   * preserves `late` injections on ANY sub-chain event — including its first.
+   */
+  async function gateOnSpawns(event: ManifestEvent): Promise<void> {
+    const blocking: Promise<void>[] = [];
+    const offset = Date.now() - event.targetEmitTime;
+    for (const sub of spawnsByParent.get(event.eventId) ?? []) {
+      const task = emitSubChain(sub, offset);
+      if (sub.role === 'blocking') blocking.push(task);
+      else detachedDrain.push(task);
     }
+    if (blocking.length > 0) await Promise.allSettled(blocking);
   }
 
-  return groups;
+  // Main chain in strict sequence; after each event, its blocking chains
+  // gate the next sibling (§4.7) while detached chains fire and forget.
+  for (const event of manifest.events) {
+    await emitEvent(event, bus, logger);
+    await gateOnSpawns(event);
+  }
+
+  // Drain every detached chain before returning, so failures surface and the
+  // process exits cleanly — draining is cleanup, never §4.7 gating.
+  await Promise.allSettled(detachedDrain);
 }
 
 /**

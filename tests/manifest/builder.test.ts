@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { buildManifest } from '../../src/manifest/builder.js';
-import { validateWorkflow, resolveProduces } from '../../src/workflow/parser.js';
+import { validateWorkflow } from '../../src/workflow/parser.js';
+import { resolveChainTree, flattenChains } from '../../src/workflow/chain-tree.js';
+import { createRegistry } from '../../src/expressions/loader.js';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
 import type { ResolvedEvent } from '../../src/workflow/parser.js';
 import type { IronMonkeyConfig } from '../../src/config/types.js';
@@ -109,13 +111,25 @@ describe('buildManifest', () => {
     });
   });
 
-  it('throws when schema is not found', async () => {
+  it('reports an unknown CDEvent type (§6.2 failure mode)', async () => {
     const badEvent: ResolvedEvent = {
       ...singleEvent,
       type: 'dev.cdevents.unknown.event.9.9.9',
     };
     await expect(buildManifest(meta, [badEvent], config, { noConduit: true })).rejects.toThrow(
-      'No schema found for event type',
+      /unknown CDEvent type unknown\.event/,
+    );
+  });
+
+  it('throws when no schema exists for a resolved version', async () => {
+    // approval.* is in the version catalog but ships no bundled payload
+    // schema — resolution succeeds, the schema lookup is what fails.
+    const badEvent: ResolvedEvent = {
+      ...singleEvent,
+      type: 'dev.cdevents.approval.created',
+    };
+    await expect(buildManifest(meta, [badEvent], config, { noConduit: true })).rejects.toThrow(
+      /No schema found for event type 'dev\.cdevents\.approval\.created\.0\.1\.0' \(resolved from 'dev\.cdevents\.approval\.created'\)/,
     );
   });
 
@@ -157,7 +171,7 @@ describe('buildManifest — real workflow end-to-end', () => {
   it('builds a schema-valid manifest from prod-auth-hotfix-fast-path.yaml', async () => {
     const wf = await validateWorkflow(path.join(WORKFLOWS_DIR, 'prod-auth-hotfix-fast-path.yaml'));
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
+    const mainChain = resolveChainTree(wf, registry);
 
     const cfg: IronMonkeyConfig = {
       buses: { default: { type: 'rabbitmq', url: 'amqp://localhost' } },
@@ -170,7 +184,7 @@ describe('buildManifest — real workflow end-to-end', () => {
 
     const manifest = await buildManifest(
       { id: wf.workflow.id, name: wf.workflow.name },
-      events,
+      mainChain,
       cfg,
       { noConduit: true },
     );
@@ -183,5 +197,136 @@ describe('buildManifest — real workflow end-to-end', () => {
     for (const e of manifest.events) {
       expect(e.payload.context.type).toMatch(/^dev\.cdevents\./);
     }
+  });
+});
+
+describe('buildManifest — chain-id acquisition without --no-conduit', () => {
+  it('falls back offline when conduit is unconfigured (no daemon to answer)', async () => {
+    const manifest = await buildManifest(meta, [singleEvent], config, { noConduit: false });
+    expect(manifest.chainIdSource).toBe('fallback');
+    expect(manifest.chainId).toMatch(/^urn:sol-duara:fallback:/);
+  });
+});
+
+describe('buildManifest — batch register (Proleptic §1)', () => {
+  const CONDUIT_CFG: IronMonkeyConfig = {
+    buses: { default: { type: 'rabbitmq', url: 'amqp://localhost' } },
+    tools: {},
+    schemasPath: SCHEMAS_DIR,
+    conduit: { url: 'http://conduit.example:8091' },
+  };
+
+  const registerResponse = (chainId: string) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      runId: chainId,
+      instanceId: 'conduitd:u@h:1:boot',
+      issuedAt: '2026-08-09T00:00:00Z',
+      chains: [
+        {
+          chainRef: 'root',
+          chainId,
+          role: 'main',
+          status: 'declared',
+          parentChainId: null,
+          parentChainRef: null,
+          parentEventId: null,
+          linkKind: null,
+          expectedEvents: [
+            {
+              type: singleEvent.type,
+              treePath: 'p0',
+              order: 0,
+              timeoutMs: singleEvent.timeout_ms,
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  it('uses the registered chain set: one call, server-minted id, pinned instanceId', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(registerResponse('99999999-aaaa-4bbb-8ccc-dddddddddddd')),
+    );
+    try {
+      const manifest = await buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false });
+      expect(manifest.chainId).toBe('99999999-aaaa-4bbb-8ccc-dddddddddddd');
+      expect(manifest.chainIdSource).toBe('conduit');
+      expect(manifest.instanceId).toBe('conduitd:u@h:1:boot');
+      expect(fetch).toHaveBeenCalledTimes(1); // ONE batch register, no shim loop
+      const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+      expect(url).toBe('http://conduit.example:8091/api/runs');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('fails the run BEFORE emitting when derivations diverge (producer machine gate)', async () => {
+    const diverged = registerResponse('99999999-aaaa-4bbb-8ccc-dddddddddddd');
+    const body = await diverged.json();
+    body.chains[0].expectedEvents[0].type = 'dev.cdevents.change.merged.0.3.0';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ...diverged, json: async () => body }));
+    try {
+      await expect(
+        buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false }),
+      ).rejects.toThrow(/derivation mismatch/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('falls back offline when no daemon answers the register', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED')));
+    try {
+      const manifest = await buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false });
+      expect(manifest.chainIdSource).toBe('fallback');
+      expect(manifest.chainId).toMatch(/^urn:sol-duara:fallback:/);
+      expect(manifest.instanceId).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('buildManifest — §6.1 wire types', () => {
+  it('stamps the RESOLVED type on the wire while the derivation keeps the authored form', async () => {
+    const chain = resolveChainTree(
+      {
+        workflow: {
+          id: 'wf-versionless',
+          name: 'wf-versionless',
+          defaults: { tool: 't', source: 'https://t.example/' },
+          produces: [
+            { event: 'dev.cdevents.pipelinerun.started' },
+            { event: 'dev.cdevents.build.started:^0.3.0' },
+          ],
+        },
+      } as never,
+      createRegistry([]),
+    );
+    const manifest = await buildManifest(
+      { id: 'wf-versionless', name: 'wf-versionless' },
+      chain,
+      config,
+      { noConduit: true },
+    );
+
+    // Wire: concrete resolved versions, in both the event row and the payload.
+    expect(manifest.events.map((e) => e.type)).toEqual([
+      'dev.cdevents.pipelinerun.started.0.3.0',
+      'dev.cdevents.build.started.0.3.0',
+    ]);
+    expect(manifest.events.map((e) => e.payload.context.type)).toEqual([
+      'dev.cdevents.pipelinerun.started.0.3.0',
+      'dev.cdevents.build.started.0.3.0',
+    ]);
+    // Derivation/register currency: the authored strings, untouched.
+    expect(flattenChains(chain)[0].events.map((e) => e.type)).toEqual([
+      'dev.cdevents.pipelinerun.started',
+      'dev.cdevents.build.started:^0.3.0',
+    ]);
   });
 });
