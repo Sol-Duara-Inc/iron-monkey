@@ -114,4 +114,3 @@ export interface ResolvedEvent {
    */
   expressionRef?: string;
 }
-

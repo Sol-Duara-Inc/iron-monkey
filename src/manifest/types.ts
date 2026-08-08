@@ -88,11 +88,6 @@ export interface ManifestEvent {
   stageId: string;
   /** Tool identifier from the workflow `tool` field. */
   stageTool: string;
-  /**
-   * When `true` this event should be emitted in parallel with adjacent events
-   * that also have `concurrent: true`.
-   */
-  concurrent: boolean;
   /** CDEvents `context.source` URI identifying the originating tool. */
   source: string;
   /** The Sympraxis chain ID shared by all events in this run. */
@@ -179,7 +174,7 @@ export interface CDEventPayload {
 }
 
 /**
- * A pre-allocated detached or concurrent-branch sub-chain within a manifest.
+ * A pre-allocated detached or blocking spawned sub-chain within a manifest.
  * Each sub-chain is its own Sympraxis chain (its own {@link chainId}), spawned
  * by an event in a parent chain. The spawning event carries a `RELATION` link
  * to this chain's first event; this chain's events carry their own internal
@@ -240,10 +235,10 @@ export interface Manifest {
   /** Ordered list of CDEvents to emit on the MAIN chain, with timing and chain-link wiring resolved. */
   events: ManifestEvent[];
   /**
-   * Detached / concurrent-branch sub-chains spawned by events in the main (or a
+   * Detached / blocking sub-chains spawned by events in the main (or a
    * nested) chain, flattened across all nesting levels. Each is its own chain
    * with its own `chainId`; parentage is expressed via `parentChainId`. Absent
-   * when the workflow declares no `detach` / concurrent branches.
+   * when the workflow declares no `spawn` / `detach` chains.
    */
   detachedChains?: DetachedManifestChain[];
 }

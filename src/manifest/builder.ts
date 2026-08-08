@@ -7,7 +7,7 @@
  * immutable description of what Iron Monkey will emit — injections are applied
  * separately before emission.
  *
- * The main chain is the workflow spine. `detach` and concurrent-branch
+ * The main chain is the workflow spine. `spawn` and `detach`
  * sub-chains (see {@link module:workflow/chain-tree}) are modelled as
  * {@link DetachedManifestChain} entries: each gets its own `chainId`, its own
  * internal `PATH`/`END` links, and a `RELATION` link from the spawning event in
@@ -216,7 +216,6 @@ function buildEvent(
     type: re.type,
     stageId: re.pipeline,
     stageTool: re.tool,
-    concurrent: false,
     source: toolSource,
     chainId,
     targetBus: ctx.targetBus,

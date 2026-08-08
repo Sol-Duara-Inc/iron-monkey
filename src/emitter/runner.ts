@@ -281,51 +281,18 @@ export async function executeManifest(
     await Promise.allSettled(descendants);
   }
 
+  // Main-chain events emit strictly in sequence; spawned chains launch
+  // fire-and-forget at their spawning instant (producer-side blocking wait
+  // is the next planned emitter change).
   const tasks: Promise<void>[] = [];
-  for (const group of groupByConcurrency(manifest.events)) {
-    if (group.concurrent) {
-      const spawnInstant = Date.now();
-      await Promise.all(group.events.map((e) => emitEvent(e, bus, logger)));
-      for (const e of group.events) tasks.push(...launchSpawns(e.eventId, spawnInstant));
-    } else {
-      for (const event of group.events) {
-        const spawnInstant = Date.now(); // reached the parent, before it is sent
-        await emitEvent(event, bus, logger);
-        tasks.push(...launchSpawns(event.eventId, spawnInstant));
-      }
-    }
+  for (const event of manifest.events) {
+    const spawnInstant = Date.now(); // reached the parent, before it is sent
+    await emitEvent(event, bus, logger);
+    tasks.push(...launchSpawns(event.eventId, spawnInstant));
   }
 
   // Drain all detached / branch chains (and their descendants) before returning.
   await Promise.allSettled(tasks);
-}
-
-/** A run of consecutive manifest events that share the same `concurrent` flag. */
-interface EventGroup {
-  /** Whether all events in this group should be emitted simultaneously. */
-  concurrent: boolean;
-  /** The manifest events that belong to this group. */
-  events: ManifestEvent[];
-}
-
-/**
- * Splits a flat list of manifest events into consecutive runs that share the
- * same `concurrent` flag value, enabling mixed sequential/parallel emission.
- */
-function groupByConcurrency(events: ManifestEvent[]): EventGroup[] {
-  const groups: EventGroup[] = [];
-  let current: EventGroup | null = null;
-
-  for (const event of events) {
-    if (!current || current.concurrent !== event.concurrent) {
-      current = { concurrent: event.concurrent, events: [event] };
-      groups.push(current);
-    } else {
-      current.events.push(event);
-    }
-  }
-
-  return groups;
 }
 
 /**

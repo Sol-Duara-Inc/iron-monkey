@@ -64,7 +64,6 @@ function makeEvent(overrides: Partial<ManifestEvent> = {}): ManifestEvent {
     type: 'dev.cdevents.build.started.0.3.0',
     stageId: 'my-pipeline',
     stageTool: 'jenkins',
-    concurrent: false,
     source: 'https://jenkins.example.com/',
     chainId: 'chain-1',
     targetBus: 'default',
