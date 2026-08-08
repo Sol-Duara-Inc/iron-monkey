@@ -27,6 +27,14 @@ export { registerRun, assertRegisterMatchesLocal, ConduitAnsweredError } from '.
 export type { RegisterResult, RegisteredChain, ChainIdResult } from './chain/register.js';
 export { generateFallbackChainId } from './chain/fallback.js';
 export { loadSchemas, validateEvent } from './schema/validator.js';
+export {
+  loadEventCatalog,
+  parseEventCatalog,
+  resolveEventType,
+  subjectPredicateOfType,
+  compareVersions,
+} from './schema/catalog.js';
+export type { EventCatalog, ResolvedEventType } from './schema/catalog.js';
 export { validateWorkflowDoc } from './workflow/schema.js';
 export { validateBundleDoc } from './expressions/schema.js';
 export { createBus } from './bus/interface.js';

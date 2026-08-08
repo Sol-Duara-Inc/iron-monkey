@@ -23,6 +23,7 @@ import { registerRun, assertRegisterMatchesLocal } from '../chain/register.js';
 import { flattenChains } from '../workflow/chain-tree.js';
 import { generateFallbackChainId } from '../chain/fallback.js';
 import { loadSchemas, validateEvent } from '../schema/validator.js';
+import { loadEventCatalog, resolveEventType } from '../schema/catalog.js';
 import { synthesize } from '../synth/synthesizer.js';
 import type { ResolvedEvent } from '../workflow/parser.js';
 import type { ResolvedChain, ResolvedChainEvent } from '../workflow/chain-tree.js';
@@ -115,6 +116,7 @@ function eventsToMainChain(events: ResolvedEvent[]): ResolvedChain {
       order: i,
       workflowEventId: e.id,
       type: e.type,
+      resolvedType: resolveEventType(e.type, loadEventCatalog()).wireType,
       tool: e.tool,
       source: e.source,
       pipeline: e.pipeline,
@@ -158,11 +160,16 @@ function buildEvent(
   // runner after injections, so `addEndLink` is false for it.
   if (isLastInChain && addEndLink) links.push(buildEndLink(eventId));
 
-  const schema = ctx.schemas.get(re.type);
+  // The WIRE type: the §6.1-resolved concrete version (chain-tree's
+  // resolution), which is also the schema-lookup key. `re.type` keeps the
+  // authored spelling for derivation/register parity.
+  const wireType = re.resolvedType;
+  const schema = ctx.schemas.get(wireType);
   if (!schema) {
+    const provenance = wireType === re.type ? '' : ` (resolved from '${re.type}')`;
     throw new Error(
-      `No schema found for event type '${re.type}'. ` +
-        `Place the schema at ${ctx.config.schemasPath ?? 'schemas/cdevents'}/${re.type}.json or set IRON_MONKEY_SCHEMAS.`,
+      `No schema found for event type '${wireType}'${provenance}. ` +
+        `Place the schema at ${ctx.config.schemasPath ?? 'schemas/cdevents'}/ or set IRON_MONKEY_SCHEMAS.`,
     );
   }
 
@@ -172,7 +179,7 @@ function buildEvent(
     const result = synthesize(content, schema, {
       toolSource,
       chainId,
-      eventType: re.type,
+      eventType: wireType,
       workflowName: ctx.workflowName,
       subjectId: re.subject.id,
       timestamp,
@@ -186,7 +193,7 @@ function buildEvent(
       specversion: '0.6.0-draft',
       id: eventId,
       source: toolSource,
-      type: re.type,
+      type: wireType,
       timestamp,
       chainId,
       links: links.length > 0 ? links : undefined,
@@ -197,7 +204,7 @@ function buildEvent(
   const validationResult = validateEvent(payload, schema);
   if (!validationResult.valid) {
     throw new Error(
-      `Event '${re.workflowEventId}' (type: ${re.type}) failed schema validation:\n${validationResult.errors?.join('\n')}`,
+      `Event '${re.workflowEventId}' (type: ${wireType}) failed schema validation:\n${validationResult.errors?.join('\n')}`,
     );
   }
 
@@ -205,7 +212,7 @@ function buildEvent(
     eventId,
     workflowEventId: re.workflowEventId,
     treePath: re.treePath,
-    type: re.type,
+    type: wireType,
     stageId: re.pipeline,
     stageTool: re.tool,
     source: toolSource,

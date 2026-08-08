@@ -33,6 +33,8 @@
  */
 
 import { nounVerbFromType } from '../expressions/loader.js';
+import { loadEventCatalog, resolveEventType } from '../schema/catalog.js';
+import type { ResolvedEventType } from '../schema/catalog.js';
 import { deepMerge } from '../util/deep-merge.js';
 import type { ExpressionRegistry } from '../expressions/loader.js';
 import type { ExpressionBundle } from '../expressions/types.js';
@@ -46,8 +48,20 @@ export interface ResolvedChainEvent {
   order: number;
   /** Human label (noun-verb slug, de-duplicated within the chain). NOT the key. */
   workflowEventId: string;
-  /** Fully-qualified CDEvent type string. */
+  /**
+   * The AUTHORED event-type string, any §6.1 form, verbatim. This is the
+   * derivation/register currency — the daemon derives from the same authored
+   * strings, so parity (goldens, `assertRegisterMatchesLocal`) compares this,
+   * never the resolved form.
+   */
   type: string;
+  /**
+   * The concrete wire type after §6.1 version resolution (§6.2 step 5):
+   * canonical embedded-version spelling for core types, the authored string
+   * verbatim for `dev.cdeventsx.*` pass-through. The manifest builder stamps
+   * this on `context.type` and looks the payload schema up by it.
+   */
+  resolvedType: string;
   /** Tool identifier resolved through the field cascade. */
   tool: string;
   /** CDEvents source URI (empty when unset; manifest builder falls back). */
@@ -297,6 +311,16 @@ function walk(
     const path = appendSeg(basePath, `${axis}${i}`);
 
     if (isEvt(item)) {
+      // §6.2 step 5: resolve the event version against the vendored catalog.
+      // Unknown core types and unsatisfiable ranges are §6.2 MUST-report
+      // failures; the authored string stays on `type` (derivation parity),
+      // the resolution lands on `resolvedType` (the wire).
+      let resolved: ResolvedEventType;
+      try {
+        resolved = resolveEventType(item.event, loadEventCatalog());
+      } catch (err) {
+        throw new Error(`Event at ${path}: ${(err as Error).message}`);
+      }
       const nv = nounVerbFromType(item.event);
       const override =
         inherited.overrides?.[item.event] ?? inherited.overrides?.[item.id ?? nv] ?? {};
@@ -333,6 +357,7 @@ function walk(
         order: chain.events.length,
         workflowEventId,
         type: item.event,
+        resolvedType: resolved.wireType,
         tool,
         source,
         pipeline,

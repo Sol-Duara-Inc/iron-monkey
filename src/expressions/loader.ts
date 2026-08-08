@@ -16,6 +16,7 @@ import { readTextFileSync, parseYaml, formatAjvErrors } from '../util/yaml-file.
 import { getLogger } from '../logger/index.js';
 import { checkNameHints, loadHintTable } from '../hints/index.js';
 import type { HintCheckResult, HintTable } from '../hints/index.js';
+import { subjectPredicateOfType } from '../schema/catalog.js';
 import { validateBundleDoc } from './schema.js';
 import type { ExpressionBundle } from './types.js';
 
@@ -39,20 +40,22 @@ function defaultExpressionsDir(): string {
 }
 
 /**
- * Extracts the `noun.verb` key from a fully-qualified CDEvent type string such
- * as `dev.cdevents.build.started.0.3.0`. Used for collision detection in
- * expression bundles and for generating default `workflowEventId` values.
+ * Extracts the `noun.verb` key from a CDEvent type string in any §6.1 form —
+ * embedded version (`dev.cdevents.build.started.0.3.0`), colon exact/range
+ * (`dev.cdevents.build.started:^0.1.0`), versionless
+ * (`dev.cdevents.build.started`), and `dev.cdeventsx.*` extension types
+ * (whose noun is the `<tool>-<subject>` compound). Used for collision
+ * detection in expression bundles and for generating default
+ * `workflowEventId` values.
  *
  * @param eventType - A CDEvent type string or similar dot-separated identifier.
  * @returns The `noun.verb` portion, e.g. `'build.started'`.
  */
 export function nounVerbFromType(eventType: string): string {
-  const parts = eventType.split('.');
-  // dev.cdevents.<noun>.<verb>.<major>.<minor>.<patch>
-  if (parts.length >= 5 && parts[0] === 'dev' && parts[1] === 'cdevents') {
-    return `${parts[2]}.${parts[3]}`;
-  }
-  return parts.slice(-5, -3).join('.');
+  const key = subjectPredicateOfType(eventType);
+  if (key !== null) return `${key.subject}.${key.predicate}`;
+  // Not a CDEvent type: legacy positional fallback for other identifiers.
+  return eventType.split('.').slice(-5, -3).join('.');
 }
 
 /**

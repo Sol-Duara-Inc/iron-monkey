@@ -34,6 +34,7 @@ function ev(treePath: string, order: number, type: string, id: string): Resolved
     order,
     workflowEventId: id,
     type,
+    resolvedType: type,
     tool: 'jenkins',
     source: '',
     pipeline: 'p',

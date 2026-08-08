@@ -3,7 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { buildManifest } from '../../src/manifest/builder.js';
 import { validateWorkflow } from '../../src/workflow/parser.js';
-import { resolveChainTree } from '../../src/workflow/chain-tree.js';
+import { resolveChainTree, flattenChains } from '../../src/workflow/chain-tree.js';
+import { createRegistry } from '../../src/expressions/loader.js';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
 import type { ResolvedEvent } from '../../src/workflow/parser.js';
 import type { IronMonkeyConfig } from '../../src/config/types.js';
@@ -110,13 +111,25 @@ describe('buildManifest', () => {
     });
   });
 
-  it('throws when schema is not found', async () => {
+  it('reports an unknown CDEvent type (§6.2 failure mode)', async () => {
     const badEvent: ResolvedEvent = {
       ...singleEvent,
       type: 'dev.cdevents.unknown.event.9.9.9',
     };
     await expect(buildManifest(meta, [badEvent], config, { noConduit: true })).rejects.toThrow(
-      'No schema found for event type',
+      /unknown CDEvent type unknown\.event/,
+    );
+  });
+
+  it('throws when no schema exists for a resolved version', async () => {
+    // approval.* is in the version catalog but ships no bundled payload
+    // schema — resolution succeeds, the schema lookup is what fails.
+    const badEvent: ResolvedEvent = {
+      ...singleEvent,
+      type: 'dev.cdevents.approval.created',
+    };
+    await expect(buildManifest(meta, [badEvent], config, { noConduit: true })).rejects.toThrow(
+      /No schema found for event type 'dev\.cdevents\.approval\.created\.0\.1\.0' \(resolved from 'dev\.cdevents\.approval\.created'\)/,
     );
   });
 
@@ -275,5 +288,45 @@ describe('buildManifest — batch register (Proleptic §1)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('buildManifest — §6.1 wire types', () => {
+  it('stamps the RESOLVED type on the wire while the derivation keeps the authored form', async () => {
+    const chain = resolveChainTree(
+      {
+        workflow: {
+          id: 'wf-versionless',
+          name: 'wf-versionless',
+          defaults: { tool: 't', source: 'https://t.example/' },
+          produces: [
+            { event: 'dev.cdevents.pipelinerun.started' },
+            { event: 'dev.cdevents.build.started:^0.3.0' },
+          ],
+        },
+      } as never,
+      createRegistry([]),
+    );
+    const manifest = await buildManifest(
+      { id: 'wf-versionless', name: 'wf-versionless' },
+      chain,
+      config,
+      { noConduit: true },
+    );
+
+    // Wire: concrete resolved versions, in both the event row and the payload.
+    expect(manifest.events.map((e) => e.type)).toEqual([
+      'dev.cdevents.pipelinerun.started.0.3.0',
+      'dev.cdevents.build.started.0.3.0',
+    ]);
+    expect(manifest.events.map((e) => e.payload.context.type)).toEqual([
+      'dev.cdevents.pipelinerun.started.0.3.0',
+      'dev.cdevents.build.started.0.3.0',
+    ]);
+    // Derivation/register currency: the authored strings, untouched.
+    expect(flattenChains(chain)[0].events.map((e) => e.type)).toEqual([
+      'dev.cdevents.pipelinerun.started',
+      'dev.cdevents.build.started:^0.3.0',
+    ]);
   });
 });

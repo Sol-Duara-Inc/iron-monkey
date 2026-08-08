@@ -368,3 +368,75 @@ describe('resolveChainTree — edge and error paths', () => {
     expect(main.events[0].subject.id).toBe('testsuiterun-finished');
   });
 });
+
+describe('resolveChainTree — §6.1 version resolution (§6.2 step 5)', () => {
+  it('keeps the authored spelling on `type` and stamps the concrete `resolvedType`', () => {
+    const root = resolveChainTree(
+      workflow([
+        { event: 'dev.cdevents.pipelinerun.started' }, // versionless → latest
+        { event: 'dev.cdevents.build.started:^0.1.0' }, // range → best match
+        { event: 'dev.cdevents.testcaserun.started:0.3.0' }, // colon exact
+        { event: TS_FINISHED }, // embedded exact
+      ]),
+      makeRegistry([]),
+    );
+    expect(root.events.map((e) => [e.type, e.resolvedType])).toEqual([
+      ['dev.cdevents.pipelinerun.started', 'dev.cdevents.pipelinerun.started.0.3.0'],
+      ['dev.cdevents.build.started:^0.1.0', 'dev.cdevents.build.started.0.1.1'],
+      ['dev.cdevents.testcaserun.started:0.3.0', 'dev.cdevents.testcaserun.started.0.3.0'],
+      [TS_FINISHED, TS_FINISHED],
+    ]);
+  });
+
+  it('derives workflowEventId from any form, extension types included', () => {
+    const root = resolveChainTree(
+      workflow([
+        { event: 'dev.cdevents.pipelinerun.started' },
+        { event: 'dev.cdeventsx.mytool-notification.dispatched' },
+      ]),
+      makeRegistry([]),
+    );
+    expect(root.events.map((e) => e.workflowEventId)).toEqual([
+      'pipelinerun-started',
+      'mytool-notification-dispatched',
+    ]);
+    // Extension types pass through opaquely (§6.1): wire = authored.
+    expect(root.events[1].resolvedType).toBe('dev.cdeventsx.mytool-notification.dispatched');
+  });
+
+  it('resolves versions inside spawned chains and expression expansions', () => {
+    const registry = makeRegistry([
+      bundle('late-verify', [{ event: 'dev.cdevents.testcaserun.queued' }]),
+    ]);
+    const root = resolveChainTree(
+      workflow([
+        {
+          event: TS_STARTED,
+          spawn: [{ event: 'dev.cdevents.testcaserun.started' }],
+          detach: [{ expression: 'late-verify' }],
+        },
+      ]),
+      registry,
+    );
+    expect(root.spawns[0].events[0].resolvedType).toBe(TC_STARTED);
+    expect(root.spawns[1].events[0].resolvedType).toBe(TC_QUEUED);
+  });
+
+  it('reports an unknown CDEvent type with its tree position', () => {
+    expect(() =>
+      resolveChainTree(
+        workflow([{ event: TS_STARTED }, { event: 'dev.cdevents.nosuch.thing' }]),
+        makeRegistry([]),
+      ),
+    ).toThrow(/Event at p1: unknown CDEvent type nosuch\.thing/);
+  });
+
+  it('reports an unsatisfiable range with its tree position', () => {
+    expect(() =>
+      resolveChainTree(
+        workflow([{ event: 'dev.cdevents.build.started:^9.0.0' }]),
+        makeRegistry([]),
+      ),
+    ).toThrow(/Event at p0: no version of build\.started satisfies/);
+  });
+});
