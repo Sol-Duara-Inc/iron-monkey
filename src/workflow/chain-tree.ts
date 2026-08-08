@@ -33,8 +33,8 @@
  */
 
 import { nounVerbFromType } from '../expressions/loader.js';
-import { loadEventCatalog, resolveEventType } from '../schema/catalog.js';
-import type { ResolvedEventType } from '../schema/catalog.js';
+import { loadEventCatalog, resolveEventType, parseTypeKey } from '../schema/catalog.js';
+import type { ResolvedEventType, TypeKey } from '../schema/catalog.js';
 import { deepMerge } from '../util/deep-merge.js';
 import type { ExpressionRegistry } from '../expressions/loader.js';
 import type { ExpressionBundle } from '../expressions/types.js';
@@ -116,6 +116,21 @@ export interface ResolvedChain {
   events: ResolvedChainEvent[];
   /** Chains spawned by `spawn:` / `detach:` on events within this chain. */
   spawns: ResolvedChain[];
+  /**
+   * The §4.9 reference dictionary over the WHOLE resolved tree — anchor name
+   * → every carrier, in resolved-tree (depth-first) order. Root chain only;
+   * always present there (possibly empty). Anchors need not be unique, and a
+   * missing name simply resolves to no carriers ({@link resolveAnchor}).
+   */
+  anchors?: Map<string, ResolvedChainEvent[]>;
+  /**
+   * §6.2 MUST-report, NON-FATAL findings for the whole tree, in report
+   * order: defaults-conflict notes (a default colliding with an explicitly
+   * set value — the explicit value wins, §5.3), then §5.4 override keys that
+   * matched no event in their resolved subtree. Root chain only; always
+   * present there.
+   */
+  diagnostics?: string[];
 }
 
 // ── Structural item shapes (cover both workflow-level and bundle-level items) ─
@@ -137,6 +152,7 @@ interface AnyEventItem {
 interface OverrideFields {
   tool?: string;
   source?: string;
+  pipeline?: string;
   timeout_ms?: number;
   min_wait_ms?: number;
   content?: Record<string, unknown>;
@@ -189,6 +205,55 @@ interface WalkCtx {
     min_wait_ms?: number;
     content?: Record<string, unknown>;
   };
+  /** §4.9 reference dictionary: anchor name → carriers, resolved-tree DF order. */
+  anchors: Map<string, ResolvedChainEvent[]>;
+  /** §6.2 MUST-report, non-fatal findings (conflicts, unmatched overrides). */
+  diagnostics: string[];
+  /** Resolution stack of expression identities for cycle detection (§6.2). */
+  stack: string[];
+  /**
+   * §5.4 override maps by object identity → the declaring reference's name
+   * and the keys that matched at least one event. Inherited pass-through
+   * keeps the object identity, so nested references without their own
+   * overrides mark the DECLARING reference's keys used. Insertion order is
+   * the reporting order for unmatched keys.
+   */
+  overrideReg: Map<Record<string, OverrideFields>, { ref: string; used: Set<string> }>;
+}
+
+/**
+ * Matches §5.4 override keys against an event's RESOLVED identity: same
+ * namespace, subject, and predicate; a versionless key matches any version;
+ * a versioned key must equal the resolved version (extension events match
+ * their authored version, since they resolve opaquely). Namespaces never
+ * cross, and colon-RANGE keys have no normal form so they never match.
+ */
+function lookupOverride(
+  overrides: Record<string, OverrideFields> | undefined,
+  resolved: ResolvedEventType,
+): { override: OverrideFields; key: string } | undefined {
+  if (!overrides) return undefined;
+  const ev: TypeKey = {
+    ns: resolved.extension ? 'cdeventsx' : 'cdevents',
+    subject: resolved.subject,
+    predicate: resolved.predicate,
+    version: resolved.extension
+      ? (parseTypeKey(resolved.authored)?.version ?? '')
+      : resolved.version,
+  };
+  for (const [key, fields] of Object.entries(overrides)) {
+    const kk = parseTypeKey(key);
+    if (kk === null) continue; // malformed keys surface via unmatched reporting
+    if (
+      kk.ns === ev.ns &&
+      kk.subject === ev.subject &&
+      kk.predicate === ev.predicate &&
+      (kk.version === '' || kk.version === ev.version)
+    ) {
+      return { override: fields, key };
+    }
+  }
+  return undefined;
 }
 
 /** Joins a path segment, omitting the leading dot at the root. */
@@ -256,9 +321,41 @@ function resolveRoot(
   registry: ExpressionRegistry,
 ): ResolvedChain {
   const main: ResolvedChain = { role: 'main', chainRef: 'root', events: [], spawns: [] };
-  const ctx: WalkCtx = { registry, resolution, defaults };
+  const ctx: WalkCtx = {
+    registry,
+    resolution,
+    defaults,
+    anchors: new Map(),
+    diagnostics: [],
+    stack: [],
+    overrideReg: new Map(),
+  };
   walk(produces, 'p', '', main, new Map(), ctx, {});
+  // §5.4 override keys that bound nothing — a silent no-op is how a pipeline
+  // owner ships unbound events without noticing (§6.2 report posture:
+  // diagnostic, not failure). Reported after all conflicts, in declaration
+  // order of the references that carry them.
+  for (const [overrides, reg] of ctx.overrideReg) {
+    for (const key of Object.keys(overrides)) {
+      if (!reg.used.has(key)) {
+        ctx.diagnostics.push(
+          `override key "${key}" on reference ${reg.ref} matched no event in its resolved subtree`,
+        );
+      }
+    }
+  }
+  main.anchors = ctx.anchors;
+  main.diagnostics = ctx.diagnostics;
   return main;
+}
+
+/**
+ * Resolves a §4.9 anchor reference against a resolved tree: the list of
+ * every event carrying `name`, in resolved-tree (depth-first) order — empty
+ * when none do. Total and uniform: always a list, never a lookup failure.
+ */
+export function resolveAnchor(root: ResolvedChain, name: string): ResolvedChainEvent[] {
+  return root.anchors?.get(name) ?? [];
 }
 
 /**
@@ -322,13 +419,20 @@ function walk(
         throw new Error(`Event at ${path}: ${(err as Error).message}`);
       }
       const nv = nounVerbFromType(item.event);
-      const override =
-        inherited.overrides?.[item.event] ?? inherited.overrides?.[item.id ?? nv] ?? {};
+      // §5.4 override keys match by RESOLVED type identity across equivalent
+      // §6.1 spellings (canonical lookupOverride semantics) — never by
+      // workflowEventId, and never across namespaces.
+      const matched = lookupOverride(inherited.overrides, resolved);
+      if (matched && inherited.overrides) {
+        ctx.overrideReg.get(inherited.overrides)?.used.add(matched.key);
+      }
+      const override = matched?.override ?? {};
 
       const tool = override.tool ?? item.tool ?? inherited.tool ?? ctx.defaults.tool ?? '';
       const source =
         override.source ?? item.source ?? inherited.source ?? ctx.defaults.source ?? '';
-      const pipeline = item.pipeline ?? inherited.pipeline ?? ctx.defaults.pipeline ?? '';
+      const pipeline =
+        override.pipeline ?? item.pipeline ?? inherited.pipeline ?? ctx.defaults.pipeline ?? '';
       const timeout_ms =
         override.timeout_ms ??
         item.timeout_ms ??
@@ -350,9 +454,67 @@ function walk(
         override.content ?? {},
       );
 
+      // §6.2 defaults-conflict reporting (§5.3: the explicit value wins, and
+      // defaults MUST NOT override it — surfaced, never fatal). A value the
+      // OVERRIDE set is exempt: overrides are the sanctioned shadowing
+      // mechanism, not a collision.
+      const itemContent = item.subject?.content ?? item.content;
+      const inheritedContentSet =
+        inherited.content !== undefined && Object.keys(inherited.content).length > 0;
+      const conflict = (
+        field: string,
+        defaultSet: boolean,
+        explicitSet: boolean,
+        overrideSet: boolean,
+      ): void => {
+        if (defaultSet && explicitSet && !overrideSet) {
+          ctx.diagnostics.push(
+            `conflicting binding: ${field} set in defaults and explicitly on ${path}; ` +
+              `the explicit value wins (§5.3)`,
+          );
+        }
+      };
+      const d = ctx.defaults;
+      conflict(
+        'tool',
+        d.tool !== undefined,
+        item.tool !== undefined || inherited.tool !== undefined,
+        override.tool !== undefined,
+      );
+      conflict(
+        'source',
+        d.source !== undefined,
+        item.source !== undefined || inherited.source !== undefined,
+        override.source !== undefined,
+      );
+      conflict(
+        'pipeline',
+        d.pipeline !== undefined,
+        item.pipeline !== undefined || inherited.pipeline !== undefined,
+        override.pipeline !== undefined,
+      );
+      conflict(
+        'timeout_ms',
+        d.timeout_ms !== undefined,
+        item.timeout_ms !== undefined || inherited.timeout_ms !== undefined,
+        override.timeout_ms !== undefined,
+      );
+      conflict(
+        'min_wait_ms',
+        d.min_wait_ms !== undefined,
+        item.min_wait_ms !== undefined || inherited.min_wait_ms !== undefined,
+        override.min_wait_ms !== undefined,
+      );
+      conflict(
+        'content',
+        d.content !== undefined,
+        itemContent !== undefined || inheritedContentSet,
+        override.content !== undefined,
+      );
+
       const workflowEventId = allocateId((item.id ?? nv).replace('.', '-'), idSeen);
 
-      chain.events.push({
+      const rce: ResolvedChainEvent = {
         treePath: path,
         order: chain.events.length,
         workflowEventId,
@@ -370,7 +532,13 @@ function walk(
         origin: inherited.fromExpr ? 'expression' : 'event',
         expressionRef: inherited.exprRef,
         as: item.as,
-      });
+      };
+      chain.events.push(rce);
+      // §4.9: every carrier joins the root dictionary, in resolved-tree
+      // (depth-first) order — the walk order IS that order.
+      if (item.as !== undefined) {
+        ctx.anchors.set(item.as, [...(ctx.anchors.get(item.as) ?? []), rce]);
+      }
 
       // Nested produces continue the SAME chain (depth-first, p axis).
       if (item.produces?.length) {
@@ -392,6 +560,20 @@ function walk(
       // beneath this item's path (p axis), with the resolved bundle's identity
       // as the new resolution context (bare refs swap context on recursion).
       const bundle = ctx.registry.resolveWithContext(item.expression, ctx.resolution);
+      // §6.2 cycle-check: the resolution stack holds every expression identity
+      // currently being expanded; re-entry is the circular-reference MUST.
+      const identity = `${bundle.group}/${bundle.author}/${bundle.expression}`;
+      if (ctx.stack.includes(identity)) {
+        throw new Error(
+          `circular expression reference: ${identity} already on the resolution stack ` +
+            `(${[...ctx.stack, identity].join(' -> ')})`,
+        );
+      }
+      // Register this reference's override keys up front, so a reference whose
+      // keys never match anything still surfaces in the diagnostics (§5.4).
+      if (item.overrides !== undefined && !ctx.overrideReg.has(item.overrides)) {
+        ctx.overrideReg.set(item.overrides, { ref: item.expression, used: new Set() });
+      }
       const childInherited: Inherited = {
         tool: item.tool ?? inherited.tool,
         source: item.source ?? inherited.source,
@@ -418,15 +600,20 @@ function walk(
           );
         }
       }
-      walk(
-        bundle.produces as unknown as ProduceNode[],
-        'p',
-        path,
-        chain,
-        idSeen,
-        childCtx,
-        childInherited,
-      );
+      ctx.stack.push(identity);
+      try {
+        walk(
+          bundle.produces as unknown as ProduceNode[],
+          'p',
+          path,
+          chain,
+          idSeen,
+          childCtx,
+          childInherited,
+        );
+      } finally {
+        ctx.stack.pop();
+      }
     }
   }
 }

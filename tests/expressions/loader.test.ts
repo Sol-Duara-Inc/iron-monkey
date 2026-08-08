@@ -131,7 +131,7 @@ describe('loadExpressionRegistry — error cases', () => {
   it('fails with clear error on unresolvable reference', () => {
     const registry = loadExpressionRegistry(BUNDLED_DIR);
     expect(() => registry.resolve('nonexistent')).toThrow(
-      "No expression bundle found for 'nonexistent'",
+      "Unknown expression identity: no bundle found for 'nonexistent'",
     );
   });
 
@@ -178,7 +178,9 @@ describe('loadExpressionRegistry — error cases', () => {
     // The good bundle is indexed and resolvable; the bad one is absent.
     expect(registry.list().map((b) => b.name)).toEqual(['good-one']);
     expect(registry.resolve('good-one').expression).toBe('good-one');
-    expect(() => registry.resolve('bad')).toThrow("No expression bundle found for 'bad'");
+    expect(() => registry.resolve('bad')).toThrow(
+      "Unknown expression identity: no bundle found for 'bad'",
+    );
   });
 
   it('accepts duplicate noun.verb events without explicit ids', async () => {
@@ -272,7 +274,9 @@ describe('loadExpressionRegistry — resilience edge paths', () => {
   it('yields an empty registry for a nonexistent directory; resolution fails clearly', () => {
     const registry = loadExpressionRegistry('/no/such/dir/anywhere');
     expect(registry.list()).toEqual([]);
-    expect(() => registry.resolve('anything')).toThrow(/No expression bundle found/);
+    expect(() => registry.resolve('anything')).toThrow(
+      /Unknown expression identity: no bundle found/,
+    );
   });
 
   it('skips an unreadable entry (a directory named *.yaml) with a warning', async () => {

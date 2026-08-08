@@ -338,7 +338,9 @@ function buildRegistry(
       }
 
       if (candidates.length === 0) {
-        throw new Error(`No expression bundle found for '${ref}'. Searched in ${searchedIn}.`);
+        throw new Error(
+          `Unknown expression identity: no bundle found for '${ref}'. Searched in ${searchedIn}.`,
+        );
       }
 
       return candidates[0].bundle;
@@ -381,7 +383,7 @@ function buildRegistry(
       // points the caller at what was searched, not just what wasn't found.
       const tried = candidates.map((c) => `${c.group}/${c.author}/${c.name}`).join(', ');
       throw new Error(
-        `No expression bundle resolved for '${ref}' under context ` +
+        `Unknown expression identity: no bundle resolved for '${ref}' under context ` +
           `${context.group}/${context.author}. Tried: ${tried}. Searched in ${searchedIn}.`,
       );
     },

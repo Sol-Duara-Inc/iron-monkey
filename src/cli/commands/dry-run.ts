@@ -24,6 +24,9 @@ export function dryRunCommand(): Command {
     const workflow = await validateWorkflow(workflowPath);
     const registry = loadExpressionRegistry();
     const mainChain = resolveChainTree(workflow, registry);
+    for (const d of mainChain.diagnostics ?? []) {
+      logger.warn({ diagnostic: d }, 'resolution diagnostic (RFC §6.2)');
+    }
 
     const injections = parseInjections((options.inject as string[]) ?? []);
     const busName = resolveBusName(config, options.bus as string | undefined);

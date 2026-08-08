@@ -45,6 +45,9 @@ export function validateCommand(): Command {
     }
 
     const mainChain = resolveChainTree(workflow, registry);
+    for (const d of mainChain.diagnostics ?? []) {
+      logger.warn({ diagnostic: d }, 'resolution diagnostic (RFC §6.2)');
+    }
     const busName = resolveBusName(config, options.bus as string | undefined);
 
     const manifest = await buildManifest(

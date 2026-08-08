@@ -48,10 +48,10 @@ workflow:
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
       overrides:
-        service.deployed:
+        dev.cdevents.service.deployed:
           tool: gke-prod
           source: https://gke.example.com/
-        service.published:
+        dev.cdevents.service.published:
           tool: gke-prod
           source: https://gke.example.com/
 

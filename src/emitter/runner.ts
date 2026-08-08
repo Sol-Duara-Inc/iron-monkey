@@ -145,6 +145,9 @@ export async function runWorkflow(
   const workflow = await resolvedSource.getWorkflow();
   const registry = loadExpressionRegistry();
   const mainChain = resolveChainTree(workflow, registry);
+  for (const d of mainChain.diagnostics ?? []) {
+    logger.warn({ diagnostic: d }, 'resolution diagnostic (RFC §6.2)');
+  }
 
   // NOTE: the interval override is applied at scheduling time by the manifest
   // builder (via BuildManifestOptions.interval → TimingAllocator), not by

@@ -34,10 +34,10 @@ workflow:
       tool: jenkins-prod
       source: https://jenkins.spin-dev.io/
       overrides:
-        service.deployed:
+        dev.cdevents.service.deployed:
           tool: gke-prod
           source: https://gke.spin-dev.io/auth
-        service.published:
+        dev.cdevents.service.published:
           tool: gke-prod
           source: https://gke.spin-dev.io/auth
 

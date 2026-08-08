@@ -327,11 +327,59 @@ export function resolveEventType(authored: string, catalog: EventCatalog): Resol
 }
 
 /**
- * Extracts the `subject.predicate` key from any §6.1 spelling — colon spec
- * and embedded version stripped, both `dev.cdevents.*` and `dev.cdeventsx.*`
- * namespaces — without touching the catalog. Returns `null` when the string
- * is not a CDEvent type. This is the catalog-free parse behind
- * `workflowEventId` derivation and bundle collision detection.
+ * The syntactic normal form of an event-type string: namespace + subject +
+ * predicate + optional EXACT version. The canonical embedded form and the
+ * colon form normalize identically (§6.1); a colon RANGE is not a normal
+ * form (`null` — ranges never serve as §5.4 override keys). This is the
+ * catalog-free parse behind override-key matching, `workflowEventId`
+ * derivation, and bundle collision detection.
+ */
+export interface TypeKey {
+  /** `'cdevents'` or `'cdeventsx'` — namespaces never cross. */
+  ns: string;
+  subject: string;
+  predicate: string;
+  /** The exact version named by the spelling, or `''` when versionless. */
+  version: string;
+}
+
+/**
+ * Parses one §6.1 spelling into its {@link TypeKey}, or `null` when the
+ * string is not a CDEvent type (or carries a colon RANGE, which has no
+ * syntactic normal form).
+ */
+export function parseTypeKey(authored: string): TypeKey | null {
+  const colonIdx = authored.indexOf(':');
+  let base = colonIdx === -1 ? authored : authored.slice(0, colonIdx);
+  let version = '';
+  if (colonIdx !== -1) {
+    const spec = authored.slice(colonIdx + 1);
+    if (!isExactVersion(spec)) return null; // ranges are not type keys
+    version = spec;
+  } else {
+    const m = EMBEDDED_VERSION.exec(base);
+    if (m !== null) {
+      base = m[1];
+      version = m[2];
+    }
+  }
+  const parts = base.split('.');
+  if (
+    parts.length !== 4 ||
+    parts[0] !== 'dev' ||
+    (parts[1] !== 'cdevents' && parts[1] !== 'cdeventsx')
+  ) {
+    return null;
+  }
+  return { ns: parts[1], subject: parts[2], predicate: parts[3], version };
+}
+
+/**
+ * Extracts the `subject.predicate` key from any §6.1 spelling. Returns
+ * `null` when the string is not a CDEvent type. Unlike {@link parseTypeKey},
+ * colon ranges are accepted (the range is simply discarded) and versioned
+ * extension types with extra segments still parse — this is the lenient
+ * label parse, not the override-key normal form.
  */
 export function subjectPredicateOfType(
   authored: string,

@@ -187,8 +187,14 @@ describe('planTiming — blocking waits shift siblings; detached never does', ()
   });
 
   it('is deterministic under a seed', () => {
+    // Each plan bases at its own Date.now(); determinism means identical
+    // RELATIVE offsets, so normalize both plans to their first event's time.
+    const offsets = (m: Map<string, number>): [string, number][] => {
+      const base = [...m.values()][0];
+      return [...m.entries()].map(([k, v]) => [k, v - base]);
+    };
     const a = planTiming(spawningTree('blocking'), { seed: 42 });
     const b = planTiming(spawningTree('blocking'), { seed: 42 });
-    expect([...a.entries()]).toEqual([...b.entries()]);
+    expect(offsets(a)).toEqual(offsets(b));
   });
 });

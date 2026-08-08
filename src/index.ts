@@ -15,7 +15,12 @@
  */
 
 export { validateWorkflow } from './workflow/parser.js';
-export { resolveChainTree, resolveExpressionTree, flattenChains } from './workflow/chain-tree.js';
+export {
+  resolveChainTree,
+  resolveExpressionTree,
+  flattenChains,
+  resolveAnchor,
+} from './workflow/chain-tree.js';
 export { WorkflowSource, FileWorkflowSource } from './workflow/source.js';
 export type { WorkflowDefinition } from './workflow/source.js';
 export { loadConfig, resolveBusName } from './config/loader.js';
@@ -32,9 +37,10 @@ export {
   parseEventCatalog,
   resolveEventType,
   subjectPredicateOfType,
+  parseTypeKey,
   compareVersions,
 } from './schema/catalog.js';
-export type { EventCatalog, ResolvedEventType } from './schema/catalog.js';
+export type { EventCatalog, ResolvedEventType, TypeKey } from './schema/catalog.js';
 export { validateWorkflowDoc } from './workflow/schema.js';
 export { validateBundleDoc } from './expressions/schema.js';
 export { createBus } from './bus/interface.js';

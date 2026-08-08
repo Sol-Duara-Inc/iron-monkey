@@ -31,7 +31,7 @@ describe('loadExpressionRegistry — name-hint enforcement', () => {
     expect(findings[0].skipped).toBe(true);
     expect(findings[0].identity).toBe('test-group/tester/build');
     expect(findings[0].result.violations[0].hint).toBe('build');
-    expect(() => registry.resolve('build')).toThrow(/No expression bundle found/);
+    expect(() => registry.resolve('build')).toThrow(/Unknown expression identity: no bundle found/);
   });
 
   it('loads a bundle whose hint is satisfied by delegation', async () => {
