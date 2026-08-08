@@ -237,3 +237,43 @@ export function composeVerdict(
     .join(' ');
   return `${color} ${reason}${factStr ? ` | ${factStr}` : ''}`;
 }
+
+// ── round report (pure rendering; the orchestrator only writes the file) ──────
+
+/** Everything the round report needs, gathered by the orchestrator. */
+export interface ReportInput {
+  color: 'GREEN' | 'RED';
+  reason: string;
+  roundDir: string;
+  facts: Record<string, string>;
+  instanceId?: string;
+  discrepancies: string[];
+  teardownNote: string;
+  judgeRequested: boolean;
+}
+
+/** Renders the §9 report-back markdown for a round. */
+export function renderReport(input: ReportInput): string {
+  const { color, reason, roundDir, facts, instanceId, discrepancies, teardownNote } = input;
+  return [
+    `# Contract bench round — ${color}`,
+    '',
+    `- **Round dir**: ${roundDir}`,
+    `- **conduit-go**: ${facts.sha ?? 'unrecorded'}${facts.dirty === 'true' ? ' (DIRTY)' : ''}`,
+    `- **Suite blob**: ${facts.suiteSha ?? 'unrecorded'}${facts.suiteDirty === 'true' ? ' (DIRTY)' : ''}`,
+    `- **instanceId**: ${instanceId ?? 'never captured'}`,
+    `- **Byte-copy**: ${facts.bytecopy ?? 'not run'}`,
+    `- **Gates**: ${facts.gates ?? 'not run'}`,
+    `- **Identical-siblings**: ${facts.siblings ?? 'not run'}`,
+    `- **Verdict**: ${color} — ${reason}`,
+    `- **Teardown**: ${teardownNote}`,
+    '',
+    '## Discrepancies (brief vs observed)',
+    ...(discrepancies.length ? discrepancies.map((d) => `- ${d}`) : ['- none']),
+    '',
+    '## Dispositions observed',
+    '- bench-level calls observed register 200s only; suite-level dispositions are in suite.verbose.log',
+    '',
+    `Judge: ${input.judgeRequested ? 'requested but not enabled in this build' : 'not enabled'}`,
+  ].join('\n');
+}

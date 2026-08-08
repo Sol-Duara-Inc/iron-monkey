@@ -31,6 +31,7 @@ import {
   assertIdenticalSiblings,
   compareFixtureTrees,
   composeVerdict,
+  renderReport,
 } from './lib.js';
 import type { BootSignals } from './lib.js';
 
@@ -122,37 +123,40 @@ async function teardown(round: Round): Promise<string> {
   return `pid ${pid} terminated; engine port free: ${engineFree}`;
 }
 
-async function fail(round: Round, reason: string): Promise<never> {
-  const teardownNote = await teardown(round);
-  artifact(round, 'round.verdict', composeVerdict('RED', reason, round.facts));
-  writeReport(round, 'RED', reason, teardownNote);
-  console.error(`\nROUND RED — ${reason}\nround dir: ${round.dir}`);
-  process.exit(1);
-}
+/** A red-round outcome thrown by any step; ONE finalize path handles it. */
+class RoundFailure extends Error {}
 
-function writeReport(round: Round, color: string, reason: string, teardownNote: string): void {
-  const lines = [
-    `# Contract bench round — ${color}`,
-    '',
-    `- **Round dir**: ${round.dir}`,
-    `- **conduit-go**: ${round.facts.sha ?? 'unrecorded'}${round.facts.dirty === 'true' ? ' (DIRTY)' : ''}`,
-    `- **Suite blob**: ${round.facts.suiteSha ?? 'unrecorded'}${round.facts.suiteDirty === 'true' ? ' (DIRTY)' : ''}`,
-    `- **instanceId**: ${round.instanceId ?? 'never captured'}`,
-    `- **Byte-copy**: ${round.facts.bytecopy ?? 'not run'}`,
-    `- **Gates**: ${round.facts.gates ?? 'not run'}`,
-    `- **Identical-siblings**: ${round.facts.siblings ?? 'not run'}`,
-    `- **Verdict**: ${color} — ${reason}`,
-    `- **Teardown**: ${teardownNote}`,
-    '',
-    '## Discrepancies (brief vs observed)',
-    ...(round.discrepancies.length ? round.discrepancies.map((d) => `- ${d}`) : ['- none']),
-    '',
-    '## Dispositions observed',
-    '- bench-level calls observed register 200s only; suite-level dispositions are in suite.verbose.log',
-    '',
-    `Judge: ${process.env.BENCH_JUDGE ? 'requested but not enabled in this build' : 'not enabled'}`,
-  ];
-  artifact(round, 'report.md', lines.join('\n'));
+let finalized = false;
+let currentRound: Round | undefined;
+
+/**
+ * The single exit path for every outcome: teardown by pid, write verdict and
+ * report, log, set the process exit code. Guarded against double entry
+ * (signal during finalize, failure inside failure).
+ */
+async function finalize(round: Round, color: 'GREEN' | 'RED', reason: string): Promise<void> {
+  if (finalized) return;
+  finalized = true;
+  const teardownNote = await teardown(round);
+  artifact(round, 'round.verdict', composeVerdict(color, reason, round.facts));
+  artifact(
+    round,
+    'report.md',
+    renderReport({
+      color,
+      reason,
+      roundDir: round.dir,
+      facts: round.facts,
+      instanceId: round.instanceId,
+      discrepancies: round.discrepancies,
+      teardownNote,
+      judgeRequested: Boolean(process.env.BENCH_JUDGE),
+    }),
+  );
+  if (color === 'RED') {
+    console.error(`\nROUND RED — ${reason}\nround dir: ${round.dir}`);
+    process.exitCode = 1;
+  }
 }
 
 async function main(): Promise<void> {
@@ -160,12 +164,13 @@ async function main(): Promise<void> {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const roundsRoot = process.env.BENCH_ROUNDS_DIR ?? path.join(IM_ROOT, 'bench/rounds');
   const round: Round = { dir: path.join(roundsRoot, stamp), facts: {}, discrepancies: [] };
+  currentRound = round;
   mkdirSync(path.join(round.dir, 'register'), { recursive: true });
   mkdirSync(path.join(round.dir, 'bin'), { recursive: true });
 
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     process.on(sig, () => {
-      void fail(round, `interrupted (${sig})`);
+      void finalize(round, 'RED', `interrupted (${sig})`).then(() => process.exit(1));
     });
   }
 
@@ -177,8 +182,7 @@ async function main(): Promise<void> {
   artifact(round, 'conduit-go.sha', `${sha}${dirty ? '-dirty' : ''}`);
   if (process.env.BENCH_EXPECTED_SHA) {
     if (!sha.startsWith(process.env.BENCH_EXPECTED_SHA) || dirty) {
-      await fail(
-        round,
+      throw new RoundFailure(
         `pin mismatch: expected ${process.env.BENCH_EXPECTED_SHA}, at ${sha.slice(0, 12)}${dirty ? '-dirty' : ''}`,
       );
     }
@@ -207,7 +211,9 @@ async function main(): Promise<void> {
   round.facts.bytecopy =
     divergent.length === 0 ? `identical (${bytecopy.length} files)` : 'DIVERGENT';
   if (divergent.length > 0) {
-    await fail(round, `byte-copy gate: ${divergent.length} fixture(s) not identical to canonical`);
+    throw new RoundFailure(
+      `byte-copy gate: ${divergent.length} fixture(s) not identical to canonical`,
+    );
   }
 
   // §3.3 Build conduitd from the pinned checkout.
@@ -215,7 +221,7 @@ async function main(): Promise<void> {
   try {
     execFileSync('go', ['build', '-o', bin, './cmd/conduitd'], { cwd: CONDUIT_DIR });
   } catch (err) {
-    await fail(round, `go build failed: ${(err as Error).message}`);
+    throw new RoundFailure(`go build failed: ${(err as Error).message}`);
   }
 
   // §3.4 Port-isolated boot; parse signals, never sleep-and-hope.
@@ -264,9 +270,8 @@ async function main(): Promise<void> {
       clearInterval(poll);
       reject(new Error(`daemon exited during boot (code ${code})`));
     });
-  }).catch(async (err: Error) => {
-    await fail(round, `boot: ${err.message}`);
-    throw err; // unreachable — fail() exits
+  }).catch((err: Error) => {
+    throw new RoundFailure(`boot: ${err.message}`);
   });
 
   round.instanceId = signals.instanceId;
@@ -287,7 +292,7 @@ async function main(): Promise<void> {
       2,
     ),
   );
-  if (!skipVerdict.ok) await fail(round, `catalog contract: ${skipVerdict.reason}`);
+  if (!skipVerdict.ok) throw new RoundFailure(`catalog contract: ${skipVerdict.reason}`);
 
   // Health = a real register, per workflow; instanceId must match the boot log.
   const base = `http://localhost:${engine}`;
@@ -308,21 +313,20 @@ async function main(): Promise<void> {
       const body = await register(workflowId);
       artifact(round, `register/${workflowId}.json`, JSON.stringify(body, null, 2));
       if (body.instanceId !== round.instanceId) {
-        await fail(
-          round,
+        throw new RoundFailure(
           `authority mismatch: boot ${round.instanceId} vs register ${String(body.instanceId)}`,
         );
       }
       if (workflowId === FANOUT_ID) fanoutRegister = body;
     }
   } catch (err) {
-    await fail(round, `health register: ${(err as Error).message}`);
+    throw new RoundFailure(`health register: ${(err as Error).message}`);
   }
 
   // §5 convergence detail: identical siblings disambiguated structurally.
   const siblings = assertIdenticalSiblings(fanoutRegister, 'p1.d0', 'p1.d1');
   round.facts.siblings = siblings.ok ? 'pass' : `FAIL (${siblings.reason})`;
-  if (!siblings.ok) await fail(round, `identical-siblings: ${siblings.reason}`);
+  if (!siblings.ok) throw new RoundFailure(`identical-siblings: ${siblings.reason}`);
 
   // §3.5 Run the suite byte-unchanged, both gates armed.
   const suiteJsonPath = path.join(round.dir, 'suite.json');
@@ -362,7 +366,9 @@ async function main(): Promise<void> {
   try {
     suiteJson = JSON.parse(readFileSync(suiteJsonPath, 'utf-8'));
   } catch {
-    await fail(round, 'suite JSON report missing/unparsable — round has no adjudicable record');
+    throw new RoundFailure(
+      'suite JSON report missing/unparsable — round has no adjudicable record',
+    );
   }
   const gateVerdict = evaluateGates(suiteJson, GATE_TITLES);
   artifact(
@@ -371,34 +377,30 @@ async function main(): Promise<void> {
     JSON.stringify({ ...gateVerdict, siblings, instanceId: round.instanceId }, null, 2),
   );
   round.facts.gates = gateVerdict.ok ? 'executed+passed (2/2)' : 'FAIL';
-  if (!gateVerdict.ok) await fail(round, `gates: ${gateVerdict.reason}`);
+  if (!gateVerdict.ok) throw new RoundFailure(`gates: ${gateVerdict.reason}`);
 
   // Round-envelope authority stability: one more register after the suite.
   try {
     const post = await register(WORKFLOW_ID);
     if (post.instanceId !== round.instanceId) {
-      await fail(round, `authority changed during round: now ${String(post.instanceId)}`);
+      throw new RoundFailure(`authority changed during round: now ${String(post.instanceId)}`);
     }
   } catch (err) {
-    await fail(round, `post-suite stability register: ${(err as Error).message}`);
+    throw new RoundFailure(`post-suite stability register: ${(err as Error).message}`);
   }
 
-  // §3.9 Teardown by pid; verify ports free; verdict + report.
-  const teardownNote = await teardown(round);
-  const verdict = composeVerdict('GREEN', 'round converged', {
-    sha: `${round.facts.sha}${dirty ? '-dirty' : ''}`,
-    gates: '2/2',
-    siblings: 'pass',
-    suiteExit: String(suiteExit),
-    instanceId: round.instanceId ?? '',
-  });
-  artifact(round, 'round.verdict', verdict);
-  writeReport(round, 'GREEN', 'round converged', teardownNote);
+  // §3.9 One exit path for success too: teardown, verdict, report.
+  await finalize(round, 'GREEN', 'round converged');
   console.log(`\nROUND GREEN — ${round.dir}`);
-  console.log(verdict);
+  console.log(composeVerdict('GREEN', 'round converged', round.facts));
 }
 
-main().catch((err: Error) => {
-  console.error(`bench: unhandled failure: ${err.message}`);
-  process.exit(1);
+main().catch(async (err: Error) => {
+  const reason = err instanceof RoundFailure ? err.message : `unhandled failure: ${err.message}`;
+  // The round object lives inside main(); when failure escapes before the
+  // finalize guard has run, currentRound (set at round creation) lets the
+  // catch still produce a red, torn-down, reported round.
+  if (currentRound) await finalize(currentRound, 'RED', reason);
+  else console.error(`bench: ${reason}`);
+  process.exit(process.exitCode ?? 1);
 });

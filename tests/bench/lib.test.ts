@@ -15,6 +15,7 @@ import {
   assertIdenticalSiblings,
   compareFixtureTrees,
   composeVerdict,
+  renderReport,
 } from '../../bench/lib.js';
 
 const BOOT_LOG = `2026/08/07 22:27:43 engine: catalog skip (name hints): /repo/pkg/cdrus/testdata/acme.tester.nightly-build.expression.yaml
@@ -190,5 +191,61 @@ describe('composeVerdict', () => {
 
   it('omits the facts separator when there are none', () => {
     expect(composeVerdict('RED', 'boot failed', {})).toBe('RED boot failed');
+  });
+});
+
+describe('renderReport — pure §9 report rendering', () => {
+  const base = {
+    color: 'GREEN' as const,
+    reason: 'round converged',
+    roundDir: '/rounds/x',
+    facts: {
+      sha: 'abc123',
+      dirty: 'false',
+      bytecopy: 'identical (17 files)',
+      gates: 'executed+passed (2/2)',
+    },
+    instanceId: 'conduitd:u@h:1:aa',
+    discrepancies: [],
+    teardownNote: 'pid 5 terminated; engine port free: true',
+    judgeRequested: false,
+  };
+
+  it('renders the green report with facts and teardown', () => {
+    const md = renderReport(base);
+    expect(md).toContain('# Contract bench round — GREEN');
+    expect(md).toContain('**conduit-go**: abc123');
+    expect(md).toContain('**Gates**: executed+passed (2/2)');
+    expect(md).toContain('- none');
+    expect(md).toContain('Judge: not enabled');
+  });
+
+  it('marks dirty trees and lists discrepancies on a red round', () => {
+    const md = renderReport({
+      ...base,
+      color: 'RED',
+      reason: 'gates: fanout skipped',
+      facts: { ...base.facts, dirty: 'true', suiteDirty: 'true', suiteSha: 'def456' },
+      discrepancies: ['suite has uncommitted changes'],
+      judgeRequested: true,
+    });
+    expect(md).toContain('— RED');
+    expect(md).toContain('abc123 (DIRTY)');
+    expect(md).toContain('def456 (DIRTY)');
+    expect(md).toContain('- suite has uncommitted changes');
+    expect(md).toContain('requested but not enabled');
+  });
+
+  it('renders placeholders when a round died before capturing anything', () => {
+    const md = renderReport({
+      ...base,
+      color: 'RED',
+      reason: 'go build failed',
+      facts: {},
+      instanceId: undefined,
+    });
+    expect(md).toContain('**conduit-go**: unrecorded');
+    expect(md).toContain('**instanceId**: never captured');
+    expect(md).toContain('**Gates**: not run');
   });
 });
