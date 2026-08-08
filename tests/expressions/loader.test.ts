@@ -192,7 +192,7 @@ describe('loadExpressionRegistry — error cases', () => {
 
   it('accepts duplicate noun.verb events without explicit ids', async () => {
     // Position is identity. Downstream code allocates unique positional ids at
-    // expansion time — see resolveProduces in src/workflow/parser.ts.
+    // expansion time — see resolveChainTree in src/workflow/chain-tree.ts.
     const dir = await makeTmpDir();
     await writeFile(
       path.join(dir, 'collision.yaml'),

@@ -14,7 +14,7 @@
  * over config loading, manifest building, injection, and bus management.
  */
 
-export { validateWorkflow, resolveProduces } from './workflow/parser.js';
+export { validateWorkflow } from './workflow/parser.js';
 export { resolveChainTree } from './workflow/chain-tree.js';
 export { WorkflowSource, FileWorkflowSource } from './workflow/source.js';
 export type { WorkflowDefinition } from './workflow/source.js';

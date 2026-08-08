@@ -128,7 +128,7 @@ export interface ExpressionOverride {
 /**
  * An expression produce item in the workflow `produces` list. References a
  * CDrus expression bundle by path-style identity; the bundle is expanded into
- * one or more CDEvent entries by {@link resolveProduces}. Item-level fields and
+ * one or more CDEvent entries by `resolveChainTree`. Item-level fields and
  * `overrides` allow fine-grained customisation without forking the bundle.
  */
 export interface ExpressionItem {

@@ -63,7 +63,7 @@ export function nounVerbFromType(eventType: string): string {
  *
  * Duplicate `noun.verb` events without explicit `id` fields are **accepted**
  * — position in the `produces` array disambiguates them, and downstream code
- * (`resolveProduces` in the workflow parser) allocates unique positional ids
+ * (`resolveChainTree`) allocates unique positional ids
  * (`noun-verb`, `noun-verb-1`, `noun-verb-2`, …) at expansion time. Authors who
  * want explicit handles can still supply an `id` and that wins over the
  * positional default.

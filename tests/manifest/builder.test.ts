@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { buildManifest } from '../../src/manifest/builder.js';
-import { validateWorkflow, resolveProduces } from '../../src/workflow/parser.js';
+import { validateWorkflow } from '../../src/workflow/parser.js';
+import { resolveChainTree } from '../../src/workflow/chain-tree.js';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
 import type { ResolvedEvent } from '../../src/workflow/parser.js';
 import type { IronMonkeyConfig } from '../../src/config/types.js';
@@ -157,7 +158,7 @@ describe('buildManifest — real workflow end-to-end', () => {
   it('builds a schema-valid manifest from prod-auth-hotfix-fast-path.yaml', async () => {
     const wf = await validateWorkflow(path.join(WORKFLOWS_DIR, 'prod-auth-hotfix-fast-path.yaml'));
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
-    const events = resolveProduces(wf, registry);
+    const mainChain = resolveChainTree(wf, registry);
 
     const cfg: IronMonkeyConfig = {
       buses: { default: { type: 'rabbitmq', url: 'amqp://localhost' } },
@@ -170,7 +171,7 @@ describe('buildManifest — real workflow end-to-end', () => {
 
     const manifest = await buildManifest(
       { id: wf.workflow.id, name: wf.workflow.name },
-      events,
+      mainChain,
       cfg,
       { noConduit: true },
     );

@@ -1,7 +1,7 @@
 /**
  * @file jb-catalog.test.ts
  * End-to-end integration test exercising the FULL Iron Monkey pipeline
- * (parser → expression registry → resolveProduces → buildManifest →
+ * (parser → expression registry → resolveChainTree → buildManifest →
  * applyInjections → bus.emit) against the real JB-style workflows under
  * `examples/workflows/` and the real expression catalog under `expressions/`.
  *

@@ -20,7 +20,6 @@ vi.mock('../../src/config/loader.js', () => ({
 
 vi.mock('../../src/workflow/parser.js', () => ({
   validateWorkflow: vi.fn(),
-  resolveProduces: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock('../../src/expressions/loader.js', () => ({

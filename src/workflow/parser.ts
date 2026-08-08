@@ -1,23 +1,16 @@
 /**
  * @module workflow/parser
- * Parses and validates workflow YAML files, then resolves the `produces` list
- * into a flat, ordered array of concrete CDEvent descriptors. Each item in
- * `produces` is either a direct `event` entry or an `expression` reference
- * that is expanded via the expression registry. Workflow-level `defaults` and
- * per-expression `overrides` are merged using a deep-merge strategy so more
- * specific values always win.
+ * Parses and schema-validates workflow YAML files. Resolution of the
+ * `produces` grammar into chains is {@link resolveChainTree}'s job
+ * (`workflow/chain-tree.ts`) — the legacy flat resolver was removed at CDrus
+ * 0.1.0 adoption because it silently dropped `spawn`/`detach` chains.
  */
 
 import { readFile } from 'fs/promises';
 import yaml from 'js-yaml';
 import { createAjv2020 } from '../util/ajv.js';
 import { workflowSchema } from './schema.js';
-import { isEventItem, isExpressionItem } from './types.js';
-import { nounVerbFromType } from '../expressions/loader.js';
-import { deepMerge } from '../util/deep-merge.js';
-import type { WorkflowFile, WorkflowDefaults } from './types.js';
-import type { ExpressionRegistry } from '../expressions/loader.js';
-import type { BundleEventItem, ExpressionBundle } from '../expressions/types.js';
+import type { WorkflowFile } from './types.js';
 
 const validateWorkflowSchema = createAjv2020().compile(workflowSchema);
 
@@ -76,8 +69,10 @@ export async function validateWorkflow(filePath: string): Promise<WorkflowFile> 
 }
 
 /**
- * A fully resolved CDEvent descriptor ready for manifest construction.
- * Produced by {@link resolveProduces} after expanding expression references and
+ * A flat, fully resolved CDEvent descriptor accepted by `buildManifest` as a
+ * convenience input for programmatic callers that assemble simple sequences
+ * by hand (no chains involved). The live path resolves workflows with
+ * `resolveChainTree` after expanding expression references and
  * applying workflow defaults and per-event overrides.
  */
 export interface ResolvedEvent {
@@ -120,141 +115,3 @@ export interface ResolvedEvent {
   expressionRef?: string;
 }
 
-/**
- * Recursively flattens a bundle's `produces` list into a sequence of concrete
- * {@link BundleEventItem}s by expanding any nested `expression:` references.
- * `detach` sub-chains are intentionally skipped — they are side-chains that the
- * main sequence does not wait on.
- *
- * The bundle's own `group` and `author` are used as the disambiguation context
- * when resolving bare expression names that exist in multiple groups.
- */
-function flattenBundleEvents(
-  bundle: ExpressionBundle,
-  registry: ExpressionRegistry,
-): BundleEventItem[] {
-  const result: BundleEventItem[] = [];
-  const context = { group: bundle.group, author: bundle.author };
-  for (const item of bundle.produces) {
-    if ('event' in item) {
-      result.push(item);
-    } else {
-      const nested = registry.resolveWithContext(item.expression, context);
-      result.push(...flattenBundleEvents(nested, registry));
-    }
-  }
-  return result;
-}
-
-/**
- * Resolves the `produces` list of a validated workflow into a flat, ordered
- * array of {@link ResolvedEvent} descriptors. Direct `event:` items are
- * converted one-to-one; `expression:` items are expanded into all CDEvents
- * declared by the matching bundle. Workflow defaults and per-event overrides
- * are merged throughout.
- *
- * @param workflow - A validated {@link WorkflowFile} from {@link validateWorkflow}.
- * @param registry - The expression registry from {@link loadExpressionRegistry},
- *   used to look up and expand expression bundles.
- * @returns An ordered array of resolved event descriptors suitable for passing
- *   to {@link buildManifest}.
- * @throws {Error} If an expression reference cannot be resolved in the registry.
- */
-export function resolveProduces(
-  workflow: WorkflowFile,
-  registry: ExpressionRegistry,
-): ResolvedEvent[] {
-  const { defaults = {} as WorkflowDefaults, produces } = workflow.workflow;
-  const events: ResolvedEvent[] = [];
-  const idSeen = new Map<string, number>();
-
-  /** Allocates a unique ID by appending a counter suffix when the base ID has been seen before. */
-  const allocateId = (base: string): string => {
-    const count = idSeen.get(base) ?? 0;
-    idSeen.set(base, count + 1);
-    return count === 0 ? base : `${base}-${count}`;
-  };
-
-  for (const item of produces) {
-    if (isEventItem(item)) {
-      const tool = item.tool ?? defaults.tool ?? '';
-      const source = item.source ?? defaults.source ?? '';
-      const pipeline = item.pipeline ?? defaults.pipeline ?? '';
-      const timeout_ms = item.timeout_ms ?? defaults.timeout_ms ?? 5000;
-      const min_wait_ms = item.min_wait_ms ?? defaults.min_wait_ms ?? 100;
-      const eventContent = item.subject?.content ?? item.content ?? {};
-      const mergedContent = deepMerge(defaults.content ?? {}, eventContent);
-
-      const nv = nounVerbFromType(item.event);
-      const id = allocateId(nv.replace('.', '-'));
-
-      events.push({
-        id,
-        type: item.event,
-        tool,
-        source,
-        pipeline,
-        timeout_ms,
-        min_wait_ms,
-        subject: {
-          id: item.subject?.id ?? id,
-          content: Object.keys(mergedContent).length > 0 ? mergedContent : undefined,
-        },
-        origin: 'event',
-      });
-    } else if (isExpressionItem(item)) {
-      const context = {
-        group: workflow.workflow.group ?? '',
-        author: workflow.workflow.author ?? '',
-      };
-      const bundle = registry.resolveWithContext(item.expression, context);
-
-      for (const bundleEvent of flattenBundleEvents(bundle, registry)) {
-        const overrideKey = bundleEvent.id ?? nounVerbFromType(bundleEvent.event);
-        const override = item.overrides?.[overrideKey] ?? {};
-
-        const tool = override.tool ?? item.tool ?? defaults.tool ?? '';
-        const source = override.source ?? item.source ?? defaults.source ?? '';
-        const pipeline = item.pipeline ?? defaults.pipeline ?? '';
-        const timeout_ms =
-          override.timeout_ms ??
-          item.timeout_ms ??
-          bundleEvent.timeout_ms ??
-          defaults.timeout_ms ??
-          5000;
-        const min_wait_ms =
-          override.min_wait_ms ??
-          item.min_wait_ms ??
-          bundleEvent.min_wait_ms ??
-          defaults.min_wait_ms ??
-          100;
-
-        const mergedContent = deepMerge(
-          deepMerge(defaults.content ?? {}, bundleEvent.subject?.content ?? {}),
-          override.content ?? {},
-        );
-
-        const baseId = bundleEvent.id ?? nounVerbFromType(bundleEvent.event).replace('.', '-');
-        const id = allocateId(baseId);
-
-        events.push({
-          id,
-          type: bundleEvent.event,
-          tool,
-          source,
-          pipeline,
-          timeout_ms,
-          min_wait_ms,
-          subject: {
-            id: bundleEvent.subject?.id ?? id,
-            content: Object.keys(mergedContent).length > 0 ? mergedContent : undefined,
-          },
-          origin: 'expression',
-          expressionRef: item.expression,
-        });
-      }
-    }
-  }
-
-  return events;
-}
