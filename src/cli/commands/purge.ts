@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { createCommandContext } from '../context.js';
 
 export function purgeCommand(): Command {
   return new Command('purge')
@@ -16,20 +17,9 @@ export function purgeCommand(): Command {
         process.exit(1);
       }
 
-      const { loadConfig } = await import('../../config/loader.js');
       const { createBus } = await import('../../bus/interface.js');
-      const { createLogger, setLogger } = await import('../../logger/index.js');
 
-      const logger = createLogger({
-        level: options.logLevel as 'info',
-        format: options.logFormat as 'json',
-      });
-      setLogger(logger);
-
-      const config = await loadConfig({
-        configPath: options.config as string | undefined,
-        cliOverrides: {},
-      });
+      const { logger, config } = await createCommandContext(options);
       const busConfig = config.buses[busName];
       if (!busConfig) {
         console.error(`Bus '${busName}' not found in config`);

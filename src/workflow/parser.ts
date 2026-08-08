@@ -6,9 +6,8 @@
  * 0.1.0 adoption because it silently dropped `spawn`/`detach` chains.
  */
 
-import { readFile } from 'fs/promises';
-import yaml from 'js-yaml';
 import { validateWorkflowDoc } from './schema.js';
+import { readTextFileSync, parseYaml, formatAjvErrorLine } from '../util/yaml-file.js';
 import type { WorkflowFile } from './types.js';
 
 /**
@@ -22,19 +21,8 @@ import type { WorkflowFile } from './types.js';
  *   schema validation.
  */
 export async function validateWorkflow(filePath: string): Promise<WorkflowFile> {
-  let raw: string;
-  try {
-    raw = await readFile(filePath, 'utf-8');
-  } catch {
-    throw new Error(`Cannot read workflow file: ${filePath}`);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = yaml.load(raw);
-  } catch (err) {
-    throw new Error(`Failed to parse workflow YAML: ${(err as Error).message}`);
-  }
+  const raw = readTextFileSync(filePath, 'Cannot read workflow file');
+  const parsed = parseYaml(raw, (cause) => `Failed to parse workflow YAML: ${cause}`);
 
   const valid = validateWorkflowDoc(parsed);
   if (!valid) {
@@ -55,7 +43,7 @@ export async function validateWorkflow(filePath: string): Promise<WorkflowFile> 
               return `  ${e.instancePath || '(root)'}: 'stages' field is not allowed — use 'produces' instead (Sympraxis paradigm)`;
             }
           }
-          return `  ${e.instancePath || '(root)'}: ${e.message}`;
+          return formatAjvErrorLine(e);
         },
       )
       .join('\n');

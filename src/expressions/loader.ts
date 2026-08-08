@@ -9,10 +9,10 @@
  * `expression` fields), not inferred from the filename.
  */
 
-import { readFileSync, readdirSync } from 'fs';
+import { readdirSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import yaml from 'js-yaml';
+import { readTextFileSync, parseYaml, formatAjvErrors } from '../util/yaml-file.js';
 import { getLogger } from '../logger/index.js';
 import { checkNameHints, loadHintTable } from '../hints/index.js';
 import type { HintCheckResult, HintTable } from '../hints/index.js';
@@ -71,30 +71,14 @@ export function nounVerbFromType(eventType: string): string {
  *   schema validation.
  */
 function loadBundle(filePath: string): ExpressionBundle {
-  let raw: string;
-  try {
-    raw = readFileSync(filePath, 'utf-8');
-  } catch {
-    throw new Error(`Cannot read expression bundle: ${filePath}`);
-  }
+  const raw = readTextFileSync(filePath, 'Cannot read expression bundle');
+  const parsed = parseYaml(
+    raw,
+    (cause) => `Failed to parse expression bundle YAML at ${filePath}: ${cause}`,
+  );
 
-  let parsed: unknown;
-  try {
-    parsed = yaml.load(raw);
-  } catch (err) {
-    throw new Error(
-      `Failed to parse expression bundle YAML at ${filePath}: ${(err as Error).message}`,
-    );
-  }
-
-  const valid = validateBundleDoc(parsed);
-  if (!valid) {
-    const errors = validateBundleDoc.errors
-      ?.map(
-        (e: { instancePath: string; message?: string }) =>
-          `  ${e.instancePath || '(root)'}: ${e.message}`,
-      )
-      .join('\n');
+  if (!validateBundleDoc(parsed)) {
+    const errors = formatAjvErrors(validateBundleDoc.errors);
     throw new Error(`Expression bundle schema validation failed at ${filePath}:\n${errors}`);
   }
 
