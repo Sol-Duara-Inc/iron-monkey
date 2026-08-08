@@ -217,6 +217,13 @@ export interface DetachedManifestChain {
 export interface Manifest {
   /** UUID uniquely identifying this manifest (and the Iron Monkey run). */
   runId: string;
+  /**
+   * The daemon's boot-minted authority identity (`conduitd:user@host:pid:boot`),
+   * pinned at batch register (Proleptic §3). Absent for offline/bus-authority
+   * runs. A later same-run response carrying a different instanceId means the
+   * minting authority restarted — a run-scoped failure, never a silent fallback.
+   */
+  instanceId?: string;
   /** The workflow `id` field from the YAML. */
   workflowId: string;
   /** The workflow `name` field from the YAML. */

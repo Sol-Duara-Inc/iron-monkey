@@ -33,6 +33,8 @@ import {
   composeVerdict,
   renderReport,
 } from './lib.js';
+import { registerRun } from '../src/chain/register.js';
+import type { RegisterResult } from '../src/chain/register.js';
 import type { BootSignals } from './lib.js';
 
 const IM_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -294,20 +296,17 @@ async function main(): Promise<void> {
   );
   if (!skipVerdict.ok) throw new RoundFailure(`catalog contract: ${skipVerdict.reason}`);
 
-  // Health = a real register, per workflow; instanceId must match the boot log.
+  // Health = a real register, per workflow; instanceId must match the boot
+  // log. Uses the SAME production client the manifest builder uses (503
+  // redelivery included) — the bench exercises the real acquisition path.
   const base = `http://localhost:${engine}`;
-  const register = async (workflowId: string): Promise<Record<string, unknown>> => {
-    const res = await fetch(`${base}/api/runs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workflowId }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (res.status !== 200) throw new Error(`register ${workflowId} → HTTP ${res.status}`);
-    return (await res.json()) as Record<string, unknown>;
+  const register = async (workflowId: string): Promise<RegisterResult> => {
+    const result = await registerRun(workflowId, { url: base });
+    if (!result) throw new Error(`register ${workflowId}: no daemon answered`);
+    return result;
   };
 
-  let fanoutRegister: Record<string, unknown> = {};
+  let fanoutRegister: RegisterResult | undefined;
   try {
     for (const workflowId of [WORKFLOW_ID, FANOUT_ID]) {
       const body = await register(workflowId);

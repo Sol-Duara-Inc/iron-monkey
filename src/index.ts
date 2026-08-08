@@ -23,7 +23,8 @@ export { loadExpressionRegistry, createRegistry } from './expressions/loader.js'
 export { buildManifest } from './manifest/builder.js';
 export { parseInjections } from './injection/parser.js';
 export { applyInjections } from './injection/apply.js';
-export { acquireChainId, ConduitAnsweredError } from './chain/acquire.js';
+export { registerRun, assertRegisterMatchesLocal, ConduitAnsweredError } from './chain/register.js';
+export type { RegisterResult, RegisteredChain, ChainIdResult } from './chain/register.js';
 export { generateFallbackChainId } from './chain/fallback.js';
 export { loadSchemas, validateEvent } from './schema/validator.js';
 export { validateWorkflowDoc } from './workflow/schema.js';

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { buildManifest } from '../../src/manifest/builder.js';
@@ -192,5 +192,88 @@ describe('buildManifest — chain-id acquisition without --no-conduit', () => {
     const manifest = await buildManifest(meta, [singleEvent], config, { noConduit: false });
     expect(manifest.chainIdSource).toBe('fallback');
     expect(manifest.chainId).toMatch(/^urn:sol-duara:fallback:/);
+  });
+});
+
+describe('buildManifest — batch register (Proleptic §1)', () => {
+  const CONDUIT_CFG: IronMonkeyConfig = {
+    buses: { default: { type: 'rabbitmq', url: 'amqp://localhost' } },
+    tools: {},
+    schemasPath: SCHEMAS_DIR,
+    conduit: { url: 'http://conduit.example:8091' },
+  };
+
+  const registerResponse = (chainId: string) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      runId: chainId,
+      instanceId: 'conduitd:u@h:1:boot',
+      issuedAt: '2026-08-09T00:00:00Z',
+      chains: [
+        {
+          chainRef: 'root',
+          chainId,
+          role: 'main',
+          status: 'declared',
+          parentChainId: null,
+          parentChainRef: null,
+          parentEventId: null,
+          linkKind: null,
+          expectedEvents: [
+            {
+              type: singleEvent.type,
+              treePath: 'p0',
+              order: 0,
+              timeoutMs: singleEvent.timeout_ms,
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  it('uses the registered chain set: one call, server-minted id, pinned instanceId', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(registerResponse('99999999-aaaa-4bbb-8ccc-dddddddddddd')),
+    );
+    try {
+      const manifest = await buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false });
+      expect(manifest.chainId).toBe('99999999-aaaa-4bbb-8ccc-dddddddddddd');
+      expect(manifest.chainIdSource).toBe('conduit');
+      expect(manifest.instanceId).toBe('conduitd:u@h:1:boot');
+      expect(fetch).toHaveBeenCalledTimes(1); // ONE batch register, no shim loop
+      const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+      expect(url).toBe('http://conduit.example:8091/api/runs');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('fails the run BEFORE emitting when derivations diverge (producer machine gate)', async () => {
+    const diverged = registerResponse('99999999-aaaa-4bbb-8ccc-dddddddddddd');
+    const body = await diverged.json();
+    body.chains[0].expectedEvents[0].type = 'dev.cdevents.change.merged.0.3.0';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ...diverged, json: async () => body }));
+    try {
+      await expect(
+        buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false }),
+      ).rejects.toThrow(/derivation mismatch/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('falls back offline when no daemon answers the register', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED')));
+    try {
+      const manifest = await buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false });
+      expect(manifest.chainIdSource).toBe('fallback');
+      expect(manifest.chainId).toMatch(/^urn:sol-duara:fallback:/);
+      expect(manifest.instanceId).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

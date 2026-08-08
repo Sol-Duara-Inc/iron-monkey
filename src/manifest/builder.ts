@@ -19,13 +19,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { IdAllocator } from './id-allocator.js';
 import { TimingAllocator } from './timing.js';
 import { buildPathLink, buildEndLink, buildRelationLink } from '../links/builder.js';
-import { acquireChainId, acquireChainIds } from '../chain/acquire.js';
+import { registerRun, assertRegisterMatchesLocal } from '../chain/register.js';
+import { flattenChains } from '../workflow/chain-tree.js';
 import { generateFallbackChainId } from '../chain/fallback.js';
 import { loadSchemas, validateEvent } from '../schema/validator.js';
 import { synthesize } from '../synth/synthesizer.js';
 import type { ResolvedEvent } from '../workflow/parser.js';
 import type { ResolvedChain, ResolvedChainEvent } from '../workflow/chain-tree.js';
-import type { ChainAcquisitionRequest, ChainIdResult } from '../chain/acquire.js';
+import type { ChainIdResult } from '../chain/register.js';
 import type { IronMonkeyConfig } from '../config/types.js';
 import type {
   Manifest,
@@ -89,18 +90,6 @@ interface BuildContext {
   interval?: number;
   workflowName: string;
   seed?: number;
-}
-
-/** Collects an acquisition request for every sub-chain in the tree (depth-first). */
-function collectChainRequests(chain: ResolvedChain, out: ChainAcquisitionRequest[]): void {
-  for (const spawn of chain.spawns) {
-    out.push({
-      chainRef: spawn.chainRef,
-      parentChainRef: spawn.parentChainRef ?? chain.chainRef,
-      linkKind: spawn.linkKind ?? 'TRIGGER',
-    });
-    collectChainRequests(spawn, out);
-  }
 }
 
 /** A built chain's events plus the lookups needed to wire RELATION links from it. */
@@ -339,31 +328,60 @@ export async function buildManifest(
 ): Promise<Manifest> {
   const mainChain = Array.isArray(input) ? eventsToMainChain(input) : input;
 
+  // Every spawned chain's ref, in derivation order (main excluded).
+  const spawnRefs = flattenChains(mainChain)
+    .slice(1)
+    .map((c) => c.chainRef);
+
   let chainId: string;
   let chainIdSource: 'conduit' | 'bus' | 'fallback';
+  let instanceId: string | undefined;
+  const chainIds = new Map<string, ChainIdResult>();
+
+  /** Offline minting: one local URN per spawned chain, named as before. */
+  const mintOffline = (): void => {
+    for (const ref of spawnRefs) {
+      chainIds.set(ref, {
+        chainId: generateFallbackChainId(`${workflowMeta.name}:${ref}`),
+        source: 'fallback',
+      });
+    }
+  };
 
   if (opts.chainId) {
+    // Bus-authority run (e.g. a JB-acquired chainId): the whole run stays
+    // under that authority — spawned chains mint local URNs. The per-chain
+    // Conduit shim this path once used is retired.
     chainId = opts.chainId;
     chainIdSource = opts.chainIdSource ?? 'fallback';
+    mintOffline();
   } else if (opts.noConduit) {
     chainId = generateFallbackChainId(workflowMeta.name);
     chainIdSource = 'fallback';
+    mintOffline();
   } else {
-    const result = await acquireChainId(workflowMeta.name, config.conduit);
-    chainId = result.chainId;
-    chainIdSource = result.source;
+    // ONE atomic batch register mints the entire chain set (Proleptic §1);
+    // null means no daemon answered — the one legitimate offline case.
+    const registered = await registerRun(workflowMeta.id, config.conduit);
+    if (!registered) {
+      chainId = generateFallbackChainId(workflowMeta.name);
+      chainIdSource = 'fallback';
+      mintOffline();
+    } else {
+      // Producer-side machine gate: derivation divergence fails the run
+      // BEFORE any event is thrown.
+      assertRegisterMatchesLocal(registered, mainChain);
+      const main = registered.chains.find((c) => c.role === 'main');
+      chainId = main?.chainId ?? registered.runId;
+      chainIdSource = 'conduit';
+      instanceId = registered.instanceId;
+      for (const chain of registered.chains) {
+        if (chain.role !== 'main') {
+          chainIds.set(chain.chainRef, { chainId: chain.chainId, source: 'conduit' });
+        }
+      }
+    }
   }
-
-  // Acquire a chainId for every sub-chain up front (Conduit → fallback cascade),
-  // keyed by chainRef, so the synchronous build can simply look each one up.
-  const chainRequests: ChainAcquisitionRequest[] = [];
-  collectChainRequests(mainChain, chainRequests);
-  const chainIds = await acquireChainIds(
-    workflowMeta.name,
-    chainRequests,
-    { noConduit: opts.noConduit },
-    config.conduit,
-  );
 
   const schemas = await loadSchemas(config.schemasPath);
   const targetBus = opts.busName ?? process.env.IRON_MONKEY_BUS_NAME ?? 'default';
@@ -397,6 +415,7 @@ export async function buildManifest(
     workflowName: workflowMeta.name,
     chainId,
     chainIdSource,
+    instanceId,
     createdAt: new Date().toISOString(),
     events: mainBuilt.events,
     detachedChains: detachedChains.length > 0 ? detachedChains : undefined,
