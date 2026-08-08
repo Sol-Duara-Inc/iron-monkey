@@ -662,7 +662,9 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       async () => {
         const reg = await postChains({ workflowId: WORKFLOW_ID });
         const chains = chainsOf(reg.body);
-        const detached = chains.find((c) => c.role !== 'main' && c.chainRef.endsWith('.d'));
+        // Ratified anchors are `P.d` (flat form) or `P.d{i}` (nested form) —
+        // select by role, which is normative, rather than by anchor spelling.
+        const detached = chains.find((c) => c.role === 'detached');
         if (!detached) {
           expect.fail(
             `SYMPRAXIS_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain spawned from a parent`,
@@ -670,8 +672,9 @@ describeContract('Sympraxis chain-declaration protocol', () => {
           return;
         }
         const parent = chains.find((c) => c.chainId === detached.parentChainId);
-        // The spawning event sits at the detach anchor: chainRef minus trailing '.d'.
-        const spawnPath = detached.chainRef.replace(/\.d$/, '');
+        // The spawning event sits at the chain's anchor: chainRef minus its
+        // trailing axis segment (`.d`, `.d0`, `.s`, `.s1`, …).
+        const spawnPath = detached.chainRef.replace(/\.[sd]\d*$/, '');
         const spawnEvent = parent?.expectedEvents.find((e) => e.treePath === spawnPath);
         if (!parent || !spawnEvent) {
           expect.fail('could not locate the spawning event for the detached chain');
@@ -979,7 +982,9 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       const ownId = String(((await parse(own)) as { chainId?: string }).chainId);
       expect(ownId).toBe(detached.chainId);
 
-      const cross = await scoped(`${FANOUT_WORKFLOW_ID ?? 'build-fanout'}:root`);
+      // Different-by-construction workflow id: whether it exists or not, the
+      // scope chain cannot belong to it, so the scoped lookup must 404.
+      const cross = await scoped(`not-${WORKFLOW_ID}:root`);
       expect(cross.status).toBe(404); // scope chain belongs to a different workflow
     });
   });
