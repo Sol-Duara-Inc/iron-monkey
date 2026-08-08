@@ -1,0 +1,194 @@
+/**
+ * Unit tests for the contract bench's pure core (bench/lib.ts). The live
+ * round needs Go + a conduit-go checkout and never runs in CI; these tests
+ * make sure the logic that decides a round's COLOR is itself verified —
+ * especially §5's collect ≠ execute rule and the identical-siblings check.
+ */
+import { describe, it, expect } from 'vitest';
+import { mkdirSync, writeFileSync } from 'fs';
+import path from 'path';
+import os from 'os';
+import {
+  parseBootLog,
+  evaluateSkips,
+  evaluateGates,
+  assertIdenticalSiblings,
+  compareFixtureTrees,
+  composeVerdict,
+} from '../../bench/lib.js';
+
+const BOOT_LOG = `2026/08/07 22:27:43 engine: catalog skip (name hints): /repo/pkg/cdrus/testdata/acme.tester.nightly-build.expression.yaml
+2026/08/07 22:27:43 engine: catalog loaded from /repo/pkg/cdrus/testdata (4 workflows)
+2026/08/07 22:27:43 engine: Proleptic protocol listening on :8092 as conduitd:dadisi@host:85360:92b4a491 (witness socket EMPTY — dev boundary)
+2026/08/07 22:27:43 conduit: community edition (plain RBAC), HTTP gateway on :8082`;
+
+describe('parseBootLog', () => {
+  it('extracts instanceId, port, catalog count, and skips', () => {
+    const s = parseBootLog(BOOT_LOG);
+    expect(s.instanceId).toBe('conduitd:dadisi@host:85360:92b4a491');
+    expect(s.port).toBe(8092);
+    expect(s.workflows).toBe(4);
+    expect(s.catalogDir).toBe('/repo/pkg/cdrus/testdata');
+    expect(s.skips).toHaveLength(1);
+  });
+
+  it('returns empty signals for a log with no matches', () => {
+    const s = parseBootLog('garbage\nnothing here');
+    expect(s.instanceId).toBeUndefined();
+    expect(s.skips).toEqual([]);
+  });
+});
+
+describe('evaluateSkips — exactly one expected skip', () => {
+  const EXPECTED = 'acme.tester.nightly-build.expression.yaml';
+
+  it('passes on exactly the dedicated violating fixture', () => {
+    expect(evaluateSkips([`/x/${EXPECTED}`], EXPECTED).ok).toBe(true);
+  });
+
+  it('fails on zero skips (fixture missing = skip path unproven)', () => {
+    const v = evaluateSkips([], EXPECTED);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/saw none/);
+  });
+
+  it('fails on extra skips (catalog contract breach)', () => {
+    const v = evaluateSkips([`/x/${EXPECTED}`, '/x/other.expression.yaml'], EXPECTED);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/saw 2/);
+  });
+
+  it('fails on a single but WRONG skip', () => {
+    const v = evaluateSkips(['/x/unexpected.expression.yaml'], EXPECTED);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/unexpected skip/);
+  });
+});
+
+describe('evaluateGates — §5 collect ≠ execute', () => {
+  const suite = (primary: string, fanout: string, success = true) => ({
+    success,
+    testResults: [
+      {
+        assertionResults: [
+          { fullName: 'x machine gate … (primary)', status: primary },
+          { fullName: 'x machine gate … (fanout)', status: fanout },
+          { fullName: 'unrelated test', status: 'passed' },
+        ],
+      },
+    ],
+  });
+  const TITLES = ['(primary)', '(fanout)'];
+
+  it('passes only when both gates EXECUTED and passed', () => {
+    expect(evaluateGates(suite('passed', 'passed'), TITLES).ok).toBe(true);
+  });
+
+  it('fails when the fanout gate was SKIPPED even though the suite is green', () => {
+    const v = evaluateGates(suite('passed', 'skipped'), TITLES);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/\(fanout\) \[skipped\]/);
+  });
+
+  it('fails when a gate never collected at all', () => {
+    const v = evaluateGates({ success: true, testResults: [] }, TITLES);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/not-found/);
+  });
+
+  it('fails when the suite itself failed, regardless of gates', () => {
+    expect(evaluateGates(suite('passed', 'passed', false), TITLES).ok).toBe(false);
+  });
+
+  it('tolerates malformed reporter output', () => {
+    expect(evaluateGates(null, TITLES).ok).toBe(false);
+    expect(evaluateGates('junk', TITLES).ok).toBe(false);
+  });
+});
+
+describe('assertIdenticalSiblings — disambiguated structurally, never by content', () => {
+  const chain = (ref: string, chainId: string, prefix = ref) => ({
+    chainRef: ref,
+    chainId,
+    role: 'detached',
+    expectedEvents: [
+      { type: 'dev.cdevents.artifact.signed', order: 0, treePath: `${prefix}.p0` },
+      { type: 'dev.cdevents.testoutput.published', order: 1, treePath: `${prefix}.p1` },
+    ],
+  });
+
+  it('passes for identical events with distinct chainIds and treePaths', () => {
+    const body = { chains: [chain('p1.d0', 'id-a'), chain('p1.d1', 'id-b')] };
+    expect(assertIdenticalSiblings(body, 'p1.d0', 'p1.d1').ok).toBe(true);
+  });
+
+  it('fails when siblings share a chainId (merged by content)', () => {
+    const body = { chains: [chain('p1.d0', 'same-id'), chain('p1.d1', 'same-id')] };
+    const v = assertIdenticalSiblings(body, 'p1.d0', 'p1.d1');
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/share a chainId/);
+  });
+
+  it('fails when a sibling is missing from the register', () => {
+    const body = { chains: [chain('p1.d0', 'id-a')] };
+    expect(assertIdenticalSiblings(body, 'p1.d0', 'p1.d1').ok).toBe(false);
+  });
+
+  it('fails when the fixture stops being content-identical', () => {
+    const a = chain('p1.d0', 'id-a');
+    const b = chain('p1.d1', 'id-b');
+    b.expectedEvents[1] = { type: 'dev.cdevents.change.created', order: 1, treePath: 'p1.d1.p1' };
+    expect(assertIdenticalSiblings({ chains: [a, b] }, 'p1.d0', 'p1.d1').ok).toBe(false);
+  });
+
+  it('fails when a sibling is not role detached', () => {
+    const a = chain('p1.d0', 'id-a');
+    const b = { ...chain('p1.d1', 'id-b'), role: 'blocking' };
+    expect(assertIdenticalSiblings({ chains: [a, b] }, 'p1.d0', 'p1.d1').ok).toBe(false);
+  });
+});
+
+describe('compareFixtureTrees — canonical enumerates, mirror answers', () => {
+  function makeTree(): { canonical: string; sources: string; goldens: string } {
+    const root = path.join(
+      os.tmpdir(),
+      `bench-bytecopy-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const canonical = path.join(root, 'canonical');
+    const sources = path.join(root, 'mirror/sources');
+    const goldens = path.join(root, 'mirror/goldens');
+    mkdirSync(path.join(canonical, 'goldens'), { recursive: true });
+    mkdirSync(sources, { recursive: true });
+    mkdirSync(goldens, { recursive: true });
+    return { canonical, sources, goldens };
+  }
+
+  it('reports identical, drift, and missing-mirror per file', () => {
+    const t = makeTree();
+    writeFileSync(path.join(t.canonical, 'same.yaml'), 'a: 1\n');
+    writeFileSync(path.join(t.sources, 'same.yaml'), 'a: 1\n');
+    writeFileSync(path.join(t.canonical, 'drifted.yaml'), 'a: 1\n');
+    writeFileSync(path.join(t.sources, 'drifted.yaml'), 'a: 2\n');
+    writeFileSync(path.join(t.canonical, 'only-canonical.yaml'), 'a: 1\n');
+    writeFileSync(path.join(t.canonical, 'goldens/g.chains.json'), '{}');
+    writeFileSync(path.join(t.goldens, 'g.chains.json'), '{}');
+
+    const report = compareFixtureTrees(t.canonical, t.sources, t.goldens);
+    const byFile = new Map(report.map((e) => [e.file, e.status]));
+    expect(byFile.get('same.yaml')).toBe('identical');
+    expect(byFile.get('drifted.yaml')).toBe('drift');
+    expect(byFile.get('only-canonical.yaml')).toBe('missing-mirror');
+    expect(byFile.get('goldens/g.chains.json')).toBe('identical');
+  });
+});
+
+describe('composeVerdict', () => {
+  it('renders the one-line verdict with facts', () => {
+    const line = composeVerdict('GREEN', 'round converged', { sha: 'abc123', gates: '2/2' });
+    expect(line).toBe('GREEN round converged | sha=abc123 gates=2/2');
+  });
+
+  it('omits the facts separator when there are none', () => {
+    expect(composeVerdict('RED', 'boot failed', {})).toBe('RED boot failed');
+  });
+});
