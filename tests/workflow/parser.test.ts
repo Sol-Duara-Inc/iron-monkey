@@ -3,12 +3,6 @@ import { writeFile, mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { validateWorkflow } from '../../src/workflow/parser.js';
-import { loadExpressionRegistry } from '../../src/expressions/loader.js';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXPRESSIONS_DIR = path.resolve(__dirname, '../../expressions');
-const WORKFLOWS_DIR = path.resolve(__dirname, '../../examples/workflows');
 
 async function writeTmpYaml(content: string): Promise<string> {
   const dir = await mkdir(path.join(os.tmpdir(), 'iron-monkey-test'), { recursive: true }).then(
