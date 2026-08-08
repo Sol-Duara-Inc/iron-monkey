@@ -8,11 +8,8 @@
 
 import { readFile } from 'fs/promises';
 import yaml from 'js-yaml';
-import { createAjv2020 } from '../util/ajv.js';
-import { workflowSchema } from './schema.js';
+import { validateWorkflowDoc } from './schema.js';
 import type { WorkflowFile } from './types.js';
-
-const validateWorkflowSchema = createAjv2020().compile(workflowSchema);
 
 /**
  * Reads, YAML-parses, and schema-validates a workflow file. Provides
@@ -39,9 +36,9 @@ export async function validateWorkflow(filePath: string): Promise<WorkflowFile> 
     throw new Error(`Failed to parse workflow YAML: ${(err as Error).message}`);
   }
 
-  const valid = validateWorkflowSchema(parsed);
+  const valid = validateWorkflowDoc(parsed);
   if (!valid) {
-    const errors = validateWorkflowSchema.errors
+    const errors = validateWorkflowDoc.errors
       ?.map(
         (e: {
           instancePath: string;

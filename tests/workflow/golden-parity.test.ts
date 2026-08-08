@@ -17,11 +17,16 @@ import { readFileSync, readdirSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
-import { resolveChainTree } from '../../src/workflow/chain-tree.js';
+import {
+  resolveChainTree,
+  resolveExpressionTree,
+  flattenChains,
+} from '../../src/workflow/chain-tree.js';
 import { validateWorkflow } from '../../src/workflow/parser.js';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
+import { compareFixtureTrees } from '../../bench/lib.js';
 import type { ResolvedChain } from '../../src/workflow/chain-tree.js';
-import type { WorkflowFile } from '../../src/workflow/types.js';
+import type { ExpressionBundle } from '../../src/expressions/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(__dirname, '../fixtures/cdrus-goldens');
@@ -41,25 +46,19 @@ interface GoldenFile {
   chains: GoldenChain[];
 }
 
-/** Flattens a resolved tree (chain + recursive spawns) into golden shape. */
+/** Maps a resolved tree into golden shape via the shared chain walker. */
 function toGoldenShape(root: ResolvedChain): GoldenChain[] {
-  const out: GoldenChain[] = [];
-  const visit = (c: ResolvedChain): void => {
-    out.push({
-      chainRef: c.chainRef,
-      role: c.role,
-      parentChainRef: c.parentChainRef ?? null,
-      spawningEventPath: c.anchorPath ?? null,
-      expectedEvents: c.events.map((e) => ({
-        treePath: e.treePath,
-        event: e.type,
-        order: e.order,
-      })),
-    });
-    c.spawns.forEach(visit);
-  };
-  visit(root);
-  return out;
+  return flattenChains(root).map((c) => ({
+    chainRef: c.chainRef,
+    role: c.role,
+    parentChainRef: c.parentChainRef ?? null,
+    spawningEventPath: c.anchorPath ?? null,
+    expectedEvents: c.events.map((e) => ({
+      treePath: e.treePath,
+      event: e.type,
+      order: e.order,
+    })),
+  }));
 }
 
 /** Derives the chain set for a golden's source document. */
@@ -72,25 +71,9 @@ async function derive(sourceFile: string): Promise<GoldenChain[]> {
     return toGoldenShape(resolveChainTree(wf, registry));
   }
 
-  // Expression-rooted derivation (§6.2): wrap the bundle as the resolution
-  // root; top-level produces is the p axis either way, so coordinates match.
-  const doc = yaml.load(readFileSync(sourcePath, 'utf-8')) as {
-    group: string;
-    author: string;
-    expression: string;
-    produces: unknown[];
-  };
-  const wrapped = {
-    workflow: {
-      id: doc.expression,
-      name: doc.expression,
-      group: doc.group,
-      author: doc.author,
-      cdrus: { version: '0.1.0' },
-      produces: doc.produces,
-    },
-  } as unknown as WorkflowFile;
-  return toGoldenShape(resolveChainTree(wrapped, registry));
+  // Expression-rooted derivation (RFC §6.2) via the first-class API.
+  const doc = yaml.load(readFileSync(sourcePath, 'utf-8')) as ExpressionBundle;
+  return toGoldenShape(resolveExpressionTree(doc, registry));
 }
 
 const goldenFiles = readdirSync(GOLDENS).filter((f) => f.endsWith('.chains.json'));
@@ -128,36 +111,25 @@ const CANONICAL = process.env.CONDUIT_GO_TESTDATA
   : path.join(process.env.HOME ?? '', 'IdeaProjects/conduit-go/pkg/cdrus/testdata');
 
 describe.skipIf(!existsSync(CANONICAL))('golden mirror sync-check (canonical: conduit-go)', () => {
+  const entries = existsSync(CANONICAL) ? compareFixtureTrees(CANONICAL, SOURCES, GOLDENS) : [];
+  const drift = (subset: typeof entries) =>
+    subset.filter((e) => e.status !== 'identical').map((e) => `${e.file}: ${e.status}`);
+
   it('mirrors every canonical source byte-for-byte', () => {
-    const canonicalFiles = readdirSync(CANONICAL).filter((f) => f.endsWith('.yaml'));
-    const mirrored = new Set(readdirSync(SOURCES));
-    const drift: string[] = [];
-    for (const f of canonicalFiles) {
-      if (!mirrored.has(f)) {
-        drift.push(`${f}: missing from mirror`);
-        continue;
-      }
-      const a = readFileSync(path.join(CANONICAL, f), 'utf-8');
-      const b = readFileSync(path.join(SOURCES, f), 'utf-8');
-      if (a !== b) drift.push(`${f}: content drift`);
-    }
-    expect(drift, `mirror out of sync — copy from canonical:\n${drift.join('\n')}`).toEqual([]);
+    const sources = entries.filter((e) => !e.file.startsWith('goldens/'));
+    expect(sources.length).toBeGreaterThan(0);
+    expect(
+      drift(sources),
+      `mirror out of sync — copy from canonical:\n${drift(sources).join('\n')}`,
+    ).toEqual([]);
   });
 
   it('mirrors every canonical golden byte-for-byte', () => {
-    const canonicalGoldens = path.join(CANONICAL, 'goldens');
-    const files = readdirSync(canonicalGoldens).filter((f) => f.endsWith('.chains.json'));
-    const drift: string[] = [];
-    for (const f of files) {
-      const mirrorPath = path.join(GOLDENS, f);
-      if (!existsSync(mirrorPath)) {
-        drift.push(`${f}: missing from mirror`);
-        continue;
-      }
-      const a = readFileSync(path.join(canonicalGoldens, f), 'utf-8');
-      const b = readFileSync(mirrorPath, 'utf-8');
-      if (a !== b) drift.push(`${f}: content drift`);
-    }
-    expect(drift, `mirror out of sync — copy from canonical:\n${drift.join('\n')}`).toEqual([]);
+    const goldens = entries.filter((e) => e.file.startsWith('goldens/'));
+    expect(goldens.length).toBeGreaterThan(0);
+    expect(
+      drift(goldens),
+      `mirror out of sync — copy from canonical:\n${drift(goldens).join('\n')}`,
+    ).toEqual([]);
   });
 });

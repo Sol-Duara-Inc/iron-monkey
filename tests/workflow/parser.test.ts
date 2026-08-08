@@ -128,10 +128,9 @@ workflow:
 
 describe('validateWorkflow — unparsable YAML', () => {
   it('throws a clear parse error for invalid YAML', async () => {
-    const { writeFile, mkdir } = await import('fs/promises');
-    const os = await import('os');
-    const dir = path.join(os.tmpdir(), `im-wf-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
+    const { writeFile } = await import('fs/promises');
+    const { makeTmpDir } = await import('../helpers.js');
+    const dir = await makeTmpDir('im-wf');
     const bad = path.join(dir, 'broken.yaml');
     await writeFile(bad, 'workflow: [unclosed: {\n', 'utf-8');
     await expect(validateWorkflow(bad)).rejects.toThrow(/Failed to parse workflow YAML/);

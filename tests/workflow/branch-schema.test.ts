@@ -7,13 +7,10 @@
  * (core + `dev.cdeventsx.*` extended forms).
  */
 import { describe, it, expect } from 'vitest';
-import { createAjv2020 } from '../../src/util/ajv.js';
-import { expressionBundleSchema } from '../../src/expressions/schema.js';
-import { workflowSchema } from '../../src/workflow/schema.js';
-
-const ajv = createAjv2020();
-const validateBundle = ajv.compile(expressionBundleSchema);
-const validateWf = ajv.compile(workflowSchema);
+// The PRODUCTION-compiled validators — the exact instances loadBundle and
+// validateWorkflow run — so acceptance here is acceptance at load, verbatim.
+import { validateBundleDoc as validateBundle } from '../../src/expressions/schema.js';
+import { validateWorkflowDoc as validateWf } from '../../src/workflow/schema.js';
 
 const TS_QUEUED = 'dev.cdevents.testsuiterun.queued.0.3.0';
 const TS_STARTED = 'dev.cdevents.testsuiterun.started.0.3.0';

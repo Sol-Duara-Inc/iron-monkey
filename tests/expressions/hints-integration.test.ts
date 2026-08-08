@@ -1,21 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile } from 'fs/promises';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
+import { makeTmpDir as sharedTmpDir } from '../helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DIR = path.resolve(__dirname, '../../expressions');
 
-async function makeTmpDir(): Promise<string> {
-  const dir = path.join(
-    os.tmpdir(),
-    `iron-monkey-hints-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
-  await mkdir(dir, { recursive: true });
-  return dir;
-}
+const makeTmpDir = () => sharedTmpDir('iron-monkey-hints');
 
 const HEADER = 'group: test-group\nauthor: tester\n';
 

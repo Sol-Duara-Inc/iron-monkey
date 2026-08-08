@@ -15,17 +15,19 @@
  */
 
 export { validateWorkflow } from './workflow/parser.js';
-export { resolveChainTree } from './workflow/chain-tree.js';
+export { resolveChainTree, resolveExpressionTree, flattenChains } from './workflow/chain-tree.js';
 export { WorkflowSource, FileWorkflowSource } from './workflow/source.js';
 export type { WorkflowDefinition } from './workflow/source.js';
 export { loadConfig, resolveBusName } from './config/loader.js';
-export { loadExpressionRegistry } from './expressions/loader.js';
+export { loadExpressionRegistry, createRegistry } from './expressions/loader.js';
 export { buildManifest } from './manifest/builder.js';
 export { parseInjections } from './injection/parser.js';
 export { applyInjections } from './injection/apply.js';
 export { acquireChainId, ConduitAnsweredError } from './chain/acquire.js';
 export { generateFallbackChainId } from './chain/fallback.js';
 export { loadSchemas, validateEvent } from './schema/validator.js';
+export { validateWorkflowDoc } from './workflow/schema.js';
+export { validateBundleDoc } from './expressions/schema.js';
 export { createBus } from './bus/interface.js';
 export { runWorkflow, runWorkflows } from './emitter/runner.js';
 export type { WorkflowRunResult } from './emitter/runner.js';

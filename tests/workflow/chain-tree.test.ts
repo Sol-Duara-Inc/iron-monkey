@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveChainTree } from '../../src/workflow/chain-tree.js';
-import type { ExpressionRegistry } from '../../src/expressions/loader.js';
+import { createRegistry } from '../../src/expressions/loader.js';
 import type { ExpressionBundle } from '../../src/expressions/types.js';
 import type { WorkflowFile } from '../../src/workflow/types.js';
 
@@ -24,37 +24,9 @@ const TC_FINISHED = 'dev.cdevents.testcaserun.finished.0.3.0';
 const GROUP = 'spin-dev';
 const AUTHOR = 'shipwreck-sa';
 
-/** Minimal in-memory registry implementing the resolution rules we rely on. */
-function makeRegistry(bundles: ExpressionBundle[]): ExpressionRegistry {
-  const byId = new Map(bundles.map((b) => [`${b.group}/${b.author}/${b.expression}`, b]));
-  const find = (g: string, a: string, n: string) => byId.get(`${g}/${a}/${n}`);
-  return {
-    resolve(ref: string): ExpressionBundle {
-      const b = bundles.find((x) => x.expression === ref);
-      if (!b) throw new Error(`no bundle '${ref}'`);
-      return b;
-    },
-    resolveWithContext(ref, ctx): ExpressionBundle {
-      const parts = ref.split('/');
-      const tries: [string, string, string][] =
-        parts.length === 1
-          ? [
-              [ctx.group, ctx.author, parts[0]],
-              ['example-group', 'user', parts[0]],
-            ]
-          : parts.length === 2
-            ? [[ctx.group, parts[0], parts[1]]]
-            : [[parts[0], parts[1], parts[2]]];
-      for (const [g, a, n] of tries) {
-        const b = find(g, a, n);
-        if (b) return b;
-      }
-      throw new Error(`unresolved expression '${ref}' in ${ctx.group}/${ctx.author}`);
-    },
-    list: () => bundles.map((b) => ({ name: b.expression, group: b.group, author: b.author })),
-    hintFindings: () => [],
-  };
-}
+// The REAL in-memory registry (same resolution rules as the file loader) —
+// a hand-rolled mock here once drifted from production behavior.
+const makeRegistry = createRegistry;
 
 function bundle(expression: string, produces: ExpressionBundle['produces']): ExpressionBundle {
   return { group: GROUP, author: AUTHOR, expression, produces };

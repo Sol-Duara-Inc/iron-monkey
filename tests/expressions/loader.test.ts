@@ -1,26 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
 import { getLogger } from '../../src/logger/index.js';
+import { makeTmpDir as sharedTmpDir, bundleYaml } from '../helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DIR = path.resolve(__dirname, '../../expressions');
 
-async function makeTmpDir(): Promise<string> {
-  const dir = path.join(
-    os.tmpdir(),
-    `iron-monkey-expr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
-  await mkdir(dir, { recursive: true });
-  return dir;
-}
-
-function minimalBundle(name: string, group = 'sol-duara', author = 'dsanyika'): string {
-  return `group: ${group}\nauthor: ${author}\nexpression: ${name}\nproduces:\n  - event: dev.cdevents.build.started.0.3.0\n`;
-}
+const makeTmpDir = () => sharedTmpDir('iron-monkey-expr');
+const minimalBundle = (name: string, group?: string, author?: string): string =>
+  bundleYaml(name, { group, author });
 
 // ── bundled directory ─────────────────────────────────────────────────────────
 

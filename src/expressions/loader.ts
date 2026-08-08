@@ -13,14 +13,11 @@ import { readFileSync, readdirSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
-import { createAjv2020 } from '../util/ajv.js';
 import { getLogger } from '../logger/index.js';
 import { checkNameHints, loadHintTable } from '../hints/index.js';
 import type { HintCheckResult, HintTable } from '../hints/index.js';
-import { expressionBundleSchema } from './schema.js';
+import { validateBundleDoc } from './schema.js';
 import type { ExpressionBundle } from './types.js';
-
-const validateBundleSchema = createAjv2020().compile(expressionBundleSchema);
 
 /**
  * Standard-library fallback identity used by {@link ExpressionRegistry.resolveWithContext}
@@ -90,9 +87,9 @@ function loadBundle(filePath: string): ExpressionBundle {
     );
   }
 
-  const valid = validateBundleSchema(parsed);
+  const valid = validateBundleDoc(parsed);
   if (!valid) {
-    const errors = validateBundleSchema.errors
+    const errors = validateBundleDoc.errors
       ?.map(
         (e: { instancePath: string; message?: string }) =>
           `  ${e.instancePath || '(root)'}: ${e.message}`,
@@ -288,6 +285,41 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
     );
   }
 
+  return buildRegistry(indexed, findings, expressionsDir);
+}
+
+/**
+ * Builds an {@link ExpressionRegistry} over bundles that are ALREADY in
+ * memory. This is the un-gated store-construction API: no filesystem, no
+ * schema validation, and no name-hint gate — the file-loading path
+ * ({@link loadExpressionRegistry}) is the gated store; callers of this
+ * factory own the validity of what they index. Intended for tests and for
+ * programmatic consumers that assemble bundles without a directory.
+ *
+ * @param bundles - Bundles to index; identity is read from each bundle.
+ * @returns A registry with the same resolution rules as the file loader.
+ */
+export function createRegistry(bundles: ExpressionBundle[]): ExpressionRegistry {
+  const indexed = bundles.map((bundle) => ({
+    name: bundle.expression,
+    group: bundle.group,
+    author: bundle.author,
+    bundle,
+  }));
+  return buildRegistry(indexed, [], '(in-memory registry)');
+}
+
+/**
+ * The shared registry implementation: CDrus path-style resolution over an
+ * indexed bundle list. `searchedIn` labels error messages so a failed lookup
+ * names its search space (a directory for the file loader, a marker for the
+ * in-memory factory).
+ */
+function buildRegistry(
+  indexed: IndexedBundle[],
+  findings: HintFinding[],
+  searchedIn: string,
+): ExpressionRegistry {
   return {
     resolve(ref: string): ExpressionBundle {
       const parts = ref.split('/');
@@ -319,7 +351,7 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
       }
 
       if (candidates.length === 0) {
-        throw new Error(`No expression bundle found for '${ref}'. Searched in ${expressionsDir}.`);
+        throw new Error(`No expression bundle found for '${ref}'. Searched in ${searchedIn}.`);
       }
 
       return candidates[0].bundle;
@@ -363,7 +395,7 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
       const tried = candidates.map((c) => `${c.group}/${c.author}/${c.name}`).join(', ');
       throw new Error(
         `No expression bundle resolved for '${ref}' under context ` +
-          `${context.group}/${context.author}. Tried: ${tried}. Searched in ${expressionsDir}.`,
+          `${context.group}/${context.author}. Tried: ${tried}. Searched in ${searchedIn}.`,
       );
     },
 

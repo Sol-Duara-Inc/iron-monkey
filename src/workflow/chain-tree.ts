@@ -35,6 +35,7 @@
 import { nounVerbFromType } from '../expressions/loader.js';
 import { deepMerge } from '../util/deep-merge.js';
 import type { ExpressionRegistry } from '../expressions/loader.js';
+import type { ExpressionBundle } from '../expressions/types.js';
 import type { WorkflowFile } from './types.js';
 
 /** A single expected event within a resolved chain, addressed by `treePath`. */
@@ -201,14 +202,66 @@ export function resolveChainTree(
   registry: ExpressionRegistry,
 ): ResolvedChain {
   const wf = workflow.workflow;
-  const main: ResolvedChain = { role: 'main', chainRef: 'root', events: [], spawns: [] };
-  const ctx: WalkCtx = {
+  return resolveRoot(
+    wf.produces as unknown as ProduceNode[],
+    { group: wf.group ?? '', author: wf.author ?? '' },
+    wf.defaults ?? {},
     registry,
-    resolution: { group: wf.group ?? '', author: wf.author ?? '' },
-    defaults: wf.defaults ?? {},
-  };
-  walk(wf.produces as unknown as ProduceNode[], 'p', '', main, new Map(), ctx, {});
+  );
+}
+
+/**
+ * Resolves a top-level Expression into its chain tree — RFC §6.2's
+ * expression-rooted resolution, where the Expression itself is the resolution
+ * root (its own `(group, author)` is the context, and its top-level `produces`
+ * is the root chain's `p` axis). Coordinates are identical to a workflow
+ * rooted at the same produces list, which is what makes golden parity between
+ * expression-rooted and workflow-rooted derivations byte-comparable.
+ *
+ * @param bundle - The Expression to resolve (its identity supplies context).
+ * @param registry - Expression registry used to expand references.
+ * @returns The main chain (`chainRef: 'root'`) with its spawned sub-chains.
+ */
+export function resolveExpressionTree(
+  bundle: ExpressionBundle,
+  registry: ExpressionRegistry,
+): ResolvedChain {
+  return resolveRoot(
+    bundle.produces as unknown as ProduceNode[],
+    { group: bundle.group, author: bundle.author },
+    {},
+    registry,
+  );
+}
+
+/** Shared root-resolution core for workflow- and expression-rooted trees. */
+function resolveRoot(
+  produces: ProduceNode[],
+  resolution: { group: string; author: string },
+  defaults: WalkCtx['defaults'],
+  registry: ExpressionRegistry,
+): ResolvedChain {
+  const main: ResolvedChain = { role: 'main', chainRef: 'root', events: [], spawns: [] };
+  const ctx: WalkCtx = { registry, resolution, defaults };
+  walk(produces, 'p', '', main, new Map(), ctx, {});
   return main;
+}
+
+/**
+ * Flattens a resolved tree into a list of every chain it contains — the root
+ * first, then spawned chains depth-first in declaration order. The shared
+ * walker for golden-parity comparison, the contract suite's machine gate, and
+ * any consumer that needs "all chains of a run" without re-writing the
+ * recursion.
+ */
+export function flattenChains(root: ResolvedChain): ResolvedChain[] {
+  const out: ResolvedChain[] = [];
+  const visit = (chain: ResolvedChain): void => {
+    out.push(chain);
+    chain.spawns.forEach(visit);
+  };
+  visit(root);
+  return out;
 }
 
 /**

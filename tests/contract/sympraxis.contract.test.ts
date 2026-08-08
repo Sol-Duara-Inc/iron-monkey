@@ -66,7 +66,7 @@ import yaml from 'js-yaml';
 // black-box stance — the client compares the server's derivation against
 // Iron Monkey's local derivation of the same workflow id. Server internals
 // stay opaque; the client's own expectation is the fixture mirror.
-import { resolveChainTree } from '../../src/workflow/chain-tree.js';
+import { resolveChainTree, flattenChains } from '../../src/workflow/chain-tree.js';
 import { validateWorkflow } from '../../src/workflow/parser.js';
 import { loadExpressionRegistry } from '../../src/expressions/loader.js';
 import { createLogger, setLogger } from '../../src/logger/index.js';
@@ -743,16 +743,12 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       setLogger(createLogger({ level: 'fatal', format: 'json' }));
       const registry = loadExpressionRegistry(SOURCES);
       const wf = await validateWorkflow(workflowPath);
-      const byRef = new Map<string, { treePath: string; order: number; type: string }[]>();
-      const visit = (c: import('../../src/workflow/chain-tree.js').ResolvedChain): void => {
-        byRef.set(
+      return new Map(
+        flattenChains(resolveChainTree(wf, registry)).map((c) => [
           c.chainRef,
           c.events.map((e) => ({ treePath: e.treePath, order: e.order, type: e.type })),
-        );
-        c.spawns.forEach(visit);
-      };
-      visit(resolveChainTree(wf, registry));
-      return byRef;
+        ]),
+      );
     }
 
     // Guide v2 §4 defines the shared set as BOTH workflows — the gated deploy
