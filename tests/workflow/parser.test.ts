@@ -25,7 +25,7 @@ workflow:
   id: test-wf
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - event: dev.cdevents.build.started.0.3.0
       tool: jenkins
@@ -49,7 +49,7 @@ workflow:
   author: shipwreck-sa
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - event: dev.cdevents.build.started.0.3.0
       tool: jenkins
@@ -67,7 +67,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   bus: default
   produces:
     - event: dev.cdevents.build.started.0.3.0
@@ -82,7 +82,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   stages:
     - id: build
       type: ci
@@ -101,7 +101,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
 `);
     await expect(validateWorkflow(file)).rejects.toThrow('validation failed');
     await unlink(file);
@@ -133,7 +133,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   defaults:
     tool: default-tool
     source: https://default.example.com/
@@ -158,7 +158,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   defaults:
     tool: default-tool
     timeout_ms: 9999
@@ -190,7 +190,7 @@ workflow:
   author: dsanyika
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - expression: dsanyika/build
       tool: jenkins
@@ -213,7 +213,7 @@ workflow:
   author: dsanyika
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - expression: dsanyika/deploy
       tool: spinnaker
@@ -240,7 +240,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - expression: nonexistent
       tool: jenkins
@@ -259,7 +259,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jenkins
@@ -288,7 +288,7 @@ workflow:
   id: test
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - event: dev.cdevents.pipelinerun.started.0.3.0
       tool: jenkins
@@ -316,7 +316,7 @@ workflow:
   author: dsanyika
   name: test
   cdrus:
-    version: 1
+    version: '0.1.0'
   produces:
     - expression: dsanyika/blue-green-deploy
       tool: spinnaker
@@ -368,5 +368,17 @@ describe('resolveProduces — group/author disambiguation on real prod workflows
     // spin-dev/shipwreck-sa/build starts with change.merged (not build.started)
     const first = events.find((e) => e.expressionRef !== undefined);
     expect(first?.type).toBe('dev.cdevents.change.merged.0.3.0');
+  });
+});
+
+describe('validateWorkflow — unparsable YAML', () => {
+  it('throws a clear parse error for invalid YAML', async () => {
+    const { writeFile, mkdir } = await import('fs/promises');
+    const os = await import('os');
+    const dir = path.join(os.tmpdir(), `im-wf-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const bad = path.join(dir, 'broken.yaml');
+    await writeFile(bad, 'workflow: [unclosed: {\n', 'utf-8');
+    await expect(validateWorkflow(bad)).rejects.toThrow(/Failed to parse workflow YAML/);
   });
 });

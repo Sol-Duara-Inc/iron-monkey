@@ -1,3 +1,13 @@
+/**
+ * @module bus/kafka
+ * ADMINISTRATIVE adapter (decision 2026-08-07): this exists so Iron Monkey
+ * can clean up after itself during Junction Box tests and demos — purging
+ * queues / resetting consumer-group offsets, restarting from a clean slate,
+ * and the status queries that support that. It is not a primary pitching
+ * path; unit-coverage goals deliberately exclude it (vitest.config.ts), and
+ * the covered surface is purge/status plus adapter selection
+ * (tests/bus/interface.test.ts).
+ */
 import { Kafka, type Producer } from 'kafkajs';
 import { getLogger } from '../logger/index.js';
 import { registerBusShutdown } from './shutdown.js';

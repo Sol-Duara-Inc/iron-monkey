@@ -340,3 +340,21 @@ describe('checkNameHints — hint-free and diagnostic-only names', () => {
     ).toBe(true);
   });
 });
+
+describe('subjectPredicateOf — namespace edge cases', () => {
+  it('returns null for dev.* namespaces that are not cdevents/cdeventsx', () => {
+    expect(subjectPredicateOf('dev.other.build.started')).toBeNull();
+    expect(subjectPredicateOf('dev.cdeventsy.build.started')).toBeNull();
+  });
+});
+
+describe('checkNameHints — non-string grammar values are ignored', () => {
+  it('ignores non-string event and expression fields without throwing', () => {
+    const result = checkNameHints(
+      { expression: 'build', produces: [{ event: 42 }, { expression: 99 }] },
+      TABLE,
+    );
+    expect(result.ok).toBe(false); // hint present, nothing usable satisfies it
+    expect(result.violations[0].found).toEqual([]);
+  });
+});

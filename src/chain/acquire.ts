@@ -1,13 +1,38 @@
 /**
  * @module chain/acquire
  * Acquires a Sympraxis chain ID for a workflow run. Tries the Conduit service
- * first; if unavailable or misconfigured it falls back to a locally-generated
- * fallback URN so the run is never blocked.
+ * first; when NO daemon answers (not configured, connection refused, timeout)
+ * it falls back to a locally-generated fallback URN so offline runs are never
+ * blocked.
+ *
+ * FALLBACK IS NARROW BY DESIGN (integration guide v2 §3): when a daemon
+ * ANSWERS — any HTTP status, any body — silent fallback is prohibited and a
+ * {@link ConduitAnsweredError} is thrown instead, failing the run visibly.
+ * Fallback URNs are not UUID-shaped, so they can never activate a dormant
+ * workflow on Conduit's side; minting one while an authority is answering
+ * silently exits reconciliation.
  */
 
 import { generateFallbackChainId } from './fallback.js';
 import { getLogger } from '../logger/index.js';
 import type { ConduitConfig } from '../config/types.js';
+
+/**
+ * Thrown when a Conduit daemon ANSWERED the acquisition request but the
+ * answer was unusable (HTTP error, non-JSON, or an invalid chainId). This is
+ * a run-scoped failure: the caller must surface it — never mint a fallback
+ * URN while an authority is answering.
+ */
+export class ConduitAnsweredError extends Error {
+  /** HTTP status of the daemon's answer, when one was received. */
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'ConduitAnsweredError';
+    this.status = status;
+  }
+}
 
 /** Describes how a chain ID was obtained and its value. */
 export interface ChainIdResult {
@@ -22,14 +47,18 @@ export interface ChainIdResult {
 
 /**
  * Attempts to obtain a chain ID from the Conduit service for the given
- * workflow. Falls back to {@link generateFallbackChainId} when Conduit is not
- * configured, unreachable, or returns an invalid response.
+ * workflow. Falls back to {@link generateFallbackChainId} ONLY when no daemon
+ * answers: not configured, connection-level failure, or timeout. When a
+ * daemon answers unusably, throws {@link ConduitAnsweredError} — a run-scoped
+ * failure the caller surfaces instead of silently exiting reconciliation.
  *
  * @param workflowName - Human-readable name of the workflow, used as the slug
  *   in the fallback URN and as the `name` field in the Conduit POST body.
  * @param conduit - Optional Conduit connection details. When omitted the
  *   fallback path is taken immediately.
  * @returns A {@link ChainIdResult} with the resolved chain ID and its source.
+ * @throws {ConduitAnsweredError} When a daemon answered with an HTTP error,
+ *   a non-JSON body, or an invalid chainId.
  */
 export async function acquireChainId(
   workflowName: string,
@@ -41,39 +70,64 @@ export async function acquireChainId(
     return { chainId: generateFallbackChainId(workflowName), source: 'fallback' };
   }
 
-  try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (conduit.token) {
-      headers['Authorization'] = `Bearer ${conduit.token}`;
-    }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (conduit.token) {
+    headers['Authorization'] = `Bearer ${conduit.token}`;
+  }
 
-    const response = await fetch(`${conduit.url}/chainID`, {
+  let response: Response;
+  try {
+    response = await fetch(`${conduit.url}/chainID`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: workflowName }),
       signal: AbortSignal.timeout(5000),
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const body = (await response.json()) as unknown;
-
-    if (!isChainIdResponse(body)) {
-      throw new Error('Response did not contain a valid chainId UUID');
-    }
-
-    logger.info({ chainId: body.chainId, source: 'conduit' }, 'acquired chainId from Conduit');
-    return { chainId: body.chainId, source: 'conduit' };
   } catch (err) {
+    // No daemon answered (refused, unreachable, timed out) — the one case
+    // where offline fallback minting remains legitimate (guide v2 §3).
     const fallback = generateFallbackChainId(workflowName);
     logger.warn(
       { err: (err as Error).message, fallbackChainId: fallback },
-      'Conduit chainId acquisition failed; using fallback URN',
+      'no Conduit daemon answered; using offline fallback URN',
     );
     return { chainId: fallback, source: 'fallback' };
   }
+
+  // A daemon ANSWERED. From here on, silent fallback is prohibited.
+  if (!response.ok) {
+    const redeliver =
+      response.status === 503
+        ? '; 503 is a transient store failure — redeliver (retry the run)'
+        : '';
+    throw new ConduitAnsweredError(
+      `Conduit answered HTTP ${response.status} (${response.statusText}) for '${workflowName}' — ` +
+        `refusing silent fallback while a daemon is answering${redeliver}`,
+      response.status,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = (await response.json()) as unknown;
+  } catch {
+    throw new ConduitAnsweredError(
+      `Conduit answered non-JSON for '${workflowName}' — refusing silent fallback while a ` +
+        `daemon is answering`,
+      response.status,
+    );
+  }
+
+  if (!isChainIdResponse(body)) {
+    throw new ConduitAnsweredError(
+      `Conduit response for '${workflowName}' did not contain a valid chainId UUID — refusing ` +
+        `silent fallback while a daemon is answering`,
+      response.status,
+    );
+  }
+
+  logger.info({ chainId: body.chainId, source: 'conduit' }, 'acquired chainId from Conduit');
+  return { chainId: body.chainId, source: 'conduit' };
 }
 
 /**

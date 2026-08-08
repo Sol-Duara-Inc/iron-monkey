@@ -171,16 +171,16 @@ describe('resolveChainTree — produces/detach grammar → chain tree', () => {
     expect(b.events.map((e) => e.treePath)).toEqual(['p1.d0.p0', 'p1.d0.p1']);
   });
 
-  it('resolves array entries as parallel branch chains (own chainId, b axis, no join)', () => {
-    // Shipwreck SA `verify`: testsuiterun.started's `produces` is a list of TWO
-    // sequential test-case branches. Each branch is its own chain — the emitter
-    // gives each its own chainId and emits; the receiver blocks until both
-    // complete. There is nothing for the emitter to join.
+  it('resolves nested-form spawn as one Blocking chain per inner list (s axis)', () => {
+    // RFC §4.7 nested form — the verify-spawn golden shape: two Blocking
+    // chains under testsuiterun.started, anchors p1.s0/p1.s1, members on a
+    // p-run beneath each anchor. The emitter gives each its own chainId; the
+    // wait is receiver-side rollup (producer-side wait lands in Phase 2).
     const wf = workflow([
       { event: TS_QUEUED },
       {
         event: TS_STARTED,
-        produces: [
+        spawn: [
           [{ event: TC_QUEUED }, { event: TC_STARTED }, { event: TC_FINISHED }],
           [{ event: TC_QUEUED }, { event: TC_STARTED }, { event: TC_FINISHED }],
         ],
@@ -190,27 +190,209 @@ describe('resolveChainTree — produces/detach grammar → chain tree', () => {
 
     const main = resolveChainTree(wf, makeRegistry([]));
 
-    // Main chain is the suite spine ONLY — branches are not inlined onto it.
+    // Main chain is the suite spine ONLY — spawned chains are not inlined.
     expect(main.events.map((e) => e.type)).toEqual([TS_QUEUED, TS_STARTED, TS_FINISHED]);
     expect(main.events.map((e) => e.treePath)).toEqual(['p0', 'p1', 'p2']);
 
-    // Two branch chains, each its own chain on the `b` axis, forked at p1.
     expect(main.spawns).toHaveLength(2);
-    const [b0, b1] = main.spawns;
-    expect([b0.role, b1.role]).toEqual(['concurrent', 'concurrent']);
-    expect(b0.chainRef).toBe('p1.b0');
-    expect(b1.chainRef).toBe('p1.b1');
-    expect(b0.anchorPath).toBe('p1'); // forked by testsuiterun.started
-    expect(b0.parentChainRef).toBe('root');
+    const [s0, s1] = main.spawns;
+    expect([s0.role, s1.role]).toEqual(['blocking', 'blocking']);
+    expect(s0.chainRef).toBe('p1.s0');
+    expect(s1.chainRef).toBe('p1.s1');
+    expect(s0.anchorPath).toBe('p1'); // spawned by testsuiterun.started
+    expect(s0.parentChainRef).toBe('root');
+    expect(s0.linkKind).toBe('TRIGGER');
 
-    expect(b0.events.map((e) => e.type)).toEqual([TC_QUEUED, TC_STARTED, TC_FINISHED]);
-    expect(b0.events.map((e) => e.treePath)).toEqual(['p1.b0.p0', 'p1.b0.p1', 'p1.b0.p2']);
-    expect(b1.events.map((e) => e.treePath)).toEqual(['p1.b1.p0', 'p1.b1.p1', 'p1.b1.p2']);
+    expect(s0.events.map((e) => e.type)).toEqual([TC_QUEUED, TC_STARTED, TC_FINISHED]);
+    expect(s0.events.map((e) => e.treePath)).toEqual(['p1.s0.p0', 'p1.s0.p1', 'p1.s0.p2']);
+    expect(s1.events.map((e) => e.treePath)).toEqual(['p1.s1.p0', 'p1.s1.p1', 'p1.s1.p2']);
+    // Content-identical siblings disambiguated by chainRef, never by content.
+    expect(s0.events.map((e) => e.type)).toEqual(s1.events.map((e) => e.type));
+  });
 
-    // Same prefix invariant as detach: chainRef is a prefix of every member.
-    for (const e of [...b0.events, ...b1.events]) {
-      const ref = e.treePath.startsWith('p1.b0') ? 'p1.b0' : 'p1.b1';
-      expect(e.treePath.startsWith(ref)).toBe(true);
-    }
+  it('resolves flat-form spawn as ONE Blocking chain anchored P.s', () => {
+    const wf = workflow([
+      {
+        event: TS_STARTED,
+        spawn: [{ event: TC_QUEUED }, { event: TC_STARTED }, { event: TC_FINISHED }],
+      },
+      { event: TS_FINISHED },
+    ]);
+
+    const main = resolveChainTree(wf, makeRegistry([]));
+    expect(main.spawns).toHaveLength(1);
+    const s = main.spawns[0];
+    expect(s.role).toBe('blocking');
+    expect(s.chainRef).toBe('p0.s');
+    expect(s.events.map((e) => e.treePath)).toEqual(['p0.s0', 'p0.s1', 'p0.s2']);
+  });
+
+  it('resolves nested-form detach as one Detached chain per inner list (d{i} anchors)', () => {
+    // RFC §4.8 nested form — the build-store-notify golden shape.
+    const reg = makeRegistry([
+      bundle('async-scan', [{ event: ARTIFACT_SIGNED }, { event: TESTOUTPUT_PUBLISHED }]),
+    ]);
+    const wf = workflow([
+      {
+        event: SERVICE_DEPLOYED,
+        detach: [
+          [{ event: TICKET_CREATED }, { event: TICKET_UPDATED }],
+          [{ expression: 'async-scan' }],
+        ],
+      },
+      { event: TASKRUN_FINISHED },
+    ]);
+
+    const main = resolveChainTree(wf, reg);
+    expect(main.spawns).toHaveLength(2);
+    const [d0, d1] = main.spawns;
+    expect([d0.role, d1.role]).toEqual(['detached', 'detached']);
+    expect(d0.chainRef).toBe('p0.d0');
+    expect(d1.chainRef).toBe('p0.d1');
+    expect(d0.events.map((e) => e.treePath)).toEqual(['p0.d0.p0', 'p0.d0.p1']);
+    // Expression entry is structural: its events nest beneath its slot.
+    expect(d1.events.map((e) => e.treePath)).toEqual(['p0.d1.p0.p0', 'p0.d1.p0.p1']);
+  });
+
+  it('rejects a mixed flat/nested spawn or detach list', () => {
+    const mixed = workflow([
+      {
+        event: TS_STARTED,
+        spawn: [{ event: TC_QUEUED }, [{ event: TC_STARTED }]],
+      },
+    ]);
+    expect(() => resolveChainTree(mixed, makeRegistry([]))).toThrow(/mixes flat and nested forms/);
+  });
+
+  it('rejects a nested list at a chain position with a migration hint', () => {
+    const oldGrammar = workflow([
+      { event: TS_QUEUED },
+      { event: TS_STARTED, produces: [[{ event: TC_QUEUED }]] },
+    ]);
+    expect(() => resolveChainTree(oldGrammar, makeRegistry([]))).toThrow(
+      /'spawn:' \(Blocking\) or 'detach:' \(Detached\)/,
+    );
+  });
+
+  it('rejects chain-bearing keys on an expression reference', () => {
+    const reg = makeRegistry([bundle('ticket-associate', [{ event: TICKET_CREATED }])]);
+    const wf = workflow([
+      { expression: 'ticket-associate', detach: [{ event: TICKET_UPDATED }] } as never,
+    ]);
+    expect(() => resolveChainTree(wf, reg)).toThrow(/must not carry 'detach'/);
+  });
+});
+
+// ── edge and error paths (beyond the happy path) ──────────────────────────────
+
+describe('resolveChainTree — edge and error paths', () => {
+  it('rejects a top-level nested list with a "top level" location in the message', () => {
+    const wf = workflow([[{ event: TS_QUEUED }]] as unknown[]);
+    expect(() => resolveChainTree(wf, makeRegistry([]))).toThrow(/top level \(item 0\)/);
+  });
+
+  it('rejects a mixed flat/nested DETACH list (mirror of the spawn rule)', () => {
+    const mixed = workflow([
+      { event: TS_STARTED, detach: [{ event: TC_QUEUED }, [{ event: TC_STARTED }]] },
+    ]);
+    expect(() => resolveChainTree(mixed, makeRegistry([]))).toThrow(
+      /'detach' at p0 mixes flat and nested forms/,
+    );
+  });
+
+  it("rejects 'produces' and 'spawn' on expression references too", () => {
+    const reg = makeRegistry([bundle('ticket-associate', [{ event: TICKET_CREATED }])]);
+    const withProduces = workflow([
+      { expression: 'ticket-associate', produces: [{ event: TICKET_UPDATED }] } as never,
+    ]);
+    expect(() => resolveChainTree(withProduces, reg)).toThrow(/must not carry 'produces'/);
+    const withSpawn = workflow([
+      { expression: 'ticket-associate', spawn: [{ event: TICKET_UPDATED }] } as never,
+    ]);
+    expect(() => resolveChainTree(withSpawn, reg)).toThrow(/must not carry 'spawn'/);
+  });
+
+  it('carries `as:` anchors onto resolved events, including inside spawned chains', () => {
+    const wf = workflow([
+      { event: TS_QUEUED, as: 'suite-queued' },
+      {
+        event: TS_STARTED,
+        spawn: [[{ event: TC_FINISHED, as: 'case-done' }]],
+        detach: [{ event: TICKET_CREATED, as: 'audit-open' }],
+      },
+    ]);
+    const main = resolveChainTree(wf, makeRegistry([]));
+    expect(main.events[0].as).toBe('suite-queued');
+    expect(main.events[1].as).toBeUndefined();
+    const spawnChain = main.spawns.find((c) => c.role === 'blocking')!;
+    expect(spawnChain.events[0].as).toBe('case-done');
+    const detChain = main.spawns.find((c) => c.role === 'detached')!;
+    expect(detChain.events[0].as).toBe('audit-open');
+  });
+
+  it('cascades workflow defaults and event bindings into spawned chains', () => {
+    const wf = workflow([
+      {
+        event: TS_STARTED,
+        spawn: [{ event: TC_STARTED }, { event: TC_FINISHED, tool: 'override-tool' }],
+      },
+    ]);
+    (wf.workflow as { defaults: Record<string, unknown> }).defaults = {
+      tool: 'default-tool',
+      timeout_ms: 777,
+      min_wait_ms: 7,
+    };
+    const main = resolveChainTree(wf, makeRegistry([]));
+    const spawn = main.spawns[0];
+    expect(spawn.events[0].tool).toBe('default-tool'); // defaults reach spawn members
+    expect(spawn.events[0].timeout_ms).toBe(777);
+    expect(spawn.events[1].tool).toBe('override-tool'); // item-level wins
+  });
+
+  it('resolves a spawn declared by an event INSIDE a detached chain (recursion)', () => {
+    const wf = workflow([
+      {
+        event: TS_STARTED,
+        detach: [{ event: TC_STARTED, spawn: [{ event: TC_FINISHED }] }],
+      },
+    ]);
+    const main = resolveChainTree(wf, makeRegistry([]));
+    const det = main.spawns[0];
+    expect(det.role).toBe('detached');
+    expect(det.chainRef).toBe('p0.d');
+    expect(det.spawns).toHaveLength(1);
+    const inner = det.spawns[0];
+    expect(inner.role).toBe('blocking');
+    expect(inner.chainRef).toBe('p0.d0.s'); // anchored at the detached member
+    expect(inner.parentChainRef).toBe('p0.d');
+    expect(inner.events.map((e) => e.treePath)).toEqual(['p0.d0.s0']);
+  });
+
+  it('merges subject content over item content and defaults, and honors subject.id', () => {
+    const wf = workflow([
+      {
+        event: TS_STARTED,
+        content: { a: 'item', b: 'item' },
+        subject: { id: 'my-subject', content: { b: 'subject' } },
+      },
+      { event: TS_FINISHED },
+    ]);
+    (wf.workflow as { defaults: Record<string, unknown> }).defaults = {
+      content: { a: 'default', c: 'default' },
+    };
+    const main = resolveChainTree(wf, makeRegistry([]));
+    // subject.content REPLACES item content in the merge slot (not merged with it),
+    // then overlays defaults: a falls back to defaults, b comes from subject.
+    expect(main.events[0].subject.id).toBe('my-subject');
+    expect(main.events[0].subject.content).toEqual({ a: 'default', c: 'default', b: 'subject' });
+    // defaults.content cascades to every event; id falls back to the slug.
+    expect(main.events[1].subject.content).toEqual({ a: 'default', c: 'default' });
+    expect(main.events[1].subject.id).toBe('testsuiterun-finished');
+  });
+
+  it('leaves subject.content undefined when no content exists anywhere', () => {
+    const main = resolveChainTree(workflow([{ event: TS_FINISHED }]), makeRegistry([]));
+    expect(main.events[0].subject.content).toBeUndefined();
+    expect(main.events[0].subject.id).toBe('testsuiterun-finished');
   });
 });

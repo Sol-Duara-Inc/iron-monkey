@@ -23,7 +23,7 @@ export { loadExpressionRegistry } from './expressions/loader.js';
 export { buildManifest } from './manifest/builder.js';
 export { parseInjections } from './injection/parser.js';
 export { applyInjections } from './injection/apply.js';
-export { acquireChainId } from './chain/acquire.js';
+export { acquireChainId, ConduitAnsweredError } from './chain/acquire.js';
 export { generateFallbackChainId } from './chain/fallback.js';
 export { loadSchemas, validateEvent } from './schema/validator.js';
 export { createBus } from './bus/interface.js';

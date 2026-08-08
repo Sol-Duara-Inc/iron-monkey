@@ -144,3 +144,39 @@ describe('applyMalformation', () => {
     });
   });
 });
+
+describe('applyMalformation — edge branches', () => {
+  it('deleting through a nonexistent branch is a no-op; wrong-type auto-vivifies', () => {
+    const p = makePayload();
+    const before = JSON.stringify(p);
+    applyMalformation(p, 'missing-required-field', 'context.nope.deeper');
+    expect(JSON.stringify(p)).toBe(before); // nothing to delete → untouched
+
+    // Setter malformations CREATE missing intermediate objects — that is how
+    // a wrong-typed field can be planted anywhere in the envelope.
+    applyMalformation(p, 'wrong-type', 'nothing.here', 'number');
+    expect((p as Record<string, Record<string, unknown>>).nothing.here).toBe(12345);
+  });
+
+  it('corrupts the targeted RELATION link with broken-link', () => {
+    const p = makePayload();
+    const ctx = p.context as Record<string, unknown>;
+    ctx.links = { links: [{ linkType: 'RELATION', target: { contextId: 'abc' } }] };
+    applyMalformation(p, 'broken-link', undefined, '0');
+    const links = (ctx.links as { links: Array<Record<string, unknown>> }).links;
+    expect(links[0].target).toBe('CORRUPTED');
+  });
+
+  it('is a no-op for broken-link when the payload carries no links', () => {
+    const p = makePayload();
+    const before = JSON.stringify(p);
+    applyMalformation(p, 'broken-link', undefined, '0');
+    expect(JSON.stringify(p)).toBe(before);
+  });
+
+  it('coerces to the literal type name for an unknown wrong-type target', () => {
+    const p = makePayload();
+    applyMalformation(p, 'wrong-type', 'subject.id', 'bogus-type');
+    expect((p.subject as Record<string, unknown>).id).toBe('bogus-type');
+  });
+});

@@ -5,7 +5,7 @@ workflow:
   author: shipwreck-sa
   name: API Gateway — Gated Production Deploy with Change Ticket
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       service: api-gateway
       strategy: gated-production-deploy

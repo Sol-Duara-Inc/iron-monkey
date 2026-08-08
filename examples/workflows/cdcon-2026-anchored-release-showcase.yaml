@@ -1,25 +1,25 @@
 # yaml-language-server: $schema=../../schemas/cdrus/workflow.schema.json
 #
 # ─────────────────────────────────────────────────────────────────────────────
-# Anchored Release Showcase — `as:` anchors + detach + concurrent + timing
+# Anchored Release Showcase — `as:` anchors + detach + spawn + timing
 # ─────────────────────────────────────────────────────────────────────────────
-# Demonstrates the new CDrus features end-to-end:
+# Demonstrates the CDrus 0.1.0 features end-to-end:
 #
-#   • `as:`  — a stable, author-given anchor naming an event (§4.9). It is PURE
+#   • `as:`  — an author-given anchor naming an event (§4.9). It is PURE
 #             INTENT METADATA: Iron Monkey only emits the event; it never binds
 #             or reacts to the anchor. Junction Box's Koine selectors reference
 #             these names with `@anchor` (e.g. `@artifact-ready`, `@released`)
-#             instead of brittle positional coordinates. Anchors are unique
-#             across the whole resolved tree and work anywhere an event can
-#             appear — top level, inside a `detach:`, or inside a concurrent
-#             branch (shown below).
+#             instead of brittle positional coordinates. Anchors work anywhere
+#             an event can appear — top level, inside a `detach:`, or inside a
+#             Blocking `spawn:` chain (shown below).
 #
-#   • detach    — a fire-and-forget sub-chain the main line does NOT wait on; a
-#                 breach inside it does NOT roll up to the parent (async SBOM
-#                 scan below).
-#   • concurrent — sibling branches under one event (`produces: [[...],[...]]`);
-#                  a breach inside DOES roll up to the parent (verify below).
-#   • timing    — per-event `timeout_ms` / `min_wait_ms` (canonical `number`).
+#   • detach — a Detached spawned chain (§4.8) the main line does NOT wait on;
+#              a breach inside it does NOT roll up to the parent (async SBOM
+#              scan below).
+#   • spawn  — Blocking spawned chains (§4.7, nested form: one chain per inner
+#              list); a breach inside DOES roll up to the parent, and the
+#              spawning chain waits on them (verify below).
+#   • timing — per-event `timeout_ms` / `min_wait_ms` (canonical `number`).
 #
 # Anchor map for Junction Box (`@anchor` → event):
 #   @ci-started      pipelinerun.started      @verify-started   testsuiterun.started
@@ -35,7 +35,7 @@ workflow:
   author: dsanyika
   name: "cdCon 2026 — Anchored Release Showcase (as anchors · detach · concurrent · timing)"
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       occasion: cdCon May 2026 (Minneapolis)
       purpose: "Showcase CDrus `as:` anchors targeted by Junction Box `@anchor` selectors, alongside detach, concurrent branches, and per-event timing"
@@ -79,22 +79,23 @@ workflow:
           source: https://snyk.example.com/
           timeout_ms: 600000               # generous budget for a long scan
 
-    # ── Spinnaker (CD): concurrent verification across two test cases ──────────
-    # Both branches run as siblings; a breach in either rolls UP to the suite.
+    # ── Spinnaker (CD): Blocking spawned verification across two test cases ───
+    # Nested-form spawn (RFC §4.7): one Blocking chain per inner list. A breach
+    # in either rolls UP to the suite, and the suite waits on both.
     - event: dev.cdevents.testsuiterun.started.0.3.0
       as: verify-started
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
-      produces:
+      spawn:
         - - event: dev.cdevents.testcaserun.started.0.3.0
             tool: spinnaker-prod
           - event: dev.cdevents.testcaserun.finished.0.3.0
-            as: case-a-finished            # anchor INSIDE concurrent branch A
+            as: case-a-finished            # anchor INSIDE Blocking chain A
             tool: spinnaker-prod
         - - event: dev.cdevents.testcaserun.started.0.3.0
             tool: spinnaker-prod
           - event: dev.cdevents.testcaserun.finished.0.3.0
-            as: case-b-finished            # anchor INSIDE concurrent branch B
+            as: case-b-finished            # anchor INSIDE Blocking chain B
             tool: spinnaker-prod
     - event: dev.cdevents.testsuiterun.finished.0.3.0
       as: verify-finished

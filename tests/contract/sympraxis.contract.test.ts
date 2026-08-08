@@ -58,6 +58,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync, existsSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import yaml from 'js-yaml';
+// Machine gate (guide v2 §4): the ONE deliberate break in the suite's
+// black-box stance — the client compares the server's derivation against
+// Iron Monkey's local derivation of the same workflow id. Server internals
+// stay opaque; the client's own expectation is the fixture mirror.
+import { resolveChainTree } from '../../src/workflow/chain-tree.js';
+import { validateWorkflow } from '../../src/workflow/parser.js';
+import { loadExpressionRegistry } from '../../src/expressions/loader.js';
+import { createLogger, setLogger } from '../../src/logger/index.js';
 
 // ── Configuration ───────────────────────────────────────────────────────────
 const BASE_URL = process.env.SYMPRAXIS_BASE_URL;
@@ -222,6 +234,8 @@ function assertValidChainSet(body: Record<string, unknown>): {
 } {
   expect(String(body.runId)).toMatch(UUID_RE);
   expect(String(body.issuedAt)).toMatch(ISO_RE);
+  // instanceId: the daemon's boot-minted authority identity (guide v2 §3).
+  expect(String(body.instanceId)).toMatch(/^conduitd:/);
 
   const chains = chainsOf(body);
   expect(chains.length).toBeGreaterThan(0);
@@ -243,6 +257,9 @@ function assertValidChainSet(body: Record<string, unknown>): {
     expect(['main', 'detached', 'blocking', 'concurrent'], `unknown role '${c.role}'`).toContain(
       c.role,
     );
+    // expectedEvents is ALWAYS an array, never null (guide v2 §2) — including
+    // chains scoped out by `tool` filtering.
+    expect(Array.isArray(c.expectedEvents), `expectedEvents must be an array`).toBe(true);
     for (const e of c.expectedEvents) {
       expect(typeof e.type).toBe('string');
       expect(typeof e.order).toBe('number');
@@ -469,14 +486,14 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       expect(res.body.parentChainId).toBe(main.chainId);
     });
 
-    it('rejects a late declaration whose parent chain does not exist', async () => {
+    it('rejects a late declaration whose parent chain does not exist with 422', async () => {
       const res = await postChains({
         chainRef: `orphan-${uuid()}`,
         name: 'orphan',
         parentChainId: uuid(), // no such chain
         expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
       });
-      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.status).toBe(422); // guide v2: 422 = unknown parent (400 stays validation)
     });
   });
 
@@ -625,6 +642,17 @@ describeContract('Sympraxis chain-declaration protocol', () => {
         );
         expect(view.body.status).toBe('complete');
         expect(((view.body.breaches as unknown[]) ?? []).length).toBe(0);
+
+        // Order join (guide v2 §2): each observedEvent carries the DECLARED
+        // order — it must join against expectedEvents on (order, type).
+        const expectedByOrder = new Map(ordered.map((e) => [e.order, e.type]));
+        const observed =
+          (view.body.observedEvents as Array<{ type: string; order?: number }>) ?? [];
+        const joined = observed.filter((o) => typeof o.order === 'number');
+        expect(joined.length).toBeGreaterThan(0);
+        for (const o of joined) {
+          expect(expectedByOrder.get(o.order!), `observed order ${o.order}`).toBe(o.type);
+        }
       },
       20000,
     );
@@ -684,6 +712,266 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       },
       20000,
     );
+  });
+
+  // ── §4 Machine gate — server derivation EQUALS local derivation ────────────
+  describe('machine gate: expectedEvents equal IM local derivation', () => {
+    const SOURCES = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../fixtures/cdrus-goldens/sources',
+    );
+
+    /** Finds the mirror workflow file whose `workflow.id` matches. */
+    function findWorkflowFile(id: string): string | undefined {
+      if (!existsSync(SOURCES)) return undefined;
+      for (const f of readdirSync(SOURCES).filter((n) => n.endsWith('.workflow.yaml'))) {
+        const doc = yaml.load(readFileSync(path.join(SOURCES, f), 'utf-8')) as {
+          workflow?: { id?: string };
+        };
+        if (doc.workflow?.id === id) return path.join(SOURCES, f);
+      }
+      return undefined;
+    }
+
+    /** Local derivation → chainRef → ordered [{treePath, order, type}]. */
+    async function localDerivation(
+      workflowPath: string,
+    ): Promise<Map<string, { treePath: string; order: number; type: string }[]>> {
+      setLogger(createLogger({ level: 'fatal', format: 'json' }));
+      const registry = loadExpressionRegistry(SOURCES);
+      const wf = await validateWorkflow(workflowPath);
+      const byRef = new Map<string, { treePath: string; order: number; type: string }[]>();
+      const visit = (c: import('../../src/workflow/chain-tree.js').ResolvedChain): void => {
+        byRef.set(
+          c.chainRef,
+          c.events.map((e) => ({ treePath: e.treePath, order: e.order, type: e.type })),
+        );
+        c.spawns.forEach(visit);
+      };
+      visit(resolveChainTree(wf, registry));
+      return byRef;
+    }
+
+    it.runIf(Boolean(findWorkflowFile(WORKFLOW_ID)))(
+      'divergent documents under one workflow id are a red test, not a discovery',
+      async () => {
+        const local = await localDerivation(findWorkflowFile(WORKFLOW_ID)!);
+        const res = await postChains({ workflowId: WORKFLOW_ID });
+        expect(res.status).toBe(200);
+        const chains = chainsOf(res.body);
+
+        expect(chains.map((c) => c.chainRef).sort()).toEqual([...local.keys()].sort());
+        for (const c of chains) {
+          const server = [...c.expectedEvents]
+            .sort((a, b) => a.order - b.order)
+            .map((e) => ({ treePath: e.treePath, order: e.order, type: e.type }));
+          expect(server, `chain ${c.chainRef}`).toEqual(local.get(c.chainRef));
+        }
+      },
+    );
+  });
+
+  // ── §3 instanceId — presence and stability across one run's responses ──────
+  describe('instanceId pinning', () => {
+    it('is present and stable across register, view, and late declaration', async () => {
+      const reg = await postChains({ workflowId: WORKFLOW_ID });
+      const pinned = String(reg.body.instanceId);
+      expect(pinned).toMatch(/^conduitd:/);
+      const main = mainChain(chainsOf(reg.body));
+      expect(main).toBeTruthy();
+      if (!main) return;
+
+      const view = await getChain(main.chainId);
+      expect(String(view.body.instanceId)).toBe(pinned);
+
+      const late = await postChains({
+        chainRef: `pin-${uuid()}`,
+        name: 'pin-check',
+        parentChainId: main.chainId,
+        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
+      });
+      expect(String(late.body.instanceId)).toBe(pinned);
+    });
+  });
+
+  // ── Tool scoping — declared chains keep their events ───────────────────────
+  describe('tool scoping', () => {
+    it('returns arrays for every chain even when the tool matches nothing', async () => {
+      const novelRef = `scoped-${uuid()}`;
+      const res = await postChains({
+        workflowId: WORKFLOW_ID,
+        tool: `no-such-tool-${uuid().slice(0, 8)}`,
+        verificationList: [
+          {
+            chainRef: novelRef,
+            name: 'declared-under-scoping',
+            parentChainRef: 'root',
+            expectedEvents: declaredEvents(['dev.cdevents.ticket.created.0.2.0']),
+          },
+        ],
+      });
+      expect(res.status).toBe(200);
+      for (const c of chainsOf(res.body)) {
+        expect(Array.isArray(c.expectedEvents), `chain ${c.chainRef}`).toBe(true);
+      }
+      // Chains YOU declared keep their events regardless of scoping.
+      const declared = chainsOf(res.body).find((c) => c.chainRef === novelRef);
+      expect(declared?.expectedEvents.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ── Idempotency — retried register returns byte-equivalent statuses ────────
+  describe('idempotent retry statuses', () => {
+    it('echoes identical statuses on redelivery (added stays added)', async () => {
+      const key = `idem-status-${uuid()}`;
+      const novelRef = `idem-added-${uuid()}`;
+      const body = {
+        workflowId: WORKFLOW_ID,
+        verificationList: [
+          {
+            chainRef: novelRef,
+            name: 'idem-added',
+            parentChainRef: 'root',
+            expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
+          },
+        ],
+      };
+      const first = await postChains(body, { idempotencyKey: key });
+      const second = await postChains(body, { idempotencyKey: key });
+      expect(first.status).toBe(200);
+
+      const statusByRef = (r: Resp) => new Map(chainsOf(r.body).map((c) => [c.chainRef, c.status]));
+      expect(statusByRef(second)).toEqual(statusByRef(first));
+      expect(statusByRef(second).get(novelRef)).toBe('added');
+    });
+  });
+
+  // ── §2 Late-declaration conflict matrix ────────────────────────────────────
+  describe('late declaration conflicts', () => {
+    it('echoes a re-declared chainRef under the same parent without minting anew', async () => {
+      const reg = await postChains({ workflowId: WORKFLOW_ID });
+      const main = mainChain(chainsOf(reg.body));
+      expect(main).toBeTruthy();
+      if (!main) return;
+
+      const body = {
+        chainRef: `echo-${uuid()}`,
+        name: 'echo-me',
+        parentChainId: main.chainId,
+        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
+      };
+      const first = await postChains(body);
+      const second = await postChains(body);
+      expect(first.status).toBeLessThan(300);
+      expect(second.status).toBeLessThan(300);
+      expect(second.body.chainId).toBe(first.body.chainId);
+    });
+
+    it('rejects a chainRef naming a workflow chain with 409', async () => {
+      const reg = await postChains({ workflowId: WORKFLOW_ID });
+      const main = mainChain(chainsOf(reg.body));
+      expect(main).toBeTruthy();
+      if (!main) return;
+
+      const res = await postChains({
+        chainRef: 'root',
+        name: 'collides-with-workflow-chain',
+        parentChainId: main.chainId,
+        expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it('rejects the same chainRef under a different parent with 409', async () => {
+      const reg = await postChains({ workflowId: WORKFLOW_ID });
+      const chains = chainsOf(reg.body);
+      const main = mainChain(chains);
+      const other = chains.find((c) => c.role !== 'main');
+      expect(main && other).toBeTruthy();
+      if (!main || !other) return;
+
+      const ref = `dup-${uuid()}`;
+      const under = (parentChainId: string) =>
+        postChains({
+          chainRef: ref,
+          name: 'dup-ref',
+          parentChainId,
+          expectedEvents: declaredEvents(['dev.cdevents.service.rolledback.0.3.0']),
+        });
+      expect((await under(main.chainId)).status).toBeLessThan(300);
+      expect((await under(other.chainId)).status).toBe(409);
+    });
+  });
+
+  // ── Ingest guards — typed 400 and the 4 MiB cap ────────────────────────────
+  describe('ingest guards', () => {
+    it.runIf(RUN_INGEST)(
+      "a chainId containing the word 'envelope' is data, not a malformed envelope",
+      async () => {
+        const status = await emitCdEvent(
+          cdEvent(`envelope-${uuid()}`, 'dev.cdevents.change.created.0.3.0'),
+        );
+        expect(status).toBe(EVENTS_STATUS); // typed validation — never text-matched
+      },
+    );
+
+    it.runIf(RUN_INGEST)('rejects a structurally malformed envelope with 400', async () => {
+      const status = await emitCdEvent({ junk: true });
+      expect(status).toBe(400);
+    });
+
+    it.runIf(RUN_INGEST)('rejects a body over 4 MiB with 413', async () => {
+      const big = cdEvent(uuid(), 'dev.cdevents.change.created.0.3.0');
+      (big.subject as Record<string, unknown>).content = { pad: 'x'.repeat(4_500_000) };
+      const status = await emitCdEvent(big);
+      expect(status).toBe(413);
+    });
+  });
+
+  // ── Legacy shim — the producer's current acquisition path ──────────────────
+  describe('legacy chainID shim', () => {
+    it('resolves <workflow>:root to the freshly registered main chain, idempotently', async () => {
+      const reg = await postChains({ workflowId: WORKFLOW_ID });
+      const runId = String(reg.body.runId);
+
+      const shim = async (): Promise<string> => {
+        const res = await fetch(`${BASE_URL}/chainID`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ name: `${WORKFLOW_ID}:root` }),
+          signal: AbortSignal.timeout(10000),
+        });
+        expect(res.status).toBe(200);
+        return String(((await parse(res)) as { chainId?: string }).chainId);
+      };
+      const first = await shim();
+      expect(first).toBe(runId); // pure lookup — minted at register
+      expect(await shim()).toBe(first); // idempotent per (run, chainRef)
+    });
+
+    it('scoped form resolves per-run refs and 404s across workflows', async () => {
+      const reg = await postChains({ workflowId: WORKFLOW_ID });
+      const runId = String(reg.body.runId);
+      const detached = aDetachedChain(chainsOf(reg.body));
+      expect(detached).toBeTruthy();
+      if (!detached) return;
+
+      const scoped = (name: string) =>
+        fetch(`${BASE_URL}/conduit/runs/${encodeURIComponent(runId)}/chainID`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ name }),
+          signal: AbortSignal.timeout(10000),
+        });
+
+      const own = await scoped(`${WORKFLOW_ID}:${detached.chainRef}`);
+      expect(own.status).toBe(200);
+      const ownId = String(((await parse(own)) as { chainId?: string }).chainId);
+      expect(ownId).toBe(detached.chainId);
+
+      const cross = await scoped(`${FANOUT_WORKFLOW_ID ?? 'build-fanout'}:root`);
+      expect(cross.status).toBe(404); // scope chain belongs to a different workflow
+    });
   });
 
   // ── Bus-side declaration equivalence (needs a message-bus harness) ─────────

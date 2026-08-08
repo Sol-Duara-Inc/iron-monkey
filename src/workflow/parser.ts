@@ -10,7 +10,7 @@
 
 import { readFile } from 'fs/promises';
 import yaml from 'js-yaml';
-import { createAjv } from '../util/ajv.js';
+import { createAjv2020 } from '../util/ajv.js';
 import { workflowSchema } from './schema.js';
 import { isEventItem, isExpressionItem } from './types.js';
 import { nounVerbFromType } from '../expressions/loader.js';
@@ -19,7 +19,7 @@ import type { WorkflowFile, WorkflowDefaults } from './types.js';
 import type { ExpressionRegistry } from '../expressions/loader.js';
 import type { BundleEventItem, ExpressionBundle } from '../expressions/types.js';
 
-const validateWorkflowSchema = createAjv().compile(workflowSchema);
+const validateWorkflowSchema = createAjv2020().compile(workflowSchema);
 
 /**
  * Reads, YAML-parses, and schema-validates a workflow file. Provides

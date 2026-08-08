@@ -186,17 +186,18 @@ export interface CDEventPayload {
  * `PATH` links and an `END` link on the last event.
  *
  * The role determines how the RECEIVER monitors the chain (it does NOT change
- * how the emitter throws it — both are emitted identically):
- * - `'detached'`   — monitored independently; its breach does NOT roll up to
+ * how the emitter throws it — both are emitted identically today):
+ * - `'detached'` — monitored independently; its breach does NOT roll up to
  *   the parent.
- * - `'concurrent'` — monitored under its parent; its breach ROLLS UP to the
- *   parent (and the parent completes when its concurrent children complete).
- *   The emitter does not join or block — joining/rollup is the receiver's job.
+ * - `'blocking'` — a spawn chain, monitored under its parent; its breach ROLLS
+ *   UP to the parent, and the spawning chain's completion gates on it. The
+ *   receiver-side rollup is the receiver's job; the producer-side wait lands
+ *   in Phase 2.
  */
 export interface DetachedManifestChain {
-  /** How the receiver monitors this chain: `'detached'` (independent) or `'concurrent'` (breach rolls up to parent). */
-  role: 'detached' | 'concurrent';
-  /** Positional binding key (chain anchor) from the chain tree, e.g. `'p1.p1.p0.d'`, `'p1.b0'`. */
+  /** How the receiver monitors this chain: `'detached'` (independent) or `'blocking'` (spawn; breach rolls up to parent). */
+  role: 'detached' | 'blocking';
+  /** Positional binding key (chain anchor) from the chain tree, e.g. `'p1.p1.p0.d'`, `'p1.s0'`. */
   chainRef: string;
   /** This chain's own Sympraxis chain ID, stamped on every one of its events. */
   chainId: string;

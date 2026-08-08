@@ -1,0 +1,38 @@
+{
+  "source": "version-forms-and-anchors.expression.yaml",
+  "notes": "Flat spawn (ONE chain, anchor p3.s, entries at p3.s{i}) and flat detach (ONE chain, anchor p3.d) on the same event. Event strings keep their authored version forms.",
+  "chains": [
+    {
+      "chainRef": "root",
+      "role": "main",
+      "parentChainRef": null,
+      "spawningEventPath": null,
+      "expectedEvents": [
+        { "treePath": "p0", "event": "dev.cdevents.testsuiterun.started.0.3.0", "order": 0 },
+        { "treePath": "p1", "event": "dev.cdevents.testcaserun.started:0.3.0", "order": 1 },
+        { "treePath": "p2", "event": "dev.cdevents.testcaserun.finished", "order": 2 },
+        { "treePath": "p3", "event": "dev.cdevents.build.started:^0.1.0", "order": 3 },
+        { "treePath": "p4", "event": "dev.cdevents.testsuiterun.finished", "order": 4 }
+      ]
+    },
+    {
+      "chainRef": "p3.s",
+      "role": "blocking",
+      "parentChainRef": "root",
+      "spawningEventPath": "p3",
+      "expectedEvents": [
+        { "treePath": "p3.s0", "event": "dev.cdevents.testcaserun.queued", "order": 0 },
+        { "treePath": "p3.s1", "event": "dev.cdevents.testcaserun.started", "order": 1 }
+      ]
+    },
+    {
+      "chainRef": "p3.d",
+      "role": "detached",
+      "parentChainRef": "root",
+      "spawningEventPath": "p3",
+      "expectedEvents": [
+        { "treePath": "p3.d0", "event": "dev.cdeventsx.mytool-notification.dispatched", "order": 0 }
+      ]
+    }
+  ]
+}

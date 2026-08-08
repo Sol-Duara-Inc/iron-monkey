@@ -1,0 +1,12 @@
+# RFC §7.1 — depth-first nesting plus a same-context expression reference.
+group: payment-engineering
+author: mchen
+expression: build
+description: A CI build that emits queue, start, verify, and finish.
+produces:
+  - event: dev.cdevents.change.created
+  - event: dev.cdevents.build.queued
+  - event: dev.cdevents.build.started
+    produces:
+      - expression: verify
+  - event: dev.cdevents.build.finished

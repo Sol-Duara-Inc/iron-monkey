@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { acquireChainId, acquireChainIds } from '../../src/chain/acquire.js';
+import { acquireChainId, acquireChainIds, ConduitAnsweredError } from '../../src/chain/acquire.js';
 
 describe('acquireChainId', () => {
   beforeEach(() => {
@@ -28,7 +28,20 @@ describe('acquireChainId', () => {
     expect(result.chainId).toBe(mockChainId);
   });
 
-  it('falls back when conduit returns non-2xx', async () => {
+  it('THROWS (run-scoped) when the daemon answers non-2xx — no silent fallback', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({}),
+    });
+
+    await expect(
+      acquireChainId('my-workflow', { url: 'https://conduit.example.com' }),
+    ).rejects.toThrow(ConduitAnsweredError);
+  });
+
+  it('includes redeliver guidance when the daemon answers 503', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,
       status: 503,
@@ -36,26 +49,42 @@ describe('acquireChainId', () => {
       json: async () => ({}),
     });
 
-    const result = await acquireChainId('my-workflow', { url: 'https://conduit.example.com' });
-    expect(result.source).toBe('fallback');
-    expect(result.chainId).toMatch(/^urn:sol-duara:fallback:/);
+    await expect(
+      acquireChainId('my-workflow', { url: 'https://conduit.example.com' }),
+    ).rejects.toThrow(/503 is a transient store failure — redeliver/);
   });
 
-  it('falls back when conduit response has invalid UUID', async () => {
+  it('THROWS when the daemon answers with an invalid chainId', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ chainId: 'not-a-uuid', issuedAt: new Date().toISOString() }),
     });
 
-    const result = await acquireChainId('my-workflow', { url: 'https://conduit.example.com' });
-    expect(result.source).toBe('fallback');
+    await expect(
+      acquireChainId('my-workflow', { url: 'https://conduit.example.com' }),
+    ).rejects.toThrow(/did not contain a valid chainId UUID/);
   });
 
-  it('falls back when fetch throws (network error)', async () => {
+  it('THROWS when the daemon answers non-JSON', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new Error('unexpected token');
+      },
+    });
+
+    await expect(
+      acquireChainId('my-workflow', { url: 'https://conduit.example.com' }),
+    ).rejects.toThrow(/answered non-JSON/);
+  });
+
+  it('falls back when fetch throws (no daemon answered)', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     const result = await acquireChainId('my-workflow', { url: 'https://conduit.example.com' });
     expect(result.source).toBe('fallback');
+    expect(result.chainId).toMatch(/^urn:sol-duara:fallback:/);
   });
 
   it('includes Authorization header when token is configured', async () => {
@@ -121,13 +150,20 @@ describe('acquireChainIds (per sub-chain)', () => {
     expect(JSON.parse(init.body as string).name).toBe('wf:p1.d');
   });
 
-  it('falls back per chain when Conduit errors', async () => {
+  it('propagates a daemon-answered error instead of minting fallbacks', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       status: 503,
       statusText: 'Service Unavailable',
       json: async () => ({}),
     });
+    await expect(
+      acquireChainIds('wf', reqs, { noConduit: false }, { url: 'https://conduit.example.com' }),
+    ).rejects.toThrow(ConduitAnsweredError);
+  });
+
+  it('falls back per chain when no daemon answers', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('ECONNREFUSED'));
     const map = await acquireChainIds(
       'wf',
       reqs,

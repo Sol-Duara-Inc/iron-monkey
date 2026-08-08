@@ -13,14 +13,14 @@ import { readFileSync, readdirSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
-import { createAjv } from '../util/ajv.js';
+import { createAjv2020 } from '../util/ajv.js';
 import { getLogger } from '../logger/index.js';
 import { checkNameHints, loadHintTable } from '../hints/index.js';
 import type { HintCheckResult, HintTable } from '../hints/index.js';
 import { expressionBundleSchema } from './schema.js';
 import type { ExpressionBundle } from './types.js';
 
-const validateBundleSchema = createAjv().compile(expressionBundleSchema);
+const validateBundleSchema = createAjv2020().compile(expressionBundleSchema);
 
 /**
  * Standard-library fallback identity used by {@link ExpressionRegistry.resolveWithContext}

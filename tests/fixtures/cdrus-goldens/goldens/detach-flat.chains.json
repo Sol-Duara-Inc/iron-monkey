@@ -1,0 +1,27 @@
+{
+  "source": "detach-flat.expression.yaml",
+  "notes": "Flat detach: the whole list is ONE chain, anchor p0.d (string-prefix, not a well-formed segment — live-protocol congruent). Entry 0 is an event at p0.d0; entry 1 is the artifact-store expression at p0.d1 (structural), its events nesting beneath.",
+  "chains": [
+    {
+      "chainRef": "root",
+      "role": "main",
+      "parentChainRef": null,
+      "spawningEventPath": null,
+      "expectedEvents": [
+        { "treePath": "p0", "event": "dev.cdevents.build.finished", "order": 0 },
+        { "treePath": "p1", "event": "dev.cdevents.pipelinerun.finished", "order": 1 }
+      ]
+    },
+    {
+      "chainRef": "p0.d",
+      "role": "detached",
+      "parentChainRef": "root",
+      "spawningEventPath": "p0",
+      "expectedEvents": [
+        { "treePath": "p0.d0", "event": "dev.cdeventsx.mytool-notification.dispatched", "order": 0 },
+        { "treePath": "p0.d1.p0", "event": "dev.cdevents.artifact.packaged", "order": 1 },
+        { "treePath": "p0.d1.p1", "event": "dev.cdevents.artifact.published", "order": 2 }
+      ]
+    }
+  ]
+}

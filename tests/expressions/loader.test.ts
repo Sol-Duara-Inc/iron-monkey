@@ -263,3 +263,42 @@ describe('loadExpressionRegistry — path-style disambiguation', () => {
     expect(bundle.author).toBe('bob');
   });
 });
+
+// ── resilience and resolution edge paths ──────────────────────────────────────
+
+describe('loadExpressionRegistry — resilience edge paths', () => {
+  it('uses the bundled default directory when no dir or env override is given', () => {
+    const saved = process.env.IRON_MONKEY_EXPRESSIONS;
+    delete process.env.IRON_MONKEY_EXPRESSIONS;
+    try {
+      const registry = loadExpressionRegistry();
+      expect(registry.list().length).toBeGreaterThan(0);
+    } finally {
+      if (saved !== undefined) process.env.IRON_MONKEY_EXPRESSIONS = saved;
+    }
+  });
+
+  it('yields an empty registry for a nonexistent directory; resolution fails clearly', () => {
+    const registry = loadExpressionRegistry('/no/such/dir/anywhere');
+    expect(registry.list()).toEqual([]);
+    expect(() => registry.resolve('anything')).toThrow(/No expression bundle found/);
+  });
+
+  it('skips an unreadable entry (a directory named *.yaml) with a warning', async () => {
+    const dir = await makeTmpDir();
+    await mkdir(path.join(dir, 'imposter.yaml'), { recursive: true });
+    await writeFile(path.join(dir, 'good.yaml'), minimalBundle('good-two'), 'utf-8');
+    const warn = vi.spyOn(getLogger(), 'warn').mockImplementation(() => {});
+    const registry = loadExpressionRegistry(dir);
+    expect(registry.list().map((b) => b.name)).toEqual(['good-two']);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('rejects a 4+-part reference in resolveWithContext', () => {
+    const registry = loadExpressionRegistry(BUNDLED_DIR);
+    expect(() => registry.resolveWithContext('a/b/c/d', { group: 'g', author: 'a' })).toThrow(
+      /Invalid expression reference/,
+    );
+  });
+});

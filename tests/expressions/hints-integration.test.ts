@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -110,5 +110,38 @@ describe('bundled expressions — name-hint compliance sentinel', () => {
     // Both still resolve — diagnostics never affect acceptance.
     expect(() => registry.resolve('example-group/user/pipeline-run')).not.toThrow();
     expect(() => registry.resolve('example-group/user/test-output-publish')).not.toThrow();
+  });
+});
+
+// ── fail-soft when the keyword table is unavailable ───────────────────────────
+
+describe('loadExpressionRegistry — hint table unavailable', () => {
+  it('loads even hint-violating bundles when the table cannot be loaded (fail-soft)', async () => {
+    vi.resetModules();
+    vi.doMock('../../src/hints/index.js', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../../src/hints/index.js')>();
+      return {
+        ...actual,
+        loadHintTable: () => {
+          throw new Error('simulated: table missing');
+        },
+      };
+    });
+    const { loadExpressionRegistry: loadWithBrokenTable } =
+      await import('../../src/expressions/loader.js');
+
+    const dir = await makeTmpDir();
+    // 'build' hint would normally be violated (only queued) → skip. With the
+    // table unavailable, the gate is OFF and the bundle loads.
+    await writeFile(
+      path.join(dir, 'bad.yaml'),
+      `${HEADER}expression: build\nproduces:\n  - event: dev.cdevents.build.queued.0.3.0\n`,
+      'utf-8',
+    );
+    const registry = loadWithBrokenTable(dir);
+    expect(registry.list().map((b) => b.name)).toEqual(['build']);
+    expect(registry.hintFindings()).toEqual([]);
+    vi.doUnmock('../../src/hints/index.js');
+    vi.resetModules();
   });
 });

@@ -1,0 +1,20 @@
+# Exercises the four §6.1 event-version forms, §4.9 anchors, flat spawn, and
+# spawn+detach on one event — every remaining grammar-legal construct in one
+# document.
+group: quality-engineering
+author: msommer
+expression: version-forms
+description: Version forms, anchors, and both spawned-chain keys together.
+produces:
+  - event: dev.cdevents.testsuiterun.started.0.3.0 # embedded version, exact
+  - event: "dev.cdevents.testcaserun.started:0.3.0" # colon form, exact
+  - event: dev.cdevents.testcaserun.finished # no version -> latest
+    as: case-done
+  - event: "dev.cdevents.build.started:^0.1.0" # colon semver range
+    spawn:
+      - event: dev.cdevents.testcaserun.queued
+      - event: dev.cdevents.testcaserun.started
+    detach:
+      - event: dev.cdeventsx.mytool-notification.dispatched
+  - event: dev.cdevents.testsuiterun.finished
+    as: suite-done

@@ -79,6 +79,29 @@ export interface EventItem {
    * when both are present.
    */
   content?: Record<string, unknown>;
+  /** Optional URI to the event's JSON Schema (CDrus 0.1.0). */
+  event_schema_uri?: string;
+  /**
+   * Optional author-given anchor labeling this event (RFC §4.9). Pure intent
+   * metadata; carried through resolution, never affects production.
+   */
+  as?: string;
+  /**
+   * Same-chain children fired depth-first before this event's next sibling
+   * (RFC §4.6). Never spawns a chain.
+   */
+  produces?: ProducesItem[];
+  /**
+   * Blocking spawned chains this event triggers (RFC §4.7). Flat form (an
+   * array of chain items) declares ONE chain; nested form (an array of arrays)
+   * declares one chain per inner list. Forms must not be mixed.
+   */
+  spawn?: ProducesItem[] | ProducesItem[][];
+  /**
+   * Detached spawned chains this event triggers (RFC §4.8). Same flat-or-nested
+   * dual form as `spawn`; the spawning chain does not wait.
+   */
+  detach?: ProducesItem[] | ProducesItem[][];
 }
 
 /**
@@ -92,6 +115,8 @@ export interface ExpressionOverride {
   tool?: string;
   /** Source URI override for this specific bundle event. */
   source?: string;
+  /** Pipeline name override for this specific bundle event (CDrus 0.1.0). */
+  pipeline?: string;
   /** Timeout override for this specific bundle event. */
   timeout_ms?: number;
   /** Minimum wait override for this specific bundle event. */
@@ -162,8 +187,8 @@ export interface WorkflowDef {
    * schema version this workflow targets and optional free-form metadata.
    */
   cdrus: {
-    /** CDrus schema version this workflow YAML targets (e.g. `1`). */
-    version: number;
+    /** CDrus schema version this workflow YAML targets (e.g. `"0.1.0"`). */
+    version: string;
     /** Optional documentation metadata (description, owner, tags). */
     metadata?: WorkflowMetadata;
   };

@@ -5,7 +5,7 @@ workflow:
   author: shipwreck-sa
   name: Checkout Service — Production Canary Release
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       service: checkout
       strategy: canary

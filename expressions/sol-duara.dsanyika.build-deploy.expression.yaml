@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
 group: sol-duara
 author: dsanyika
 expression: build-deploy

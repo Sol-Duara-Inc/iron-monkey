@@ -1,0 +1,38 @@
+{
+  "source": "build-store-notify.expression.yaml",
+  "notes": "Nested detach: one Detached chain per inner list — anchors p0.d0 and p0.d1 (well-formed segments, because sibling chains must be distinct). Inner-list items sit on a p-run beneath each anchor; expression items are structural with their events nesting further.",
+  "chains": [
+    {
+      "chainRef": "root",
+      "role": "main",
+      "parentChainRef": null,
+      "spawningEventPath": null,
+      "expectedEvents": [
+        { "treePath": "p0", "event": "dev.cdevents.build.finished", "order": 0 },
+        { "treePath": "p1", "event": "dev.cdevents.pipelinerun.finished", "order": 1 }
+      ]
+    },
+    {
+      "chainRef": "p0.d0",
+      "role": "detached",
+      "parentChainRef": "root",
+      "spawningEventPath": "p0",
+      "expectedEvents": [
+        { "treePath": "p0.d0.p0", "event": "dev.cdeventsx.mytool-notification.dispatched", "order": 0 },
+        { "treePath": "p0.d0.p1.p0", "event": "dev.cdevents.artifact.packaged", "order": 1 },
+        { "treePath": "p0.d0.p1.p1", "event": "dev.cdevents.artifact.published", "order": 2 }
+      ]
+    },
+    {
+      "chainRef": "p0.d1",
+      "role": "detached",
+      "parentChainRef": "root",
+      "spawningEventPath": "p0",
+      "expectedEvents": [
+        { "treePath": "p0.d1.p0.p0", "event": "dev.cdeventsx.mytool-notification.dispatched", "order": 0 },
+        { "treePath": "p0.d1.p1.p0", "event": "dev.cdevents.change.created", "order": 1 },
+        { "treePath": "p0.d1.p1.p1", "event": "dev.cdevents.change.merged", "order": 2 }
+      ]
+    }
+  ]
+}

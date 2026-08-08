@@ -1,21 +1,21 @@
-# yaml-language-server: $schema=https://cdrus.dev/schemas/0.2.0/expression.schema.json
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
 group: spin-dev
 author: shipwreck-sa
 expression: verify-concurrent
 description: |
   Shipwreck SA — verification runs at least two test cases under a tracked
-  suite. The suite's queue state is observable so capacity planners can see
-  backlogs. A bare single-case run does not count as verification here.
+  suite, as Blocking spawned chains (RFC §4.7, nested form: one chain per
+  inner list). The suite does not finish until both chains complete. The
+  suite's queue state is observable so capacity planners can see backlogs.
+  A bare single-case run does not count as verification here.
 produces:
   - event: dev.cdevents.testsuiterun.queued.0.3.0
   - event: dev.cdevents.testsuiterun.started.0.3.0
-    produces:
-      -
-        - event: dev.cdevents.testcaserun.queued.0.3.0
+    spawn:
+      - - event: dev.cdevents.testcaserun.queued.0.3.0
         - event: dev.cdevents.testcaserun.started.0.3.0
         - event: dev.cdevents.testcaserun.finished.0.3.0
-      -
-        - event: dev.cdevents.testcaserun.queued.0.3.0
+      - - event: dev.cdevents.testcaserun.queued.0.3.0
         - event: dev.cdevents.testcaserun.started.0.3.0
         - event: dev.cdevents.testcaserun.finished.0.3.0
   - event: dev.cdevents.testsuiterun.finished.0.3.0

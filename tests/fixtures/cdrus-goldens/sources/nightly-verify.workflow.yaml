@@ -1,0 +1,12 @@
+# RFC §4.9 — the authoritative anchor declaration at the Workflow root.
+workflow:
+  id: nightly-verify
+  group: quality-engineering
+  author: msommer
+  name: Nightly Verify
+  cdrus:
+    version: 0.1.0
+  produces:
+    - expression: verify
+    - event: dev.cdevents.testsuiterun.finished
+      as: suite-done

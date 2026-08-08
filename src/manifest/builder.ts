@@ -297,7 +297,7 @@ function buildSpawns(
     }
 
     out.push({
-      role: spawn.role === 'concurrent' ? 'concurrent' : 'detached',
+      role: spawn.role === 'blocking' ? 'blocking' : 'detached',
       chainRef: spawn.chainRef,
       chainId: subChainId,
       chainIdSource: subChainIdSource,

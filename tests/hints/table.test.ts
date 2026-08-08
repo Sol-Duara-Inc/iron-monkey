@@ -142,3 +142,15 @@ describe('name-hint table — drift against the CDEvents catalog', () => {
     }
   });
 });
+
+describe('loadHintTable — unparsable file', () => {
+  it('throws a clear parse error for invalid JSON', async () => {
+    const { writeFile, mkdir } = await import('fs/promises');
+    const os = await import('os');
+    const dir = path.join(os.tmpdir(), `im-hint-table-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const bad = path.join(dir, 'broken.json');
+    await writeFile(bad, '{ not json', 'utf-8');
+    expect(() => loadHintTable(bad)).toThrow(/Failed to parse name-hint table/);
+  });
+});

@@ -1,0 +1,8 @@
+# IM contract-suite fixture: the gated composite (ticket gate, then deploy).
+group: platform
+author: okafor
+expression: production-deploy
+description: Gate on the ticket pair, then deploy.
+produces:
+  - expression: ticket-associate
+  - expression: deploy

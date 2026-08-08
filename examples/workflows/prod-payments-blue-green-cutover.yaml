@@ -5,7 +5,7 @@ workflow:
   author: shipwreck-sa
   name: Payments API — Production Blue/Green Cutover
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       service: payments-api
       strategy: blue-green

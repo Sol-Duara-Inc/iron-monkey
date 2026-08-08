@@ -5,7 +5,7 @@ workflow:
   author: shipwreck-sa
   name: Auth Service — Production Hotfix Fast Path
   cdrus:
-    version: 1
+    version: "0.1.0"
     metadata:
       service: auth
       strategy: hotfix

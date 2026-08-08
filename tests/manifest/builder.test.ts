@@ -185,3 +185,11 @@ describe('buildManifest — real workflow end-to-end', () => {
     }
   });
 });
+
+describe('buildManifest — chain-id acquisition without --no-conduit', () => {
+  it('falls back offline when conduit is unconfigured (no daemon to answer)', async () => {
+    const manifest = await buildManifest(meta, [singleEvent], config, { noConduit: false });
+    expect(manifest.chainIdSource).toBe('fallback');
+    expect(manifest.chainId).toMatch(/^urn:sol-duara:fallback:/);
+  });
+});
