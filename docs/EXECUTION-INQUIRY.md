@@ -138,6 +138,42 @@ A record stays queryable for at least **its own longest event TTL + the
 window is a _floor_, not a cap: a record inside its inquiry window is never
 evicted, even when that pushes the store past ten. See finding F2.
 
+### The daemon — how the callback path gets tested
+
+`iron-monkey serve` is the mode that makes the callback testable end to end.
+An inquiry endpoint alone cannot prove the mechanism: proving it means
+STARTING a run, WITHHOLDING an event so a TTL really breaches, ASKING what
+happened, and TAKING THE ENDPOINT AWAY to exercise the no-answer row. All
+four must be drivable from outside the process, so the daemon carries a
+control plane.
+
+```
+iron-monkey serve [--port 8137] [--host 127.0.0.1] [--token T]
+                  [--config im.yaml] [--bus default]
+                  [--workflow-root DIR] [--idle-timeout MS]
+```
+
+| Route                         | Purpose                                         |
+| ----------------------------- | ----------------------------------------------- |
+| `POST /api/executions`        | start a run → `202 {executionID, workflowId}`   |
+| `GET /api/executions`         | the retained records                            |
+| `GET /api/executions/{id}`    | the inquiry answer                              |
+| `POST /api/control/go-dark`   | stop answering: `{mode:"5xx"\|"hang", seconds}` |
+| `DELETE /api/control/go-dark` | answer again                                    |
+| `GET /healthz`                | always answers, even while dark                 |
+
+The trigger body takes `workflow` (required), plus `config`, `bus`, `inject`,
+`interval`, `seed`, `noConduit`. It answers `202` as soon as the execution is
+RECORDED, not when the run finishes — a run takes minutes and the caller needs
+the id immediately to poll the live record.
+
+**Two deliberate asymmetries.** `/healthz` and the control plane keep
+answering while dark, because an endpoint you darkened and cannot restore is a
+wedged rig, not a test. And `run --serve` has NO control plane — a pitch
+answers about itself and nothing more; only the daemon can start runs.
+`--workflow-root` constrains triggered paths when the daemon is not purely
+local.
+
 ### Driving it from the CLI
 
 ```

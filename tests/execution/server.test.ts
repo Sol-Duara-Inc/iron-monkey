@@ -228,3 +228,103 @@ describe("inquiry server — the idle timer (IM's linger)", () => {
     expect((await fetch(`${server.url}/healthz`)).status).toBe(200);
   });
 });
+
+describe('the daemon control plane', () => {
+  const control = (started: { executionID: string; workflowId: string } | Error) => ({
+    startRun: () => (started instanceof Error ? Promise.reject(started) : Promise.resolve(started)),
+  });
+
+  it('starts a run and answers 202 with the execution id', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), {
+      control: control({ executionID: 'exec-9', workflowId: 'build-fanout' }),
+    });
+    const res = await fetch(`${server.url}/api/executions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow: 'build-fanout.yaml', inject: ['missing:artifact-signed'] }),
+    });
+    expect(res.status).toBe(202); // accepted, not finished — the run is under way
+    expect(await res.json()).toMatchObject({ executionID: 'exec-9', status: 'accepted' });
+  });
+
+  it('reports a trigger that could not start as a 400', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), {
+      control: control(new Error('workflow not found')),
+    });
+    const res = await fetch(`${server.url}/api/executions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow: 'nope.yaml' }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'workflow not found' });
+  });
+
+  it('requires a workflow field', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), {
+      control: control({ executionID: 'x', workflowId: 'y' }),
+    });
+    const res = await fetch(`${server.url}/api/executions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses to trigger on a read-only server (run --serve)', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 })); // no control plane
+    const res = await fetch(`${server.url}/api/executions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow: 'x.yaml' }),
+    });
+    expect(res.status).toBe(405);
+    expect((await fetch(`${server.url}/api/control/go-dark`)).status).toBe(404);
+  });
+
+  it('goes dark with 5xx, and /healthz plus the control plane stay reachable', async () => {
+    const store = new ExecutionStore({ now: () => T0 });
+    store.open('exec-1', 'wf', manifest([event('a')]));
+    const server = await serve(store, {
+      control: control({ executionID: 'x', workflowId: 'y' }),
+    });
+
+    expect((await fetch(`${server.url}/api/executions/exec-1`)).status).toBe(200);
+
+    const dark = await fetch(`${server.url}/api/control/go-dark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seconds: 30 }),
+    });
+    expect(await dark.json()).toMatchObject({ dark: true, mode: '5xx' });
+
+    // The inquiry route is gone...
+    expect((await fetch(`${server.url}/api/executions/exec-1`)).status).toBe(503);
+    // ...but the driver can still see and undo it. That asymmetry is
+    // deliberate: a darkened endpoint you cannot restore is a wedged test rig.
+    expect((await fetch(`${server.url}/healthz`)).status).toBe(200);
+    expect(await (await fetch(`${server.url}/healthz`)).json()).toMatchObject({ dark: true });
+
+    await fetch(`${server.url}/api/control/go-dark`, { method: 'DELETE' });
+    expect((await fetch(`${server.url}/api/executions/exec-1`)).status).toBe(200);
+  });
+
+  it("hang mode never answers, exercising the caller's retry budget", async () => {
+    const store = new ExecutionStore({ now: () => T0 });
+    store.open('exec-1', 'wf', manifest([event('a')]));
+    const server = await serve(store, {
+      control: control({ executionID: 'x', workflowId: 'y' }),
+    });
+
+    await fetch(`${server.url}/api/control/go-dark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'hang', seconds: 30 }),
+    });
+
+    await expect(
+      fetch(`${server.url}/api/executions/exec-1`, { signal: AbortSignal.timeout(300) }),
+    ).rejects.toThrow();
+  });
+});

@@ -64,6 +64,13 @@ export interface RunOptions {
    * a hand-rolled fire-sequence script).
    */
   interval?: number;
+  /**
+   * Called the instant the execution is recorded — BEFORE emission begins.
+   * The daemon's trigger endpoint needs the `executionID` to answer its
+   * caller, and a run can take minutes, so it cannot wait for the returned
+   * promise.
+   */
+  onExecutionStarted?: (info: { executionID: string; workflowId: string }) => void;
 }
 
 /** Result of a single workflow run within a {@link runWorkflows} call. */
@@ -233,6 +240,10 @@ export async function runWorkflow(
     { executionID: injected.runId, workflowId: injected.workflowId },
     'execution recorded for inquiry',
   );
+  options.onExecutionStarted?.({
+    executionID: injected.runId,
+    workflowId: injected.workflowId,
+  });
 
   try {
     await executeManifest(injected, bus, logger);

@@ -6,6 +6,7 @@ import { validateCommand } from './commands/validate.js';
 import { dryRunCommand } from './commands/dry-run.js';
 import { inspectCommand } from './commands/inspect.js';
 import { purgeCommand } from './commands/purge.js';
+import { serveCommand } from './commands/serve.js';
 import { versionCommand } from './commands/version.js';
 
 const program = new Command();
@@ -19,6 +20,7 @@ program
   .addCommand(dryRunCommand())
   .addCommand(inspectCommand())
   .addCommand(purgeCommand())
+  .addCommand(serveCommand())
   .addCommand(versionCommand());
 
 program.parseAsync(process.argv).catch((err: Error) => {
