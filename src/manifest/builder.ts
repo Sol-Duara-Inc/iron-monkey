@@ -219,6 +219,7 @@ function buildEvent(
     chainId,
     targetBus: ctx.targetBus,
     targetEmitTime,
+    timeoutMs: re.timeout_ms,
     payload,
     injections: [],
     isLast: isLastInChain,

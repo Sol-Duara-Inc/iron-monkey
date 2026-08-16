@@ -99,6 +99,15 @@ export interface ManifestEvent {
    * May be increased by a `late` injection.
    */
   targetEmitTime: number;
+  /**
+   * The resolved TTL for this position, in ms — the author's total budget
+   * (RFC §5.3 cascade, defaulted when unauthored). Carried onto the manifest
+   * because two consumers need it after resolution: the execution store,
+   * which measures retention against the longest budget in the run, and the
+   * inquiry's evidence view. Conduit derives its own budgets from its own
+   * catalog copy; this value never crosses the wire.
+   */
+  timeoutMs: number;
   /** The fully constructed CDEvent payload, validated against its JSON schema. */
   payload: CDEventPayload;
   /** Injection records applied to this event (empty until injections are run). */
