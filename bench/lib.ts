@@ -277,3 +277,123 @@ export function renderReport(input: ReportInput): string {
     `Judge: ${input.judgeRequested ? 'requested but not enabled in this build' : 'not enabled'}`,
   ].join('\n');
 }
+
+// ── The callback gate: breach → callback → detail ────────────────────────────
+
+/** What the round observed while trying to close the callback loop. */
+export interface CallbackObservations {
+  /** The shortest event TTL found in the canonical catalog, in ms. */
+  shortestTtlMs: number;
+  /** How long the round is willing to wait for a breach, in ms. */
+  breachBudgetMs: number;
+  /**
+   * A bus is configured for triggered runs. The loop needs IM to actually
+   * EMIT — some events arriving and one withheld is what produces a breach —
+   * so without a bus there is nothing to breach against.
+   */
+  busConfigured: boolean;
+  /** Conduit's babysitter reported the withheld position breached. */
+  breachObserved: boolean;
+  /** IM's endpoint was actually called about the triggered execution. */
+  inquiryReceived: boolean;
+  /** Conduit ingested the withheld event off the back of the inquiry. */
+  backfillObserved: boolean;
+  /** A darkened endpoint produced no answer, as the no-answer row requires. */
+  darkProbePassed?: boolean;
+}
+
+/**
+ * The gate's verdict. `not-exercised` is deliberately NOT a pass: the round
+ * must never report green in a way that could be read as "the callback
+ * works" when the loop never ran. It is also not a failure of the product —
+ * it names the missing prerequisite instead, so the round says exactly what
+ * is needed to close it.
+ */
+export interface CallbackGateResult {
+  status: 'closed' | 'broken' | 'not-exercised';
+  /** One line per reason, in the order they were determined. */
+  reasons: string[];
+}
+
+/**
+ * Evaluates the breach → callback → detail loop.
+ *
+ * The ordering matters: a breach that never happened cannot be distinguished
+ * from a callback that never fired unless the breach is checked FIRST. The
+ * classic way to fake a green here is to assert "no failures occurred" on a
+ * run that finished before its TTL could expire — so the shortest available
+ * TTL is checked before anything else, and a catalog whose budgets are all
+ * longer than the round's patience is reported as an unmet prerequisite
+ * rather than silently skipped.
+ */
+export function evaluateCallbackGate(obs: CallbackObservations): CallbackGateResult {
+  const reasons: string[] = [];
+
+  if (obs.shortestTtlMs > obs.breachBudgetMs) {
+    reasons.push(
+      `no canonical fixture can breach within the round budget: shortest TTL is ` +
+        `${obs.shortestTtlMs}ms, budget is ${obs.breachBudgetMs}ms — a short-TTL fixture ` +
+        `must be authored in conduit-go/pkg/cdrus/testdata (§4 forbids adapting fixtures here)`,
+    );
+    return { status: 'not-exercised', reasons };
+  }
+
+  if (!obs.busConfigured) {
+    reasons.push(
+      'no bus is configured for triggered runs (set BENCH_IM_CONFIG, or IRON_MONKEY_BUS_URL) — ' +
+        'the producer cannot emit, so no position can breach',
+    );
+    return { status: 'not-exercised', reasons };
+  }
+
+  if (!obs.breachObserved) {
+    reasons.push(
+      'the withheld position never breached — without a breach there is nothing for the ' +
+        'callback to answer, so the loop was not exercised',
+    );
+    return { status: 'not-exercised', reasons };
+  }
+  reasons.push('breach observed on the withheld position');
+
+  if (!obs.inquiryReceived) {
+    reasons.push(
+      'the breach did not produce an inquiry: IM was never called. The IM plugin is ' +
+        "Conduit's to own — until it is configured, the loop cannot close",
+    );
+    return { status: 'not-exercised', reasons };
+  }
+  reasons.push('inquiry received by the producer');
+
+  // Past this point the mechanism DID run, so anything wrong is a real break.
+  if (!obs.backfillObserved) {
+    reasons.push(
+      'the inquiry was answered but the withheld event was never ingested — the answer ' +
+        'did not translate into a backfill',
+    );
+    return { status: 'broken', reasons };
+  }
+  reasons.push('withheld event backfilled into the chain');
+
+  if (obs.darkProbePassed === false) {
+    reasons.push('a darkened endpoint still produced an answer — the no-answer row is unproven');
+    return { status: 'broken', reasons };
+  }
+  if (obs.darkProbePassed === true) reasons.push('dark probe: no answer, as required');
+
+  return { status: 'closed', reasons };
+}
+
+/**
+ * The shortest event TTL declared across a set of workflow documents. The
+ * callback gate needs a fixture that can breach inside a round; this is how
+ * the round discovers whether one exists. `Infinity` when none declare any.
+ */
+export function shortestTtlMs(workflowYamls: string[]): number {
+  let shortest = Infinity;
+  for (const text of workflowYamls) {
+    for (const match of text.matchAll(/timeout_ms:\s*(\d+)/g)) {
+      shortest = Math.min(shortest, Number(match[1]));
+    }
+  }
+  return shortest;
+}

@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import type { StartRunRequest, StartRunResult } from '../../execution/server.js';
 import type { LogLevel, LogFormat } from '../../logger/index.js';
 
 /**
@@ -38,20 +37,16 @@ export function serveCommand(): Command {
     .option('--log-format <fmt>', 'json | text', 'json');
 
   cmd.action(async (options: Record<string, unknown>) => {
-    const path = await import('path');
     const { createLogger, setLogger } = await import('../../logger/index.js');
     const { getExecutionStore } = await import('../../execution/store.js');
     const { startInquiryServer } = await import('../../execution/server.js');
-    const { runWorkflow } = await import('../../emitter/runner.js');
-    const { FileWorkflowSource } = await import('../../workflow/source.js');
+    const { createControlPlane } = await import('../../execution/control.js');
+
     const logger = createLogger({
       level: (options.logLevel as LogLevel | undefined) ?? 'info',
       format: (options.logFormat as LogFormat | undefined) ?? 'json',
     });
     setLogger(logger);
-
-    const workflowRoot =
-      typeof options.workflowRoot === 'string' ? path.resolve(options.workflowRoot) : undefined;
 
     let resolveIdle: () => void = () => {};
     const idle = new Promise<void>((resolve) => {
@@ -65,60 +60,17 @@ export function serveCommand(): Command {
       token: options.token as string | undefined,
       idleTimeoutMs: options.idleTimeout as number | undefined,
       onIdleShutdown: () => resolveIdle(),
-      control: {
-        async startRun(request: StartRunRequest): Promise<StartRunResult> {
-          // Containment: a triggered run names a file path, so when a root is
-          // configured the resolved path must stay inside it. Unset (the
-          // loopback dev default) means any path the process can read.
-          const workflow = path.resolve(request.workflow);
-          if (workflowRoot !== undefined && !workflow.startsWith(workflowRoot + path.sep)) {
-            throw new Error(`workflow '${request.workflow}' is outside --workflow-root`);
-          }
-
-          // Resolve as soon as the execution is RECORDED. A run can take
-          // minutes; the caller needs its id now, so it can poll the record
-          // while the pipeline is still going.
-          let announce: (r: StartRunResult) => void = () => {};
-          const started = new Promise<StartRunResult>((resolve) => {
-            announce = resolve;
-          });
-
-          const run = runWorkflow(new FileWorkflowSource(workflow), {
-            config: (request.config ?? options.config) as string | undefined,
-            bus: (request.bus ?? options.bus) as string | undefined,
-            inject: request.inject,
-            interval: request.interval,
-            seed: request.seed,
-            // Commander's `--no-conduit` sets `conduit: false`; the runner
-            // reads that, so translate rather than inventing a second flag.
-            conduit: request.noConduit === true ? false : undefined,
-            logLevel: options.logLevel as string | undefined,
-            logFormat: options.logFormat as string | undefined,
-            onExecutionStarted: announce,
-          });
-
-          // A run that fails BEFORE recording an execution (bad path, invalid
-          // workflow) must surface as a failed trigger rather than hanging
-          // this request forever.
-          run.catch((err: unknown) => {
-            logger.error(
-              { workflow, err: (err as Error).message },
-              'triggered run ended with an error',
-            );
-          });
-
-          return Promise.race([
-            started,
-            run.then<StartRunResult>(() => {
-              throw new Error('run finished without recording an execution');
-            }),
-          ]);
-        },
-      },
+      control: createControlPlane({
+        config: options.config as string | undefined,
+        bus: options.bus as string | undefined,
+        workflowRoot: options.workflowRoot as string | undefined,
+        logLevel: options.logLevel as string | undefined,
+        logFormat: options.logFormat as string | undefined,
+      }),
     });
 
     process.stdout.write(`iron-monkey daemon: ${server.url}\n`);
-    logger.info({ url: server.url, workflowRoot }, 'daemon ready');
+    logger.info({ url: server.url, workflowRoot: options.workflowRoot }, 'daemon ready');
 
     const stop = (signal: string): void => {
       logger.info({ signal }, 'daemon stopping');
