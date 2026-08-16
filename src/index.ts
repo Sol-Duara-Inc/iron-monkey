@@ -43,6 +43,14 @@ export {
 export type { EventCatalog, ResolvedEventType, TypeKey } from './schema/catalog.js';
 export { validateWorkflowDoc } from './workflow/schema.js';
 export { validateBundleDoc } from './expressions/schema.js';
+export { ExecutionStore, allEvents, INQUIRY_WINDOW_MS } from './execution/store.js';
+export type { ExecutionRecord, ExecutionLookup } from './execution/store.js';
+export { projectExecution, deriveStatus } from './execution/projection.js';
+export type {
+  ExecutionInquiryResponse,
+  ExecutionEventDetail,
+  ExecutionStatus,
+} from './execution/projection.js';
 export { createBus } from './bus/interface.js';
 export { runWorkflow, runWorkflows } from './emitter/runner.js';
 export type { WorkflowRunResult } from './emitter/runner.js';
