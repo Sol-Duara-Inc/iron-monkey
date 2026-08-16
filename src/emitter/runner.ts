@@ -348,6 +348,16 @@ async function emitEvent(
     await sleep(delay);
   }
 
+  if (event.abortWith !== undefined) {
+    event.emitStatus = 'error';
+    event.emitError = event.abortWith;
+    logger.error(
+      { chainId, eventId: event.eventId, type: event.type, reason: event.abortWith },
+      'execution aborted by injection',
+    );
+    throw new Error(event.abortWith);
+  }
+
   try {
     await bus.emit(event.type, event.eventId, event.payload);
     event.emitStatus = 'emitted';

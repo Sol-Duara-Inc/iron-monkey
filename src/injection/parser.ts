@@ -12,13 +12,34 @@
  */
 
 /** All supported failure-injection categories. */
-export type InjectionType = 'missing' | 'malformed' | 'out-of-order' | 'late' | 'duplicate';
+export type InjectionType =
+  | 'missing'
+  | 'malformed'
+  | 'out-of-order'
+  | 'late'
+  | 'duplicate'
+  | 'abort';
 
 /** Marks an event as absent from the emitted stream by setting its status to `'skipped'`. */
 export interface MissingInjection {
   type: 'missing';
   /** The `workflowEventId` of the event to suppress. */
   eventId: string;
+}
+
+/**
+ * Aborts the execution AT this event, as a real pipeline failure does: prior
+ * events are emitted, this one errors, and everything after it is never
+ * reached. This is the declarative form of the bench's "fail execution X"
+ * scenario (docs/EXECUTION-INQUIRY.md F4) — distinct from `missing`, which
+ * withholds one event and lets the run continue.
+ */
+export interface AbortInjection {
+  type: 'abort';
+  /** The `workflowEventId` of the event at which the execution fails. */
+  eventId: string;
+  /** Failure message recorded on the event and surfaced by the inquiry. */
+  reason: string;
 }
 
 /** Corrupts an event payload according to a named malformation strategy. */
@@ -81,7 +102,8 @@ export type Injection =
   | MalformedInjection
   | OutOfOrderInjection
   | LateInjection
-  | DuplicateInjection;
+  | DuplicateInjection
+  | AbortInjection;
 
 /**
  * Parses an array of injection spec strings into typed {@link Injection}
@@ -139,9 +161,18 @@ function parseInjection(spec: string): Injection {
       if (parts.length < 2) throw new Error(`Invalid duplicate injection: '${spec}'`);
       return { type: 'duplicate', eventId: parts[1] };
     }
+    case 'abort': {
+      if (parts.length < 2) throw new Error(`Invalid abort injection: '${spec}'`);
+      return {
+        type: 'abort',
+        eventId: parts[1],
+        reason: parts.slice(2).join(':') || 'simulated execution failure',
+      };
+    }
     default:
       throw new Error(
-        `Unknown injection type: '${type}'. Valid: missing, malformed, out-of-order, late, duplicate`,
+        `Unknown injection type: '${type}'. Valid: missing, malformed, out-of-order, late, ` +
+          `duplicate, abort`,
       );
   }
 }

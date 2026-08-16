@@ -81,6 +81,15 @@ export interface BuildManifestOptions {
 /** Shared, run-scoped construction state passed to the per-chain builders. */
 interface BuildContext {
   config: IronMonkeyConfig;
+  /**
+   * The run's execution identity. Stamped as the `subject.id` of
+   * `pipelinerun.*` events unless the author set one explicitly — Conduit
+   * falls back to capturing that field when registration did not carry the
+   * id, and IM's default (`workflowEventId`, e.g. `'pipelinerun-started'`) is
+   * identical for every run of a workflow, so the fallback would collapse all
+   * runs onto one identity (docs/EXECUTION-INQUIRY.md F3).
+   */
+  executionID: string;
   schemas: Awaited<ReturnType<typeof loadSchemas>>;
   targetBus: string;
   /** Single allocator: the main chain drains it first (ids stay stable), then sub-chains. */
@@ -173,6 +182,15 @@ function buildEvent(
     );
   }
 
+  // A `pipelinerun.*` subject id names the execution in every real tool. The
+  // author's explicit id always wins; IM only replaces its own positional
+  // default (which is exactly `workflowEventId`).
+  const authoredSubjectId = re.subject.id !== re.workflowEventId;
+  const subjectId =
+    !authoredSubjectId && re.resolvedType.startsWith('dev.cdevents.pipelinerun.')
+      ? ctx.executionID
+      : re.subject.id;
+
   let content = re.subject.content ?? {};
   let synthesized: string[] = [];
   if (ctx.synth !== false) {
@@ -181,7 +199,7 @@ function buildEvent(
       chainId,
       eventType: wireType,
       workflowName: ctx.workflowName,
-      subjectId: re.subject.id,
+      subjectId,
       timestamp,
     });
     content = result.content;
@@ -198,7 +216,7 @@ function buildEvent(
       chainId,
       links: links.length > 0 ? links : undefined,
     },
-    subject: { id: re.subject.id, content },
+    subject: { id: subjectId, content },
   };
 
   const validationResult = validateEvent(payload, schema);
@@ -340,6 +358,11 @@ export async function buildManifest(
   let chainId: string;
   let chainIdSource: 'conduit' | 'bus' | 'fallback';
   let instanceId: string | undefined;
+  // The run's own identity, minted first: it is both the manifest's runId and
+  // the executionID declared at register — one id, IM-owned, identical online
+  // and offline (docs/EXECUTION-INQUIRY.md §1).
+  const runId = uuidv4();
+
   const chainIds = new Map<string, ChainIdResult>();
 
   /** Offline minting: one local URN per spawned chain, named as before. */
@@ -365,8 +388,12 @@ export async function buildManifest(
     mintOffline();
   } else {
     // ONE atomic batch register mints the entire chain set (Proleptic §1);
-    // null means no daemon answered — the one legitimate offline case.
-    const registered = await registerRun(workflowMeta.id, config.conduit);
+    // null means no daemon answered — the one legitimate offline case. The
+    // execution identity is declared here so Conduit can reach this producer
+    // when a TTL expires (docs/EXECUTION-INQUIRY.md §1).
+    const registered = await registerRun(workflowMeta.id, config.conduit, {
+      executionID: runId,
+    });
     if (!registered) {
       chainId = generateFallbackChainId(workflowMeta.name);
       chainIdSource = 'fallback';
@@ -404,9 +431,8 @@ export async function buildManifest(
     synth: opts.synth !== false,
     plannedTimes,
     workflowName: workflowMeta.name,
+    executionID: runId,
   };
-
-  const runId = uuidv4();
 
   // Main chain first: drains the shared id allocator before any sub-chain, so
   // main event ids are identical to the pre-sub-chain behaviour. Its END link

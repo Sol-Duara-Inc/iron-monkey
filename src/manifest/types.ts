@@ -127,6 +127,13 @@ export interface ManifestEvent {
   /** Error message recorded when `emitStatus` is `'error'`. */
   emitError?: string;
   /**
+   * Set by an `abort` injection: the runner fails the execution when it
+   * reaches this event, instead of emitting it. Prior events are already
+   * emitted and later ones are never reached — a real pipeline failure's
+   * shape, and the declarative form of the bench's "fail execution X".
+   */
+  abortWith?: string;
+  /**
    * JSON pointers (relative to the event payload root) of fields the
    * synthesizer filled in because they were schema-required but absent from
    * the workflow/expression. Empty when synthesis was disabled or unnecessary.
