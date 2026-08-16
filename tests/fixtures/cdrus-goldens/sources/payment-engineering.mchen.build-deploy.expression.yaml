@@ -1,0 +1,15 @@
+# RFC §7.2 — the composite the payments-mobile-release workflow binds tools
+# onto. THIS BUNDLE WAS MISSING from the corpus until 2026-08-16: the workflow
+# referenced it, conduitd fail-fasts on a catalog that does not derive, and
+# BOTH benches had silently skipped the fixture since at least the 10th. Its
+# absence is why the corpus guard test now exists.
+group: payment-engineering
+author: mchen
+expression: build-deploy
+description: Pipeline that builds then deploys.
+produces:
+  - event: dev.cdevents.pipelinerun.started
+    produces:
+      - expression: build
+      - expression: deploy
+  - event: dev.cdevents.pipelinerun.finished

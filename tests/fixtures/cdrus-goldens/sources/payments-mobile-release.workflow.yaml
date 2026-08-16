@@ -15,7 +15,9 @@ workflow:
           tool: jenkins
           content:
             trigger: scheduled
-        dev.cdevents.deployment.started:
+        # service.deployed, not deployment.started: the vendored catalog has
+        # no `deployment` subject (corrected 2026-08-16, with RFC §7.3).
+        dev.cdevents.service.deployed:
           tool: spinnaker
           content:
             strategy: blue-green

@@ -1,0 +1,23 @@
+# BENCH FIXTURE — the expiry-callback gate needs a budget breachable inside a
+# round, and canonical pipelines budget twenty minutes. SECONDS ARE THE POINT
+# HERE, and only here: five-second TTLs so a withheld event breaches while a
+# bench round is still watching. The first event is pipelinerun.queued so the
+# executionID capture (provenance rule 2, subject.id) is exercised alongside
+# registration (rule 1). Tool binding `iron-monkey` pre-wires the
+# workflow→plugin match for the callback gate.
+workflow:
+  id: bench-callback
+  group: quality-engineering
+  author: msommer
+  name: Bench Callback
+  cdrus:
+    version: 0.1.0
+  defaults:
+    source: https://bench.example.com
+    tool: iron-monkey
+    timeout_ms: 5000
+  produces:
+    - event: dev.cdevents.pipelinerun.queued
+    - event: dev.cdevents.pipelinerun.started
+    - event: dev.cdevents.build.finished
+    - event: dev.cdevents.pipelinerun.finished

@@ -1,0 +1,12 @@
+# Resolution target for build-deploy's bare `deploy` reference (same
+# group/author context, RFC §7.2). Deploy vocabulary per the vendored catalog:
+# there is NO `deployment` subject in CDEvents 0.6.0-draft — the deploy-phase
+# event is `service.deployed` (same spelling platform/okafor/deploy uses).
+group: payment-engineering
+author: mchen
+expression: deploy
+description: Deploy the built service.
+produces:
+  - event: dev.cdevents.taskrun.started
+  - event: dev.cdevents.service.deployed
+  - event: dev.cdevents.taskrun.finished
