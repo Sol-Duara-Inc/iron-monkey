@@ -158,14 +158,19 @@ Two of the three the bench needs already exist as **launch-time injections**,
 which is better than a runtime API: declarative, reproducible, and recorded in
 the manifest.
 
-| Scenario         | Mechanism                               |
-| ---------------- | --------------------------------------- |
-| withhold event N | `--inject missing:<eventId>` (existing) |
-| go dark          | runtime toggle, bench-only (new)        |
-| fail execution X | **no mechanism today** — see finding F4 |
+| Scenario         | Mechanism                                       |
+| ---------------- | ----------------------------------------------- |
+| withhold event N | `--inject missing:<eventId>` (existing)         |
+| fail execution X | `--inject abort:<eventId>[:reason]` (F4, BUILT) |
+| go dark          | runtime toggle, bench-only (not built yet)      |
+
+`abort` fails the execution AT that event, which is the shape a real pipeline
+failure has: prior events emitted, that one errored, everything after it never
+reached. It is deliberately NOT `missing` — a withheld event lets the run
+continue and is backfillable; an aborted run's unreached events are neither.
 
 IM's injection vocabulary is `missing | malformed | out-of-order | late |
-duplicate`. Any mutation surface (go-dark) sits behind an explicit bench-
+duplicate | abort`. Any mutation surface (go-dark) sits behind an explicit bench-
 controls flag, default off, loopback only: a read-only inquiry endpoint and a
 remote-control endpoint deserve different postures.
 
@@ -203,7 +208,9 @@ _Recommended:_ stamp the `executionID` on `pipelinerun.*` subject ids. Safe —
 goldens and the register machine gate key on `treePath|order|type`, and
 injections key on `workflowEventId`/`treePath`, so nothing that compares
 derivations moves. Do this **and** send at register; the fallback exists
-precisely for when registration did not carry it.
+precisely for when registration did not carry it. **DONE** — both: the
+`executionID` is declared at register, and `pipelinerun.*` subject ids carry
+it unless the author set one explicitly.
 
 **F4 — "fail execution X" has no mechanism.** The injection vocabulary has no
 way to make a run fail; `failed` today requires a genuine bus error.

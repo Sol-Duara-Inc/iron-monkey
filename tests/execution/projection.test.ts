@@ -181,3 +181,38 @@ describe('projectExecution — withheld vs never reached', () => {
     expect(out.detail.runId).toBeUndefined();
   });
 });
+
+describe('the abort injection (F4) — "fail execution X"', () => {
+  it('parses with a reason, defaulting when none is given', async () => {
+    const { parseInjections } = await import('../../src/injection/parser.js');
+    expect(parseInjections(['abort:build-finished:disk full'])).toEqual([
+      { type: 'abort', eventId: 'build-finished', reason: 'disk full' },
+    ]);
+    expect(parseInjections(['abort:build-finished'])[0]).toMatchObject({
+      reason: 'simulated execution failure',
+    });
+  });
+
+  it('produces the real failure shape: prior emitted, this errored, rest never reached', async () => {
+    const { applyInjections } = await import('../../src/injection/apply.js');
+    const { parseInjections } = await import('../../src/injection/parser.js');
+    const m = manifestOf([event('a', T0), event('b', T0 + 100), event('c', T0 + 200)]);
+    const injected = applyInjections(m, parseInjections(['abort:b:disk full']));
+
+    // The runner enacts it on arrival; here we assert the marker is placed and
+    // simulate the resulting state.
+    expect(injected.events[1].abortWith).toBe('disk full');
+    injected.events[0].emitStatus = 'emitted';
+    injected.events[1].emitStatus = 'error';
+    injected.events[1].emitError = 'disk full';
+
+    const store = new ExecutionStore({ now: () => T0 });
+    const record = store.open('exec-abort', 'wf', injected);
+    const out = projectExecution(record);
+
+    expect(out.status).toBe('failed');
+    expect(out.withheld).toHaveLength(0); // nothing here is backfillable
+    expect(out.detail.events.map((e) => e.status)).toEqual(['emitted', 'error', 'pending']);
+    expect(out.detail.events[2].reason).toMatch(/not reached/);
+  });
+});

@@ -75,6 +75,18 @@ function applyOne(events: ManifestEvent[], idx: number, injection: Injection): v
       });
       break;
 
+    case 'abort': {
+      // Recorded, not enacted here: the runner throws when it REACHES this
+      // event, so prior events emit normally and later ones are never
+      // reached — the shape a real pipeline failure has.
+      events[idx].abortWith = injection.reason;
+      events[idx].injections.push({
+        type: 'abort',
+        spec: `abort:${injection.eventId}:${injection.reason}`,
+        applied: true,
+      });
+      break;
+    }
     case 'duplicate': {
       const original = events[idx];
       const dupe: ManifestEvent = {

@@ -73,6 +73,11 @@ export interface RegisterResult {
   instanceId: string;
   issuedAt: string;
   chains: RegisteredChain[];
+  /**
+   * The execution id the daemon's record HOLDS — first registration wins, and
+   * a replay cannot rename it. Absent when none was declared or captured.
+   */
+  executionID?: string;
 }
 
 /** Options for {@link registerRun}. */
@@ -83,6 +88,16 @@ export interface RegisterOptions {
   maxAttempts?: number;
   /** Optional `tool` scoping — the daemon returns that tool's slice. */
   tool?: string;
+  /**
+   * The producer's own execution id, declared so Conduit can call back when a
+   * TTL expires (im-integration.md addendum 2026-08-15). NOTE THE CASING on
+   * the wire: the ruled field name is `executionID`, capital I-D, unlike the
+   * neighbouring `workflowId`. Sending it is recommended — without it the
+   * daemon can only fall back to capturing `subject.id` from the first
+   * `pipelinerun.*` event, and a not-started breach (order-0, nothing ever
+   * arrived) is precisely the case where no event could have carried it.
+   */
+  executionID?: string;
 }
 
 const RETRY_DELAY_MS = 250;
@@ -134,7 +149,12 @@ export async function registerRun(
   };
   if (conduit.token) headers['Authorization'] = `Bearer ${conduit.token}`;
 
-  const body = JSON.stringify(opts.tool ? { workflowId, tool: opts.tool } : { workflowId });
+  const body = JSON.stringify({
+    workflowId,
+    ...(opts.tool ? { tool: opts.tool } : {}),
+    // Capital I-D is the ruled spelling; see RegisterOptions.executionID.
+    ...(opts.executionID ? { executionID: opts.executionID } : {}),
+  });
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let response: Response;
@@ -202,12 +222,33 @@ export async function registerRun(
       );
     }
 
+    // F8 (docs/EXECUTION-INQUIRY.md): `executionID` is OPTIONAL on the wire
+    // and unusually cased, so a mis-spelled key is a SILENT no-op that only
+    // surfaces as a failed inquiry many minutes later. The response echoes the
+    // id the record holds, so assert it: a DIFFERENT id is a real
+    // disagreement and fails the run; a MISSING echo is warned about, since a
+    // daemon predating the field would otherwise be unusable.
+    if (opts.executionID !== undefined) {
+      if (parsed.executionID === undefined) {
+        logger.warn(
+          { workflowId, sent: opts.executionID },
+          'register did not echo executionID — the expiry inquiry may not be able to reach this run',
+        );
+      } else if (parsed.executionID !== opts.executionID) {
+        throw new ConduitAnsweredError(
+          `register for '${workflowId}' holds executionID '${parsed.executionID}' but this run ` +
+            `declared '${opts.executionID}' — the daemon's record names a different execution`,
+        );
+      }
+    }
+
     logger.info(
       {
         workflowId,
         runId: parsed.runId,
         instanceId: parsed.instanceId,
         chains: parsed.chains.length,
+        executionID: parsed.executionID,
       },
       'registered run: full chain set minted by Conduit',
     );
