@@ -20,7 +20,7 @@
 
 import { spawn, execFileSync } from 'child_process';
 import { createServer, connect } from 'net';
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync } from 'fs';
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
@@ -32,10 +32,15 @@ import {
   compareFixtureTrees,
   composeVerdict,
   renderReport,
+  evaluateCallbackGate,
+  shortestTtlMs,
 } from './lib.js';
+import { ExecutionStore } from '../src/execution/store.js';
+import { startInquiryServer } from '../src/execution/server.js';
+import { createControlPlane } from '../src/execution/control.js';
 import { registerRun } from '../src/chain/register.js';
 import type { RegisterResult } from '../src/chain/register.js';
-import type { BootSignals } from './lib.js';
+import type { BootSignals, CallbackGateResult, CallbackObservations } from './lib.js';
 
 const IM_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONDUIT_DIR =
@@ -54,6 +59,8 @@ const GATE_TITLES = [
 interface Round {
   dir: string;
   daemonPid?: number;
+  /** IM's own inquiry server for the callback gate; closed on every exit path. */
+  producer?: { close(): Promise<void> };
   ports?: { engine: number; http: number; grpc: number };
   instanceId?: string;
   facts: Record<string, string>;
@@ -105,6 +112,13 @@ function portFree(port: number): Promise<boolean> {
 }
 
 async function teardown(round: Round): Promise<string> {
+  // The producer is in-process, so it is closed first and unconditionally —
+  // a listening socket surviving a red round would wedge the next one.
+  if (round.producer) {
+    const producer = round.producer;
+    round.producer = undefined;
+    await producer.close();
+  }
   if (!round.daemonPid) return 'no daemon booted';
   const pid = round.daemonPid;
   round.daemonPid = undefined;
@@ -159,6 +173,123 @@ async function finalize(round: Round, color: 'GREEN' | 'RED', reason: string): P
     console.error(`\nROUND RED — ${reason}\nround dir: ${round.dir}`);
     process.exitCode = 1;
   }
+}
+
+/**
+ * Drives the callback loop and returns its verdict.
+ *
+ * IM's side of the loop is real: an inquiry server with the daemon's control
+ * plane, a run triggered over HTTP with an event withheld, and a dark probe.
+ * Conduit's side needs its IM plugin, which Conduit owns. The gate therefore
+ * OBSERVES rather than assumes — if the breach never produces an inquiry, it
+ * says so precisely instead of pretending the loop closed.
+ */
+async function runCallbackGate(round: Round): Promise<CallbackGateResult> {
+  const breachBudgetMs = Number(process.env.BENCH_BREACH_BUDGET_MS ?? 60_000);
+
+  // Which canonical fixture could breach inside the budget? §4 forbids
+  // authoring or adapting fixtures here, so if none can, that is a
+  // prerequisite for conduit-go to satisfy, not something to work around.
+  const workflowYamls = readdirSync(CANONICAL)
+    .filter((f) => f.includes('workflow') && f.endsWith('.yaml'))
+    .map((f) => readFileSync(path.join(CANONICAL, f), 'utf-8'));
+  const shortest = shortestTtlMs(workflowYamls);
+
+  const imConfig = process.env.BENCH_IM_CONFIG;
+  const observations: CallbackObservations = {
+    shortestTtlMs: shortest,
+    breachBudgetMs,
+    busConfigured: Boolean(imConfig ?? process.env.IRON_MONKEY_BUS_URL),
+    breachObserved: false,
+    inquiryReceived: false,
+    backfillObserved: false,
+  };
+
+  if (shortest > breachBudgetMs) {
+    // Stand the producer up anyway and prove it answers: the IM half of the
+    // loop is then demonstrably ready, and only the fixture is missing.
+    const store = new ExecutionStore();
+    const [producerPort] = await freePorts(1);
+    const inquiries: string[] = [];
+    const server = await startInquiryServer({
+      store,
+      port: producerPort,
+      control: createControlPlane({ config: imConfig, logLevel: 'error' }),
+      idleTimeoutMs: 0,
+      onInquiry: (id) => inquiries.push(id),
+    });
+    round.producer = server;
+    round.facts.producerUrl = server.url;
+    const health = await fetch(`${server.url}/healthz`).then((r) => r.json() as Promise<unknown>);
+    artifact(round, 'callback/producer.health.json', JSON.stringify(health, null, 2));
+    return evaluateCallbackGate(observations);
+  }
+
+  // A fixture CAN breach: drive the full loop.
+  const store = new ExecutionStore();
+  const [producerPort] = await freePorts(1);
+  const inquiries: string[] = [];
+  const server = await startInquiryServer({
+    store,
+    port: producerPort,
+    control: createControlPlane({ config: imConfig, logLevel: 'error' }),
+    idleTimeoutMs: 0,
+    onInquiry: (id) => inquiries.push(id),
+  });
+  round.producer = server;
+  round.facts.producerUrl = server.url;
+
+  const workflow = process.env.BENCH_CALLBACK_WORKFLOW;
+  const withhold = process.env.BENCH_CALLBACK_WITHHOLD;
+  if (!workflow || !withhold) {
+    observations.breachObserved = false;
+    return evaluateCallbackGate(observations);
+  }
+
+  const started = (await (
+    await fetch(`${server.url}/api/executions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow, inject: [`missing:${withhold}`] }),
+    })
+  ).json()) as { executionID?: string };
+  artifact(round, 'callback/trigger.json', JSON.stringify(started, null, 2));
+
+  const deadline = Date.now() + breachBudgetMs;
+  while (Date.now() < deadline && !observations.backfillObserved) {
+    await new Promise((r) => setTimeout(r, 1000));
+    observations.inquiryReceived = inquiries.length > 0;
+    try {
+      const view = (await (
+        await fetch(
+          `http://127.0.0.1:${round.ports?.engine ?? 0}/api/runs/${started.executionID ?? ''}`,
+        )
+      ).json()) as { status?: string; observedEvents?: { treePath?: string }[] };
+      if (view.status === 'breached') observations.breachObserved = true;
+      if ((view.observedEvents ?? []).some((e) => e.treePath === withhold)) {
+        observations.backfillObserved = true;
+      }
+    } catch {
+      // The babysitter view is not reachable yet; keep waiting inside budget.
+    }
+  }
+
+  // The no-answer row: a darkened producer must yield nothing at all.
+  if (observations.inquiryReceived) {
+    await fetch(`${server.url}/api/control/go-dark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seconds: 5 }),
+    });
+    const darkStatus = await fetch(
+      `${server.url}/api/executions/${started.executionID ?? 'x'}`,
+    ).then((r) => r.status);
+    observations.darkProbePassed = darkStatus >= 500;
+    await fetch(`${server.url}/api/control/go-dark`, { method: 'DELETE' });
+  }
+
+  artifact(round, 'callback/observations.json', JSON.stringify(observations, null, 2));
+  return evaluateCallbackGate(observations);
 }
 
 async function main(): Promise<void> {
@@ -377,6 +508,31 @@ async function main(): Promise<void> {
   );
   round.facts.gates = gateVerdict.ok ? 'executed+passed (2/2)' : 'FAIL';
   if (!gateVerdict.ok) throw new RoundFailure(`gates: ${gateVerdict.reason}`);
+
+  // §3.7 The callback gate: breach -> callback -> detail, as ONE verdict.
+  //
+  // Every piece of this loop is already proven in isolation on both sides;
+  // nothing tests the SEAM. And the seam has a specific way of faking a pass:
+  // if the run finishes before its TTL expires, no breach happens, no
+  // callback fires, and a naive "nothing failed" reading calls that green.
+  // So the gate checks in causal order and reports NOT-EXERCISED — never
+  // green — when a prerequisite is missing, naming the prerequisite.
+  const callbackVerdict = await runCallbackGate(round);
+  artifact(round, 'callback.verdict', JSON.stringify(callbackVerdict, null, 2));
+  round.facts.callback =
+    callbackVerdict.status === 'closed'
+      ? 'closed (breach->callback->detail)'
+      : callbackVerdict.status === 'broken'
+        ? 'BROKEN'
+        : 'not exercised';
+  if (callbackVerdict.status === 'broken') {
+    throw new RoundFailure(`callback gate: ${callbackVerdict.reasons.at(-1) ?? 'broken'}`);
+  }
+  if (callbackVerdict.status === 'not-exercised') {
+    // Recorded as a discrepancy, so a GREEN round can never be read as proof
+    // that the callback works — the report says which prerequisite is missing.
+    round.discrepancies.push(`callback gate NOT EXERCISED: ${callbackVerdict.reasons.at(-1)}`);
+  }
 
   // Round-envelope authority stability: one more register after the suite.
   try {

@@ -46,6 +46,15 @@ export { validateBundleDoc } from './expressions/schema.js';
 export { ExecutionStore, allEvents, INQUIRY_WINDOW_MS } from './execution/store.js';
 export type { ExecutionRecord, ExecutionLookup } from './execution/store.js';
 export { projectExecution, deriveStatus } from './execution/projection.js';
+export { startInquiryServer } from './execution/server.js';
+export type {
+  InquiryServer,
+  InquiryServerOptions,
+  InquiryControlPlane,
+  StartRunRequest,
+  StartRunResult,
+} from './execution/server.js';
+export { createControlPlane } from './execution/control.js';
 export type {
   ExecutionInquiryResponse,
   ExecutionEventDetail,

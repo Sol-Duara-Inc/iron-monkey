@@ -16,6 +16,8 @@ import {
   compareFixtureTrees,
   composeVerdict,
   renderReport,
+  evaluateCallbackGate,
+  shortestTtlMs,
 } from '../../bench/lib.js';
 
 const BOOT_LOG = `2026/08/07 22:27:43 engine: catalog skip (name hints): /repo/pkg/cdrus/testdata/acme.tester.nightly-build.expression.yaml
@@ -247,5 +249,71 @@ describe('renderReport — pure §9 report rendering', () => {
     expect(md).toContain('**conduit-go**: unrecorded');
     expect(md).toContain('**instanceId**: never captured');
     expect(md).toContain('**Gates**: not run');
+  });
+});
+
+describe('evaluateCallbackGate — breach → callback → detail', () => {
+  const base = {
+    shortestTtlMs: 5_000,
+    breachBudgetMs: 60_000,
+    busConfigured: true,
+    breachObserved: true,
+    inquiryReceived: true,
+    backfillObserved: true,
+  };
+
+  it('is CLOSED when the whole loop ran', () => {
+    const out = evaluateCallbackGate({ ...base, darkProbePassed: true });
+    expect(out.status).toBe('closed');
+    expect(out.reasons).toEqual([
+      'breach observed on the withheld position',
+      'inquiry received by the producer',
+      'withheld event backfilled into the chain',
+      'dark probe: no answer, as required',
+    ]);
+  });
+
+  it('is NOT-EXERCISED — never green — when no fixture can breach in the budget', () => {
+    // The canonical catalog today: 20-minute budgets, unbreachable in a round.
+    const out = evaluateCallbackGate({ ...base, shortestTtlMs: 1_200_000 });
+    expect(out.status).toBe('not-exercised');
+    expect(out.reasons[0]).toMatch(/shortest TTL is 1200000ms.*must be authored in conduit-go/);
+  });
+
+  it('is NOT-EXERCISED when the producer has no bus to emit on', () => {
+    const out = evaluateCallbackGate({ ...base, busConfigured: false });
+    expect(out.status).toBe('not-exercised');
+    expect(out.reasons.at(-1)).toMatch(/no bus is configured/);
+  });
+
+  it('is NOT-EXERCISED when no breach happened — the classic false green', () => {
+    const out = evaluateCallbackGate({ ...base, breachObserved: false });
+    expect(out.status).toBe('not-exercised');
+    expect(out.reasons[0]).toMatch(/never breached/);
+  });
+
+  it('is NOT-EXERCISED when the breach produced no inquiry (no plugin yet)', () => {
+    const out = evaluateCallbackGate({ ...base, inquiryReceived: false });
+    expect(out.status).toBe('not-exercised');
+    expect(out.reasons.at(-1)).toMatch(/IM was never called/);
+  });
+
+  it('is BROKEN once the mechanism ran but did not complete', () => {
+    // Distinguishing this from not-exercised is the whole point: an inquiry
+    // that arrived and led nowhere is a defect, not a missing prerequisite.
+    expect(evaluateCallbackGate({ ...base, backfillObserved: false }).status).toBe('broken');
+    expect(evaluateCallbackGate({ ...base, darkProbePassed: false }).status).toBe('broken');
+  });
+});
+
+describe('shortestTtlMs', () => {
+  it('finds the smallest declared budget across documents', () => {
+    expect(
+      shortestTtlMs(['defaults: {timeout_ms: 1200000}', 'a:\n  timeout_ms: 4000\n  x: 1']),
+    ).toBe(4000);
+  });
+
+  it('is Infinity when nothing declares a budget', () => {
+    expect(shortestTtlMs(['workflow:\n  id: x'])).toBe(Infinity);
   });
 });

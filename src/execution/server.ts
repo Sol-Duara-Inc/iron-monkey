@@ -96,6 +96,12 @@ export interface InquiryServerOptions {
   onIdleShutdown?: () => void;
   /** Supplying this enables the daemon's control plane. */
   control?: InquiryControlPlane;
+  /**
+   * Called whenever an execution is inquired about. The contract bench uses
+   * it to observe whether Conduit's plugin actually CALLED — which is how the
+   * callback gate distinguishes "the loop broke" from "the loop never ran".
+   */
+  onInquiry?: (executionID: string) => void;
 }
 
 /** A running inquiry server. */
@@ -310,6 +316,7 @@ export async function startInquiryServer(opts: InquiryServerOptions): Promise<In
     const prefix = '/api/executions/';
     if (route.startsWith(prefix)) {
       const id = decodeURIComponent(route.slice(prefix.length));
+      opts.onInquiry?.(id);
       const found = store.get(id);
       if (found.outcome === 'found') {
         json(res, 200, projectExecution(found.record));
