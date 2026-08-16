@@ -15,6 +15,18 @@ export function addCommonFlags(cmd: Command): Command {
       parseInt,
     )
     .option('--seed <int>', 'seed for deterministic IDs and timing', parseInt)
+    .option(
+      '--serve',
+      'after the run, keep answering Conduit expiry inquiries (GET /api/executions/<id>)',
+    )
+    .option('--inquiry-port <port>', 'port for --serve; 0 picks a free one', parseInt)
+    .option('--inquiry-host <host>', 'bind address for --serve (default 127.0.0.1)')
+    .option('--inquiry-token <token>', 'require this bearer credential on inquiries')
+    .option(
+      '--idle-timeout <ms>',
+      'quiet window before --serve retires itself; 0 never retires (default 3600000)',
+      parseInt,
+    )
     .option('--inject <spec>', 'failure injection spec (repeatable)', collect, [])
     .option('--manifest-out <path>', 'write pre-allocated manifest to file (JSON)')
     .option('--log-level <level>', 'error | warn | info | debug', 'info')

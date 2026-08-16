@@ -41,6 +41,23 @@ export const DEFAULT_CAPACITY = 10;
 /** How many evicted ids are remembered for `410` answers (ids only). */
 const EVICTED_MEMORY = 200;
 
+let defaultStore: ExecutionStore | undefined;
+
+/**
+ * The process-wide store. The runner records executions into it and the
+ * inquiry server answers from it, so they must be the same instance —
+ * mirroring how the logger is shared (`getLogger`/`setLogger`).
+ */
+export function getExecutionStore(): ExecutionStore {
+  defaultStore ??= new ExecutionStore();
+  return defaultStore;
+}
+
+/** Replaces the process-wide store (tests, embedders). */
+export function setExecutionStore(store: ExecutionStore): void {
+  defaultStore = store;
+}
+
 /** One execution's record: the live manifest plus lifecycle bookkeeping. */
 export interface ExecutionRecord {
   /** The id Conduit inquires by — IM's own run identity. */

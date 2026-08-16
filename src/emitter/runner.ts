@@ -14,6 +14,7 @@ import { resolveChainTree } from '../workflow/chain-tree.js';
 import { WorkflowSource, FileWorkflowSource } from '../workflow/source.js';
 import { loadConfig, resolveBusName } from '../config/loader.js';
 import { loadExpressionRegistry } from '../expressions/loader.js';
+import { getExecutionStore } from '../execution/store.js';
 import { buildManifest } from '../manifest/builder.js';
 import { parseInjections } from '../injection/parser.js';
 import { applyInjections } from '../injection/apply.js';
@@ -221,8 +222,24 @@ export async function runWorkflow(
     logger.info({ path: options.manifestOut }, 'manifest written');
   }
 
+  // Record the execution so Conduit's expiry inquiry can be answered about
+  // it (docs/EXECUTION-INQUIRY.md). The record holds the manifest by
+  // reference, so an inquiry DURING the run sees live status — and the store
+  // is only closed in `finally`, so an aborted run is recorded as failed
+  // rather than left open forever.
+  const store = getExecutionStore();
+  store.open(injected.runId, injected.workflowId, injected);
+  logger.info(
+    { executionID: injected.runId, workflowId: injected.workflowId },
+    'execution recorded for inquiry',
+  );
+
   try {
     await executeManifest(injected, bus, logger);
+    store.close(injected.runId);
+  } catch (err) {
+    store.close(injected.runId, (err as Error).message);
+    throw err;
   } finally {
     await bus.disconnect();
   }

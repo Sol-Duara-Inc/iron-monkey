@@ -138,6 +138,21 @@ A record stays queryable for at least **its own longest event TTL + the
 window is a _floor_, not a cap: a record inside its inquiry window is never
 evicted, even when that pushes the store past ten. See finding F2.
 
+### Driving it from the CLI
+
+```
+iron-monkey run <workflow.yaml> --serve [--inquiry-port N] [--inquiry-host H]
+                                [--inquiry-token T] [--idle-timeout MS]
+```
+
+`--serve` is available on `run` and `pitch`. The endpoint starts BEFORE the
+run, not after: a TTL early in a long workflow can expire while later events
+are still shipping, and the record answers live because the store holds the
+manifest by reference. Without `--serve` the CLI exits exactly as it always
+has. The URL is written to stdout as well as the log, since the log may be
+JSON on another stream and an operator needs the address to configure the
+callback.
+
 ### Auth
 
 An operator-configured bearer credential is accepted when set; when unset the
