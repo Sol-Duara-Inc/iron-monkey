@@ -11,7 +11,12 @@
 
 import path from 'path';
 import { getLogger } from '../logger/index.js';
+import type { RunOptions } from '../emitter/runner.js';
+import type { WorkflowSource } from '../workflow/source.js';
 import type { InquiryControlPlane, StartRunRequest, StartRunResult } from './server.js';
+
+/** The run entry point the control plane drives. */
+export type RunWorkflowFn = (source: WorkflowSource, options: RunOptions) => Promise<void>;
 
 /** Defaults a triggered run inherits when its request does not name them. */
 export interface ControlPlaneOptions {
@@ -28,6 +33,13 @@ export interface ControlPlaneOptions {
   /** Log level/format handed to triggered runs. */
   logLevel?: string;
   logFormat?: string;
+  /**
+   * The run entry point, injectable. Defaults to `runWorkflow`. Exposed
+   * because a hard-coded import makes the containment check — a security
+   * boundary — untestable without module mocking, and because an embedder
+   * may drive a different runner.
+   */
+  runWorkflow?: RunWorkflowFn;
 }
 
 /**
@@ -46,8 +58,8 @@ export function createControlPlane(opts: ControlPlaneOptions = {}): InquiryContr
   return {
     async startRun(request: StartRunRequest): Promise<StartRunResult> {
       const logger = getLogger();
-      const { runWorkflow } = await import('../emitter/runner.js');
       const { FileWorkflowSource } = await import('../workflow/source.js');
+      const runWorkflow = opts.runWorkflow ?? (await import('../emitter/runner.js')).runWorkflow;
 
       const workflow = path.resolve(request.workflow);
       if (workflowRoot !== undefined && !workflow.startsWith(workflowRoot + path.sep)) {
