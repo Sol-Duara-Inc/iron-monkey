@@ -79,7 +79,7 @@ iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
   --config examples/configs/local-rabbit.yaml \
   --no-conduit --bus default \
   --inject missing:build-started \
-  --inject late:deployment-finished:10000
+  --inject late:service-deployed:10000
 
 # Save the manifest for auditing
 iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
@@ -99,6 +99,8 @@ iron-monkey validate <workflow.yaml>  Parse and validate; do not connect to bus
 iron-monkey dry-run <workflow.yaml>   Build the manifest, print it, exit
 iron-monkey inspect <bus-name>        Show queue/topic depth and bindings
 iron-monkey purge <bus-name>          Drain a queue / reset a topic (--confirm required)
+iron-monkey serve                     Run the daemon: trigger runs over HTTP and answer
+                                      Conduit's expiry inquiries
 iron-monkey version                   Print version and exit
 ```
 
@@ -118,6 +120,14 @@ iron-monkey version                   Print version and exit
 --manifest-out <path>   Write the manifest to file as JSON
 --log-level <level>     error | warn | info | debug  (default: info)
 --log-format <fmt>      json | text                  (default: json)
+
+--serve                 After the run, keep answering Conduit expiry inquiries
+                        about it (read-only; no run-triggering — see `serve`)
+--inquiry-port <port>   Port for --serve (0 picks a free one)
+--inquiry-host <host>   Bind address for --serve (default 127.0.0.1)
+--inquiry-token <tok>   Require this bearer credential on inquiries
+--idle-timeout <ms>     Quiet window before --serve retires itself; 0 never
+                        retires (default 3600000)
 ```
 
 ### `pitch` flags
@@ -128,6 +138,107 @@ iron-monkey version                   Print version and exit
 --log-level <level>        error | warn | info | debug  (default: info)
 --log-format <fmt>         json | text                  (default: json)
 ```
+
+---
+
+## Answering Conduit: executions and the expiry inquiry
+
+When a declared event never arrives, Conduit's TTL for that position expires
+and it asks the producer what happened. Iron Monkey keeps every run queryable
+so it can answer.
+
+Each run has an **executionID** — Iron Monkey's own run identity, declared to
+Conduit at registration. One identity per producer, not per simulated tool:
+every event still carries its own `tool` binding, so per-tool attribution is
+unaffected.
+
+```bash
+# Run, then keep answering inquiries about it (read-only)
+iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
+  --config examples/configs/local-rabbit.yaml --no-conduit --bus default \
+  --inject missing:artifact-signed \
+  --serve --inquiry-port 8137
+```
+
+```
+GET /api/executions/<executionID>
+{
+  "executionID": "...",
+  "status": "queued" | "running" | "finished" | "failed",
+  "emitted":  [ { ...full CDEvent envelope... } ],
+  "withheld": [ { ...full CDEvent envelope... } ],
+  "detail":   { ... per-event evidence ... }
+}
+```
+
+The answer is truthful, including that a failure was simulated: a withheld
+event reports as _"produced but deliberately not sent"_ and carries its full
+envelope, because Iron Monkey pre-allocates every payload before deciding
+whether to send it. A real tool could not hand you the event it never sent.
+
+**`withheld` and "never reached" are not the same thing.** A withheld event was
+built and deliberately suppressed — real, complete, safe to backfill. An event
+after an aborted run was never produced at all; it appears in `detail` as
+`pending`, never in `withheld`.
+
+The server outlives the run, because a TTL can expire long after the last event
+ships. It retires itself after a quiet window (`--idle-timeout`, one hour by
+default, `0` to disable), and a run still in flight always vetoes shutdown.
+
+### The daemon
+
+`iron-monkey serve` adds a control plane, so the whole callback path can be
+driven from outside the process — start a run, withhold an event, ask what
+happened, take the endpoint away:
+
+```bash
+iron-monkey serve --port 8137 --config examples/configs/local-rabbit.yaml --bus default
+```
+
+```
+POST   /api/executions        start a run -> 202 { executionID }
+GET    /api/executions        the retained records
+GET    /api/executions/{id}   the inquiry answer
+POST   /api/control/go-dark   stop answering: { "mode": "5xx"|"hang", "seconds": 30 }
+DELETE /api/control/go-dark   answer again
+GET    /healthz               always answers, even while dark
+```
+
+```bash
+curl -X POST localhost:8137/api/executions -H 'Content-Type: application/json' \
+  -d '{"workflow":"examples/workflows/prod-payments-blue-green-cutover.yaml",
+       "noConduit":true,"interval":200,"inject":["missing:artifact-signed"]}'
+```
+
+`/healthz` and the control plane keep answering while dark on purpose — an
+endpoint you darkened and cannot restore is a wedged rig. `run --serve` has no
+control plane: it answers about its own run and nothing more. Use
+`--workflow-root` to confine triggered workflow paths, and `--token` to require
+a bearer credential.
+
+Records are kept for the current run plus the last nine — but that count is a
+floor, not a cap: a record still inside its inquiry window is never evicted. An
+aged-out execution answers `410 Gone`, which is a different fact from `404`
+(never known). See [docs/EXECUTION-INQUIRY.md](docs/EXECUTION-INQUIRY.md).
+
+---
+
+## Event type versions
+
+The `event:` field accepts all four CDrus §6.1 forms, resolved against a
+vendored CDEvents catalog that is kept byte-identical with Conduit's:
+
+```yaml
+- event: dev.cdevents.build.started.0.3.0 # embedded version, exact
+- event: 'dev.cdevents.build.started:0.1.1' # colon form, exact (equivalent)
+- event: dev.cdevents.build.started # no version -> latest release
+- event: 'dev.cdevents.build.started:^0.1.0' # semver range
+```
+
+Extension types (`dev.cdeventsx.<tool>-<subject>.<predicate>`) pass through
+unresolved. The wire always carries the concrete resolved version; the string
+you authored is what chain derivation and registration compare. An unknown type
+or an unsatisfiable range fails resolution with the position that caused it.
 
 ---
 
@@ -213,7 +324,7 @@ workflow:
   author: my-name
   name: my-workflow
   cdrus:
-    version: "0.1.0"
+    version: '0.1.0'
     metadata:
       description: Example
   defaults:
@@ -269,25 +380,24 @@ All workflows share the same flags. For per-workflow control use `pitch`.
 A **repertoire** is a YAML file that maps each workflow to its own options. A `shared` block provides defaults; pitch-level values override them.
 
 ```yaml
-# chaos.yaml
-# yaml-language-server: $schema=./schemas/cdrus/repertoire.schema.json
+# chaos.yaml  (a runnable copy lives at examples/repertoires/chaos.yaml)
 shared:
   bus: rabbitmq-prod
   interval: 1000
 
 pitches:
   - workflow: examples/workflows/prod-payments-blue-green-cutover.yaml
-    interval: 500                 # overrides shared
+    interval: 500 # overrides shared
 
   - workflow: examples/workflows/prod-auth-hotfix-fast-path.yaml
     inject:
       - missing:build-started
-      - late:deployment-finished:5000
+      - late:service-deployed:5000
 
   - workflow: examples/workflows/prod-checkout-jenkins-spinnaker-canary.yaml
     interval: 100
     seed: 42
-    bus: local-bus                # overrides shared
+    bus: local-bus # overrides shared
 ```
 
 ```bash
@@ -298,16 +408,16 @@ iron-monkey pitch --from chaos.yaml --config local-rabbit.yaml
 
 Per-pitch fields mirror the common `run` flags:
 
-| Field          | Type       | Description                                      |
-| -------------- | ---------- | ------------------------------------------------ |
-| `workflow`     | `string`   | Path to the workflow YAML file (**required**)    |
-| `bus`          | `string`   | Named bus to target                              |
-| `conduit`      | `boolean`  | `false` to skip Conduit chainId acquisition      |
-| `interval`     | `number`   | Fixed cadence override in milliseconds           |
-| `seed`         | `number`   | Deterministic ID/timing seed                     |
-| `inject`       | `string[]` | Failure injection specs                          |
-| `manifest_out` | `string`   | Path to write the pre-emission manifest as JSON  |
-| `synth`        | `boolean`  | `false` to disable payload synthesis             |
+| Field          | Type       | Description                                     |
+| -------------- | ---------- | ----------------------------------------------- |
+| `workflow`     | `string`   | Path to the workflow YAML file (**required**)   |
+| `bus`          | `string`   | Named bus to target                             |
+| `conduit`      | `boolean`  | `false` to skip Conduit chainId acquisition     |
+| `interval`     | `number`   | Fixed cadence override in milliseconds          |
+| `seed`         | `number`   | Deterministic ID/timing seed                    |
+| `inject`       | `string[]` | Failure injection specs                         |
+| `manifest_out` | `string`   | Path to write the pre-emission manifest as JSON |
+| `synth`        | `boolean`  | `false` to disable payload synthesis            |
 
 ---
 
@@ -323,74 +433,74 @@ Expression files are named `<group>.<author>.<expression>.expression.yaml`. Expr
 
 The resolver consults this catalog whenever a bare `expression:` reference does not resolve under the calling workflow's own `(group, author)`. Every other group is, in effect, layered on top of this one. The catalog is organised by intent:
 
-| Category                       | Expressions                                                                                                                       |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| Core CI / CD                   | `build`, `deploy`, `verify`, `service-deploy`, `artifact-store`, `pipeline-run`, `ci-pipeline`                                    |
-| Composition / orchestration    | `build-deploy`, `build-store`, `build-merge`, `build-queue`, `promote-artifact`, `full-release`, `hotfix`, `task-execute`         |
-| Deployment strategies          | `blue-green-deploy`, `canary-deploy`, `service-rollback`, `service-remove`, `service-upgrade`, `deploy-with-notify`               |
-| Test patterns                  | `test-case`, `test-case-skipped`, `test-output-publish`, `regression-suite`, `verify-with-output`                                 |
-| Artifact lifecycle             | `artifact-sign-publish`, `artifact-distribute`, `artifact-retire`, `build-with-async-scan`                                        |
-| Environments                   | `environment-provision`, `environment-update`, `environment-teardown`, `ephemeral-environment`                                    |
-| Change management              | `change-request`, `review-change-request`, `merge-change-request`, `abandon-change-request`, `branch-lifecycle`, `ticket-associate`, `pull-request-ci` |
+| Category                    | Expressions                                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Core CI / CD                | `build`, `deploy`, `verify`, `service-deploy`, `artifact-store`, `pipeline-run`, `ci-pipeline`                                                         |
+| Composition / orchestration | `build-deploy`, `build-store`, `build-merge`, `build-queue`, `promote-artifact`, `full-release`, `hotfix`, `task-execute`                              |
+| Deployment strategies       | `blue-green-deploy`, `canary-deploy`, `service-rollback`, `service-remove`, `service-upgrade`, `deploy-with-notify`                                    |
+| Test patterns               | `test-case`, `test-case-skipped`, `test-output-publish`, `regression-suite`, `verify-with-output`                                                      |
+| Artifact lifecycle          | `artifact-sign-publish`, `artifact-distribute`, `artifact-retire`, `build-with-async-scan`                                                             |
+| Environments                | `environment-provision`, `environment-update`, `environment-teardown`, `ephemeral-environment`                                                         |
+| Change management           | `change-request`, `review-change-request`, `merge-change-request`, `abandon-change-request`, `branch-lifecycle`, `ticket-associate`, `pull-request-ci` |
 
 See `expressions/example-group.user.*.expression.yaml` for the full definitions.
 
 #### sol-duara / dsanyika — core reference library
 
-| Expression              | Events (in order)                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------- |
-| `build`                 | build.started → testsuiterun.started → testsuiterun.finished → build.finished                       |
-| `artifact-store`        | artifact.packaged → artifact.published                                                              |
-| `deploy`                | taskrun.started → service.deployed → service.published → taskrun.finished                           |
-| `verify`                | testsuiterun.started → testcaserun.started → testcaserun.finished → testsuiterun.finished           |
-| `artifact-sign-publish` | artifact.packaged → artifact.signed → artifact.published                                            |
-| `artifact-distribute`   | artifact.published → artifact.downloaded                                                            |
-| `artifact-retire`       | artifact.deleted                                                                                    |
-| `blue-green-deploy`     | service.deployed → verify → service.published → service.removed                                     |
-| `canary-deploy`         | service.deployed (detach: service-rollback) → verify → service.published                            |
-| `service-deploy`        | service.deployed → service.published                                                                |
-| `build-deploy`          | build → deploy                                                                                      |
-| `build-merge`           | build → change.merged                                                                               |
-| `build-queue`           | build.queued → build.started → build.finished                                                       |
-| `build-store`           | build → artifact-store                                                                              |
-| `build-with-async-scan` | build → artifact.packaged (detach: artifact.signed → testoutput.published)                          |
+| Expression              | Events (in order)                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| `build`                 | build.started → testsuiterun.started → testsuiterun.finished → build.finished                        |
+| `artifact-store`        | artifact.packaged → artifact.published                                                               |
+| `deploy`                | taskrun.started → service.deployed → service.published → taskrun.finished                            |
+| `verify`                | testsuiterun.started → testcaserun.started → testcaserun.finished → testsuiterun.finished            |
+| `artifact-sign-publish` | artifact.packaged → artifact.signed → artifact.published                                             |
+| `artifact-distribute`   | artifact.published → artifact.downloaded                                                             |
+| `artifact-retire`       | artifact.deleted                                                                                     |
+| `blue-green-deploy`     | service.deployed → verify → service.published → service.removed                                      |
+| `canary-deploy`         | service.deployed (detach: service-rollback) → verify → service.published                             |
+| `service-deploy`        | service.deployed → service.published                                                                 |
+| `build-deploy`          | build → deploy                                                                                       |
+| `build-merge`           | build → change.merged                                                                                |
+| `build-queue`           | build.queued → build.started → build.finished                                                        |
+| `build-store`           | build → artifact-store                                                                               |
+| `build-with-async-scan` | build → artifact.packaged (detach: artifact.signed → testoutput.published)                           |
 | `deploy-with-notify`    | taskrun.started (detach: ticket-associate) → service.deployed → service.published → taskrun.finished |
-| `promote-artifact`      | artifact.published → deploy → verify                                                                |
-| `ticket-associate`      | ticket.created → ticket.updated                                                                     |
-| `verify-with-output`    | verify → testoutput.published                                                                       |
+| `promote-artifact`      | artifact.published → deploy → verify                                                                 |
+| `ticket-associate`      | ticket.created → ticket.updated                                                                      |
+| `verify-with-output`    | verify → testoutput.published                                                                        |
 
 #### compliance / cstump — stumps (single-event observers)
 
-| Expression          | Events (in order)                         |
-| ------------------- | ----------------------------------------- |
-| `audit-evidence`    | ticket-trail → service.deployed           |
-| `change-merged`     | change.merged                             |
-| `production-deploy` | service.published                         |
-| `ticket-trail`      | ticket.created → ticket.updated           |
+| Expression          | Events (in order)               |
+| ------------------- | ------------------------------- |
+| `audit-evidence`    | ticket-trail → service.deployed |
+| `change-merged`     | change.merged                   |
+| `production-deploy` | service.published               |
+| `ticket-trail`      | ticket.created → ticket.updated |
 
 #### spin-dev / shipwreck-sa — enterprise production patterns
 
-| Expression          | Events (in order)                                                                                              |
-| ------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `build`             | change.merged → build.queued → build.started → verify → testoutput.published → build.finished                  |
-| `artifact-store`    | artifact.packaged → artifact.published                                                                         |
-| `canary-deploy`     | service.deployed (detach: service-rollback) → verify → service.published                                       |
-| `deploy`            | taskrun.started → service.deployed → service.published → taskrun.finished                                      |
-| `build-deploy`      | build → deploy                                                                                                 |
-| `production-deploy` | ticket-associate → deploy                                                                                      |
-| `service-deploy`    | service.deployed → service.published                                                                           |
-| `ticket-associate`  | ticket.created → ticket.updated                                                                                |
-| `verify`            | testsuiterun.started → testcaserun.started → testcaserun.finished → testsuiterun.finished                      |
+| Expression          | Events (in order)                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `build`             | change.merged → build.queued → build.started → verify → testoutput.published → build.finished |
+| `artifact-store`    | artifact.packaged → artifact.published                                                        |
+| `canary-deploy`     | service.deployed (detach: service-rollback) → verify → service.published                      |
+| `deploy`            | taskrun.started → service.deployed → service.published → taskrun.finished                     |
+| `build-deploy`      | build → deploy                                                                                |
+| `production-deploy` | ticket-associate → deploy                                                                     |
+| `service-deploy`    | service.deployed → service.published                                                          |
+| `ticket-associate`  | ticket.created → ticket.updated                                                               |
+| `verify`            | testsuiterun.started → testcaserun.started → testcaserun.finished → testsuiterun.finished     |
 
 ### Referencing an expression
 
 Expressions are referenced by path-style notation — bare name, `author/expression`, or `group/author/expression`. Resolution uses the calling workflow's own `group` and `author` as context:
 
-| Form                       | Resolution attempt order                                                          | Fallback?         |
-| -------------------------- | --------------------------------------------------------------------------------- | ----------------- |
-| `build`                    | 1. `(workflow.group, workflow.author, build)` 2. `(example-group, user, build)`   | Yes — std-lib     |
-| `dsanyika/build`           | `(workflow.group, dsanyika, build)`                                               | No                |
-| `sol-duara/dsanyika/build` | `(sol-duara, dsanyika, build)`                                                    | No                |
+| Form                       | Resolution attempt order                                                        | Fallback?     |
+| -------------------------- | ------------------------------------------------------------------------------- | ------------- |
+| `build`                    | 1. `(workflow.group, workflow.author, build)` 2. `(example-group, user, build)` | Yes — std-lib |
+| `dsanyika/build`           | `(workflow.group, dsanyika, build)`                                             | No            |
+| `sol-duara/dsanyika/build` | `(sol-duara, dsanyika, build)`                                                  | No            |
 
 A bare reference first tries the calling workflow's own identity; if no bundle exists there, it falls through to the `example-group / user` standard-library catalog (see _Bundled expressions_ below). Author-qualified and fully-qualified forms do not fall through — they're an explicit opt-out of the std-lib search.
 
@@ -447,7 +557,7 @@ An event may declare a `detach:` list of events or sub-expressions. A detached l
 produces:
   - event: dev.cdevents.service.deployed.0.3.0
     detach:
-      - expression: service-rollback   # rollback path is visible but non-blocking
+      - expression: service-rollback # rollback path is visible but non-blocking
   - expression: verify
   - event: dev.cdevents.service.published.0.3.0
 ```
@@ -468,9 +578,9 @@ Where a detached chain is monitored independently, a **Blocking spawned chain** 
 produces:
   - event: dev.cdevents.testsuiterun.started.0.3.0
     spawn:
-      - - event: dev.cdevents.testcaserun.started.0.3.0   # chain p1.s0 — own chainId
+      - - event: dev.cdevents.testcaserun.started.0.3.0 # chain p1.s0 — own chainId
         - event: dev.cdevents.testcaserun.finished.0.3.0
-      - - event: dev.cdevents.testcaserun.started.0.3.0   # chain p1.s1 — own chainId
+      - - event: dev.cdevents.testcaserun.started.0.3.0 # chain p1.s1 — own chainId
         - event: dev.cdevents.testcaserun.finished.0.3.0
   - event: dev.cdevents.testsuiterun.finished.0.3.0
 ```
@@ -480,7 +590,7 @@ Blocking chains are modelled identically to detached chains in the manifest (own
 - a **blocking** chain is monitored under its parent: its breach **rolls up** to the parent, and the spawning chain completes only when its blocking children do — the quiet side of the same rollup;
 - a **detached** chain is monitored independently: its breach does **not** roll up.
 
-Iron Monkey emits each spawned chain's events with its own `chainId`; the event is the output. Receiver-side rollup belongs to the observer; the producer-side wait (the spawning event's next sibling holding until blocking chains complete) is the next planned emitter change. Sibling chains with identical event sequences (e.g. parallel test-case runs) are disambiguated by their distinct `chainId`s, not by content — so the duplicate `testcaserun.*` types never collide on a single cursor.
+Iron Monkey emits each spawned chain's events with its own `chainId`; the event is the output. Receiver-side rollup belongs to the observer. The producer-side wait is enforced: a spawning event's next sibling is not emitted until every Blocking chain it spawned has settled, and the timing plan schedules siblings past those chains up front. Detached chains never gate anything. Sibling chains with identical event sequences (e.g. parallel test-case runs) are disambiguated by their distinct `chainId`s, not by content — so the duplicate `testcaserun.*` types never collide on a single cursor.
 
 > Binding key: every manifest event carries an axis-prefixed `treePath` (`p` = produces, `s` = spawn, `d` = detach — e.g. `p1.s0.p1`, `p1.p1.p0.d0.p0`). It is the stable key both producer and observer use to line up "the chain I mean," byte-identical with Conduit's derivation (see `tests/workflow/golden-parity.test.ts`). See `src/workflow/chain-tree.ts`.
 
@@ -546,10 +656,14 @@ See [docs/INJECTION.md](docs/INJECTION.md) for full reference. Quick examples:
 --inject out-of-order:artifact-published:2
 
 # Delay an event
---inject late:deployment-finished:30000
+--inject late:service-deployed:30000
 
 # Emit an event twice
 --inject duplicate:build-started
+
+# Fail the execution AT an event: earlier events emit, this one errors, and
+# everything after it is never reached (a real pipeline failure's shape)
+--inject abort:build-finished:disk full
 ```
 
 Event IDs used in `--inject` specs are the `workflowEventId` values visible in the manifest (e.g., from `--manifest-out`). For events without an explicit subject ID, the ID is derived from the event's `noun.verb` (e.g., `build-started`, `artifact-published`). Bundle events with explicit IDs use those.

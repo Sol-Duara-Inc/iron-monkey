@@ -1,0 +1,30 @@
+# A repertoire: several workflows pitched simultaneously, each with its own
+# bus connection, chain ids, and timing. One pitch failing does not abort the
+# others.
+#
+#   iron-monkey pitch --from examples/repertoires/chaos.yaml \
+#     --config examples/configs/local-rabbit.yaml
+#
+# Every `inject` target below is a real `workflowEventId` in the workflow it
+# names — check yours with `dry-run --manifest-out` before relying on it, since
+# an unknown id fails the run rather than being ignored.
+shared:
+  bus: default
+  conduit: false # no Conduit daemon needed to try this
+  interval: 500 # exact spacing; blocking waits still dominate
+
+pitches:
+  # Straight pitch at the shared cadence.
+  - workflow: examples/workflows/prod-payments-blue-green-cutover.yaml
+
+  # Chaos: withhold the first event, and stall a later one. A receiver's
+  # babysitter should see a chain that never started and one that hung.
+  - workflow: examples/workflows/prod-auth-hotfix-fast-path.yaml
+    inject:
+      - missing:build-started
+      - late:service-deployed:5000
+
+  # Deterministic replay: same seed, same ids and relative timing every run.
+  - workflow: examples/workflows/prod-checkout-jenkins-spinnaker-canary.yaml
+    interval: 100
+    seed: 42

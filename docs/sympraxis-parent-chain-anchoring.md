@@ -1,6 +1,15 @@
 # Parent‑Chain Anchoring — resilient sub‑chain correlation
 
-Status: proposed (2026‑05‑28). Companion to `junction-box/docs/sympraxis-chain-protocol.md`.
+Status: proposed (2026‑05‑28) — **largely superseded, retained for the record
+(reviewed 2026‑08‑16).** Its premise was that a sub‑chain could be minted while
+the chain service was unreachable, leaving that one chain uncorrelated. Chain
+ids are no longer acquired per chain: one atomic `POST /api/runs` mints the
+ENTIRE set up front (`src/chain/register.ts`), so a run is either fully
+authoritative or fully offline — the partial case the anchor was designed to
+survive cannot arise. `context.parentChainId` is NOT emitted; parentage lives
+on the manifest's chain records and in the `RELATION` link. Revisit only if
+per‑chain acquisition returns (e.g. a bus‑authority path that mints lazily).
+Companion to `junction-box/docs/sympraxis-chain-protocol.md`, itself a frozen PoC.
 Audience: the Sympraxis / Junction Box engineer. This describes a small addition
 to the emitted CDEvent payload (`context.parentChainId`) and **what the receiver
 must do with it** so that sub‑chains stay correctly correlated even when the
@@ -54,16 +63,16 @@ Emit **`context.parentChainId`** on every sub‑chain event — the `chainId` of
 
 Linkage becomes bidirectional:
 
-| Direction | Where | Says |
-|---|---|---|
-| forward | `RELATION` on the **parent** event → child's first event `context.id` | "I spawned this" |
-| backward | **`parentChainId` on every child event** → parent chain | "I belong to you" |
+| Direction | Where                                                                 | Says              |
+| --------- | --------------------------------------------------------------------- | ----------------- |
+| forward   | `RELATION` on the **parent** event → child's first event `context.id` | "I spawned this"  |
+| backward  | **`parentChainId` on every child event** → parent chain               | "I belong to you" |
 
 The forward link is an optimisation for in‑order delivery; the backward anchor is
 the **guarantee**. With it, correlation no longer depends on the receiver having
 minted the child's id, nor on having seen the spawning event first.
 
-This is an **invariant**, not a special case: *every* sub‑chain carries it
+This is an **invariant**, not a special case: _every_ sub‑chain carries it
 (detached, concurrent, and late‑declared alike). Nested chains carry the id of
 their immediate parent, so the back‑pointers chain all the way up to the root.
 
@@ -109,11 +118,11 @@ For every ingested event, read `context.chainId` (own) and, if present,
 1. **Known own chainId** → associate normally (existing behaviour).
 2. **Unknown own chainId + known parentChainId** → **graft and adopt**: register
    the unknown `chainId` as a sub‑chain **under** `parentChainId`, and associate
-   this and all later same‑`chainId` events to it. The URN is a *stable*
+   this and all later same‑`chainId` events to it. The URN is a _stable_
    identifier across the chain's events, so adoption is consistent and
    idempotent (adopting the same URN again is a no‑op).
 3. **Unknown own chainId + unknown parentChainId** → do **not** drop. Buffer /
-   reconcile: the parent's own events carry *their* `parentChainId`, so the
+   reconcile: the parent's own events carry _their_ `parentChainId`, so the
    hierarchy resolves as soon as any ancestor becomes known. The chain of
    back‑pointers terminates at the **main/root** chain.
 4. **Order‑independence**: never require the parent's `RELATION` (or the parent
@@ -141,14 +150,14 @@ own label, which is exactly what the URN is. It is:
   across chains.
 
 So adoption cannot mis‑merge two chains or clash with a minted UUID. When the
-service *was* reachable, `chainId` is the UUID and no adoption is needed — but
+service _was_ reachable, `chainId` is the UUID and no adoption is needed — but
 `parentChainId` is still emitted, for order‑independence.
 
 ---
 
 ## The late‑declared guest, closed
 
-A late‑declared chain (a pipeline that spins up a *separate, unregistered*
+A late‑declared chain (a pipeline that spins up a _separate, unregistered_
 pipeline at runtime and declares it just before its first event) is the case most
 likely to hit an unreachable service, because the declaration is a live network
 hop mid‑run.
@@ -165,18 +174,18 @@ declaration from "lost chain" into "adopted chain."
 
 ## Boundary: association vs. babysitting (one thing to get right)
 
-`parentChainId` solves **association** — *which run/parent does this event belong
-to*. It does **not**, by itself, restore the **expected‑events** contract that a
+`parentChainId` solves **association** — _which run/parent does this event belong
+to_. It does **not**, by itself, restore the **expected‑events** contract that a
 successful declaration provides.
 
 - A chain adopted via `parentChainId` lets the receiver **observe and graft** the
-  events that *do* arrive.
+  events that _do_ arrive.
 - But **breach‑on‑absence** (a babysitter alarming that a declared event never
   showed) requires the **expected‑events list**, which only reaches the receiver
   via a successful register/declare.
 
 So when a declaration fails, the receiver still sees and places the guest's
-events, but cannot breach it for *missing* events it was never told to expect.
+events, but cannot breach it for _missing_ events it was never told to expect.
 
 If full offline babysitting is desired, the complementary mechanism is to carry
 the **expected‑events declaration on the guest's first event** (so the receiver

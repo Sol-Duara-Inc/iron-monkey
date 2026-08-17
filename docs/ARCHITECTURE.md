@@ -10,34 +10,45 @@ Iron Monkey is a CLI tool that emits synthetic CDEvents to a message bus. It is 
 workflow.yaml
     │
     ▼
-[workflow/parser.ts]         ← validates against workflow JSON Schema (Sympraxis CDrus layer)
+[workflow/parser.ts]         ← validates against the workflow JSON Schema (CDrus 0.1.0)
     │  WorkflowFile
     ▼
-[expressions/loader.ts]      ← loads bundled expression YAML files; indexes by name + semver
+[expressions/loader.ts]      ← loads bundled expression YAML; indexes by identity tuple
+    │                         ← name-hint check (RFC §4.1.1): violations skip the bundle
     │  ExpressionRegistry
     ▼
-[workflow/parser.ts]         ← resolveProduces(): inlines expressions, applies defaults cascade
-    │  ResolvedEvent[]
+[workflow/chain-tree.ts]     ← resolveChainTree(): expands expression refs, applies the
+    │                           binding cascade, lifts spawn/detach into their own chains,
+    │                           resolves §6.1 event versions, collects §4.9 anchors
+    │  ResolvedChain (a TREE of chains, not a flat list)
     ▼
-[chain/acquire.ts]           ← POST /chainID to Conduit (or fallback URN)
-    │  chainId
+[chain/register.ts]          ← ONE atomic POST /api/runs: Conduit mints the whole chain
+    │                           set and echoes instanceId; declares this run's executionID.
+    │                           A fallback URN is minted only when no daemon answers.
+    │  RegisterResult
     ▼
-[manifest/builder.ts]        ← allocates UUIDs, computes timing, builds CDEvent payloads
-    │                         ← loads schemas by type enum; validates each planned event
-    │                         ← stamps targetBus on every entry
+[manifest/timing.ts]         ← planTiming(): absolute emit time per event, with §4.7
+    │                           blocking waits already folded in
+    │  plan
+    ▼
+[manifest/builder.ts]        ← allocates UUIDs, builds + schema-validates each payload,
+    │                           wires PATH/END/RELATION links, stamps targetBus
     │  Manifest
     ▼
-[injection/apply.ts]         ← applies --inject specs (missing, malformed, out-of-order, late, duplicate)
+[injection/apply.ts]         ← applies --inject specs (missing, malformed, out-of-order,
+    │                           late, duplicate, abort)
     │  Manifest (annotated)
     ▼
-[emitter/runner.ts]          ← waits for target times, emits events via bus
-    │
+[emitter/runner.ts]          ← emits on the plan; AWAITS blocking chains before the next
+    │                           sibling; detached chains drain without gating anything.
+    │                           Records the execution for expiry inquiries.
     ▼
 [bus/rabbit.ts|kafka.ts]     ← publishes to exchange / topic
-    │
-    ▼
-[links/builder.ts]           ← emits standalone END link after last event
 ```
+
+The chain's terminator is an **embedded** `END` link on the last event, not a
+separate sentinel message (`links/builder.ts` builds it; the runner attaches it
+after injections, so it rides whatever envelope actually ships).
 
 ## Sympraxis chain
 
@@ -51,6 +62,7 @@ In a Sympraxis workflow:
 - **`targetBus`** is stamped on every manifest entry as a seam for future multi-bus support. On day 1, every entry carries the same value (the selected bus name).
 
 A typical 2-tool cross-tool sequence (as in `examples/workflows/happy-path.yaml`) looks like:
+
 ```
 pipelineRun.started   (tool 1 — Jenkins)
   build.started
@@ -111,17 +123,22 @@ The first event in a chain has no `links`. The last event has its `isLast` flag 
 
 ## Module map
 
-| Module | Responsibility |
-|---|---|
-| `src/cli/` | Commander CLI, command registration, flag parsing |
-| `src/expressions/` | Expression bundle loading, semver resolution, ExpressionRegistry |
-| `src/workflow/` | YAML parsing, JSON Schema validation, expression resolution, defaults cascade |
-| `src/config/` | Config file loading, env var merging, `${VAR}` interpolation |
-| `src/manifest/` | Manifest construction, ID allocation, timing |
-| `src/injection/` | `--inject` spec parsing, payload mutation |
-| `src/chain/` | Conduit HTTP client, fallback URN generator |
-| `src/links/` | PATH/END link construction (per Links Proposal) |
-| `src/emitter/` | Event scheduling, concurrency, bus orchestration |
-| `src/bus/` | RabbitMQ and Kafka client wrappers |
-| `src/schema/` | CDEvent schema loader (type-enum keyed) and AJV 2020-12 validator |
-| `src/logger/` | Pino logger factory |
+| Module             | Responsibility                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `src/cli/`         | Commander CLI, command registration, flag parsing                                                     |
+| `src/expressions/` | Expression bundle loading, semver resolution, ExpressionRegistry                                      |
+| `src/workflow/`    | YAML parsing, schema validation, chain-tree resolution (spawn/detach axes, anchors, §6.2 diagnostics) |
+| `src/config/`      | Config file loading, env var merging, `${VAR}` interpolation                                          |
+| `src/manifest/`    | Manifest construction, ID allocation, timing                                                          |
+| `src/injection/`   | `--inject` spec parsing, payload mutation                                                             |
+| `src/chain/`       | Proleptic batch-register client (`POST /api/runs`), fallback URN generator                            |
+| `src/links/`       | PATH/END link construction (per Links Proposal)                                                       |
+| `src/emitter/`     | Event scheduling, concurrency, bus orchestration                                                      |
+| `src/bus/`         | RabbitMQ and Kafka client wrappers                                                                    |
+| `src/schema/`      | CDEvent schema loader (type-enum keyed), AJV 2020-12 validator, §6.1 event-version catalog            |
+| `src/logger/`      | Pino logger factory                                                                                   |
+| `src/execution/`   | Execution records, the inquiry projection, and the HTTP surface behind `serve`                        |
+| `src/hints/`       | Name-hint checker (RFC §4.1.1) and its versioned keyword table — isolable                             |
+| `src/synth/`       | Simulated-data synthesis for schema-required fields the author omitted                                |
+| `src/repertoire/`  | Repertoire YAML loading and per-pitch option merging                                                  |
+| `src/util/`        | Shared YAML/AJV helpers and deep-merge                                                                |
