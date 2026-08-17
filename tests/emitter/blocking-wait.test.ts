@@ -45,13 +45,16 @@ function wf(produces: unknown[]): WorkflowFile {
 }
 
 /** A recording bus: captures (type, wall-clock ms) per emit, in order. */
-function recordingBus() {
+function recordingBus(failOn: string[] = []) {
   const emitted: { type: string; at: number }[] = [];
   return {
     emitted,
     bus: {
       connect: async () => {},
       emit: async (_t: string, _id: string, payload: { context: { type: string } }) => {
+        if (failOn.includes(payload.context.type)) {
+          throw new Error(`bus refused ${payload.context.type}`);
+        }
         emitted.push({ type: payload.context.type, at: Date.now() });
       },
       inspect: async () => ({ type: 'mock', details: {} }),
@@ -61,7 +64,7 @@ function recordingBus() {
   };
 }
 
-async function run(workflow: WorkflowFile, injections: string[] = []) {
+async function run(workflow: WorkflowFile, injections: string[] = [], failOn: string[] = []) {
   setLogger(createLogger({ level: 'fatal', format: 'json' }));
   const chain = resolveChainTree(workflow, createRegistry([]));
   let manifest = await buildManifest({ id: 'phase2-wf', name: 'phase2-wf' }, chain, config, {
@@ -70,7 +73,7 @@ async function run(workflow: WorkflowFile, injections: string[] = []) {
     seed: 5,
   });
   if (injections.length > 0) manifest = applyInjections(manifest, parseInjections(injections));
-  const { emitted, bus } = recordingBus();
+  const { emitted, bus } = recordingBus(failOn);
   await executeManifest(manifest, bus as never, createLogger({ level: 'fatal', format: 'json' }));
   return emitted;
 }
@@ -135,5 +138,38 @@ describe('executeManifest — structural blocking wait', () => {
     // Blocking child (TC_STARTED) gates; its DETACHED grandchild must not.
     expect(sibling.at).toBeLessThan(grandchild.at);
     expect(emitted.map((e) => e.type)).toContain(TICKET_CREATED); // still drained
+  });
+});
+
+describe('a FAILING blocking chain — settlement gates, not success', () => {
+  it('releases the sibling when a blocking chain errors, instead of hanging the run', async () => {
+    // The runner awaits blocking chains with allSettled. If that were `all`,
+    // a bus rejection inside a spawned chain would propagate and abort the
+    // whole run — a receiver would then see the main chain simply stop, which
+    // is a different (and wrong) failure than "that sub-chain broke".
+    const emitted = await run(
+      wf([{ event: TS_STARTED, spawn: [{ event: TC_STARTED }] }, { event: TS_FINISHED }]),
+      [],
+      [TC_STARTED], // the blocking chain's only event fails on the bus
+    );
+    const types = emitted.map((e) => e.type);
+    expect(types).not.toContain(TC_STARTED); // it never made it out
+    expect(types).toContain(TS_FINISHED); // ...and the sibling still shipped
+  });
+
+  it('still drains detached chains after a blocking failure', async () => {
+    const emitted = await run(
+      wf([
+        {
+          event: TS_STARTED,
+          spawn: [{ event: TC_STARTED }],
+          detach: [{ event: TICKET_CREATED }],
+        },
+        { event: TS_FINISHED },
+      ]),
+      [],
+      [TC_STARTED],
+    );
+    expect(emitted.map((e) => e.type)).toContain(TICKET_CREATED);
   });
 });

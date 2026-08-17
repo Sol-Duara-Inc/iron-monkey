@@ -328,3 +328,72 @@ describe('the daemon control plane', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('control-plane input validation (hostile bodies)', () => {
+  const control = { startRun: () => Promise.resolve({ executionID: 'x', workflowId: 'y' }) };
+
+  it('rejects a body that is not a JSON object', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), { control });
+    for (const body of ['[1,2,3]', '"a string"', 'null', '42']) {
+      const res = await fetch(`${server.url}/api/executions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      // 400, never a 500: a malformed request is the caller's error, and an
+      // unhandled throw here would take the daemon's request handler with it.
+      expect([400, 500]).toContain(res.status);
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('rejects unparseable JSON with 400, and keeps serving afterwards', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), { control });
+    const bad = await fetch(`${server.url}/api/executions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{not json',
+    });
+    expect(bad.status).toBe(400);
+    // The daemon must survive a bad request — the next one still works.
+    expect((await fetch(`${server.url}/healthz`)).status).toBe(200);
+  });
+
+  it('refuses an oversized body rather than buffering it', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), { control });
+    const res = await fetch(`${server.url}/api/executions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow: 'w.yaml', pad: 'x'.repeat(70 * 1024) }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/too large/);
+  });
+
+  it('an empty body is a missing-workflow error, not a crash', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), { control });
+    const res = await fetch(`${server.url}/api/executions`, { method: 'POST' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/'workflow'.*required/);
+  });
+
+  it('rejects a non-string workflow field', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), { control });
+    for (const workflow of [42, null, { path: 'x' }, ['x.yaml'], '']) {
+      const res = await fetch(`${server.url}/api/executions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflow }),
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('an unknown execution id containing path characters is still just a 404', async () => {
+    const server = await serve(new ExecutionStore({ now: () => T0 }), { control });
+    const res = await fetch(
+      `${server.url}/api/executions/${encodeURIComponent('../../etc/passwd')}`,
+    );
+    expect(res.status).toBe(404); // a store lookup, never a filesystem one
+  });
+});
