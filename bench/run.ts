@@ -47,7 +47,7 @@ const CONDUIT_DIR =
   process.env.CONDUIT_GO_DIR ?? path.join(os.homedir(), 'IdeaProjects/conduit-go');
 const CANONICAL = path.join(CONDUIT_DIR, 'pkg/cdrus/testdata');
 const MIRROR = path.join(IM_ROOT, 'tests/fixtures/cdrus-goldens');
-const SUITE_FILE = 'tests/contract/sympraxis.contract.test.ts';
+const SUITE_FILE = 'tests/contract/proleptic.contract.test.ts';
 const EXPECTED_SKIP = 'acme.tester.nightly-build.expression.yaml';
 const WORKFLOW_ID = process.env.BENCH_WORKFLOW_ID ?? 'prod-api-gateway-production-deploy-gated';
 const FANOUT_ID = process.env.BENCH_FANOUT_WORKFLOW_ID ?? 'build-fanout';
@@ -475,10 +475,10 @@ async function main(): Promise<void> {
       cwd: IM_ROOT,
       env: {
         ...process.env,
-        SYMPRAXIS_BASE_URL: base,
-        SYMPRAXIS_WORKFLOW_ID: WORKFLOW_ID,
-        SYMPRAXIS_FANOUT_WORKFLOW_ID: FANOUT_ID,
-        SYMPRAXIS_INGEST: '1',
+        PROLEPTIC_BASE_URL: base,
+        PROLEPTIC_WORKFLOW_ID: WORKFLOW_ID,
+        PROLEPTIC_FANOUT_WORKFLOW_ID: FANOUT_ID,
+        PROLEPTIC_INGEST: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },

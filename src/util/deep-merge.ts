@@ -2,7 +2,7 @@
  * @module util/deep-merge
  * Shared recursive deep-merge for plain objects, used by the workflow resolvers
  * (`parser.ts`, `chain-tree.ts`) when layering defaults → item → override
- * `content` blocks in the Sympraxis field cascade.
+ * `content` blocks in the Proleptic field cascade.
  */
 
 /**

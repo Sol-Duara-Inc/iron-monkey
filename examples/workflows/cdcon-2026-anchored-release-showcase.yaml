@@ -101,6 +101,19 @@ workflow:
       as: verify-finished
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
+      # TOTAL-AWARE BUDGET (TTL semantics ruled 2026-08-10). This position
+      # follows a `spawn:` of two Blocking chains, and a TTL is used exactly
+      # as authored — the engine never extends it to cover the wait. The
+      # workflow default of 300000 would arm this clock for 5 minutes while
+      # the declared children budget up to 1200000ms, so it would breach on
+      # its own terms before they could finish. The number below covers the
+      # children plus this step.
+      #
+      # The alternative the engine offers is to OMIT a TTL here and let it
+      # derive Σ(children) exactly; that is not available while `defaults`
+      # sets timeout_ms, because a default counts as authored everywhere it
+      # reaches.
+      timeout_ms: 1500000
 
     # ── GKE: canary deploy → release ──────────────────────────────────────────
     - event: dev.cdevents.service.deployed.0.3.0

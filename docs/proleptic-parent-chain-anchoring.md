@@ -10,7 +10,7 @@ survive cannot arise. `context.parentChainId` is NOT emitted; parentage lives
 on the manifest's chain records and in the `RELATION` link. Revisit only if
 per‑chain acquisition returns (e.g. a bus‑authority path that mints lazily).
 Companion to `junction-box/docs/sympraxis-chain-protocol.md`, itself a frozen PoC.
-Audience: the Sympraxis / Junction Box engineer. This describes a small addition
+Audience: the Proleptic Event Orchestrator / Junction Box engineer. This describes a small addition
 to the emitted CDEvent payload (`context.parentChainId`) and **what the receiver
 must do with it** so that sub‑chains stay correctly correlated even when the
 chain service was unreachable at the moment their `chainId` was requested.
@@ -33,7 +33,7 @@ chain service was unreachable at the moment their `chainId` was requested.
 
 ## The problem it solves
 
-Sympraxis is the sole authority for chain UUIDs. Iron Monkey requests a `chainId`
+Proleptic Event Orchestrator is the sole authority for chain UUIDs. Iron Monkey requests a `chainId`
 per chain; sub‑chains (a `detach`, a concurrent branch, or a runtime
 **late‑declared** chain) each ask for one. When the service is **unreachable at
 that moment** — most likely for a late declaration, which is a runtime network
@@ -98,7 +98,7 @@ A sub‑chain event:
 }
 ```
 
-- `chainId` — the sub‑chain's own id. A Sympraxis‑minted UUID when the service
+- `chainId` — the sub‑chain's own id. A Proleptic‑minted UUID when the service
   was reachable; a fallback **URN** when it was not.
 - `parentChainId` — the immediate parent's `chainId`. **Omitted on the main
   (root) chain** (it has no parent).
@@ -132,7 +132,7 @@ For every ingested event, read `context.chainId` (own) and, if present,
 The root anchor:
 
 - If the run was registered (normal), the root/main `chainId` is a
-  Sympraxis‑minted UUID — the whole tree resolves to a known anchor.
+  Proleptic‑minted UUID — the whole tree resolves to a known anchor.
 - If the **entire run** was offline (root is also a URN), the receiver adopts the
   tree wholesale, keyed by the consistent URNs, when the events arrive.
 
@@ -141,7 +141,7 @@ The root anchor:
 ## Why adopting a URN is safe
 
 The fallback URN obeys the protocol's **single‑originator rule**: a chain whose id
-Sympraxis did not mint is originated by the **client** (Iron Monkey) under its
+Proleptic Event Orchestrator did not mint is originated by the **client** (Iron Monkey) under its
 own label, which is exactly what the URN is. It is:
 
 - **consistent** — the same chain yields the same URN on every one of its events
@@ -162,7 +162,7 @@ pipeline at runtime and declares it just before its first event) is the case mos
 likely to hit an unreachable service, because the declaration is a live network
 hop mid‑run.
 
-- **Declare succeeds** → Sympraxis received the expected‑events list and minted
+- **Declare succeeds** → Proleptic Event Orchestrator received the expected‑events list and minted
   the `chainId`; the guest's events carry that UUID + `parentChainId`.
 - **Declare fails** → Iron Monkey mints a URN; the guest's events carry the URN +
   `parentChainId` → the receiver grafts and adopts it under the parent run.

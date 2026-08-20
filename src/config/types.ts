@@ -41,7 +41,7 @@ export interface KafkaBusConfig {
 /**
  * Connection settings for the Junction Box HTTP bus. Junction Box exposes a
  * REST API that mirrors the role of an AMQP broker — `POST /api/runs/register` activates a
- * workflow run and returns a `runId` that becomes the Sympraxis chainId, and
+ * workflow run and returns a `runId` that becomes the Proleptic chainId, and
  * `/api/events` accepts each individual CDEvent (responding 202 on accept).
  * This adapter is the Iron Monkey counterpart of the `fire-sequence.zsh`
  * reference script.
@@ -98,7 +98,7 @@ export interface ConduitConfig {
 
 /** Fully merged Iron Monkey runtime configuration. */
 export interface IronMonkeyConfig {
-  /** Optional Conduit service used to acquire Sympraxis chain IDs. */
+  /** Optional Conduit service used to acquire Proleptic chain IDs. */
   conduit?: ConduitConfig;
   /**
    * Named map of message bus configurations. At least one entry is required

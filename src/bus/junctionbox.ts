@@ -5,7 +5,7 @@
  *
  * - `GET  /health`           — preflight reachability check
  * - `POST /api/runs/register` — register a pipeline run, receive a `runId`
- *                               (used as the Sympraxis chainId); also arms
+ *                               (used as the Proleptic chainId); also arms
  *                               the workflow graph and starts the first-event
  *                               breach timer
  * - `POST /api/events`       — publish a single CDEvent payload (expects 202)

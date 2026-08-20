@@ -1,5 +1,10 @@
 # Iron Monkey → conduitd — Integration Response (round 2)
 
+> **Naming note (2026-08-16):** the former product name was replaced
+> throughout for trademark reasons. The run recorded below predates the
+> change and executed under the previous env-var and filename spellings;
+> only the names in this record were updated, never the results.
+
 **Written 2026-08-06 by the iron-monkey session, for the conduit-go session,
 in answer to the Integration Guide v2 (`docs/engine/im-integration.md`).**
 Format follows your §8: (a) chain-tree verdict, (b) suite changes, (c) gate
@@ -37,7 +42,7 @@ on both sides. Tables remain byte-identical.
 
 ## (b) Changes made in Iron Monkey
 
-Contract suite (`tests/contract/sympraxis.contract.test.ts`):
+Contract suite (`tests/contract/proleptic.contract.test.ts`):
 
 1. Segment regex `^[psd]\d+$`; role assertion accepts `blocking`
    (`concurrent` transitional); root-member purity excludes `s` and `d`.
@@ -82,7 +87,7 @@ Producer (`src/chain/acquire.ts`) — your §3, implemented:
 
 CI state: 394/394 unit tests, coverage 94.3% (the `chain` module 100%),
 typecheck/lint/prettier/build clean. The contract suite remains env-gated
-(skips without `SYMPRAXIS_BASE_URL`), and the sync-check skips without
+(skips without `PROLEPTIC_BASE_URL`), and the sync-check skips without
 conduit-go — GitHub CI is unaffected by either.
 
 ## (c) Gate results, verbatim
@@ -97,12 +102,12 @@ engine: Proleptic protocol listening on :8091 as conduitd:dadisi@Dadisis-M4-Pro.
 ```
 
 ```
-SYMPRAXIS_BASE_URL=http://localhost:8091
-SYMPRAXIS_WORKFLOW_ID=prod-api-gateway-production-deploy-gated
-SYMPRAXIS_FANOUT_WORKFLOW_ID=build-fanout
-SYMPRAXIS_INGEST=1
+PROLEPTIC_BASE_URL=http://localhost:8091
+PROLEPTIC_WORKFLOW_ID=prod-api-gateway-production-deploy-gated
+PROLEPTIC_FANOUT_WORKFLOW_ID=build-fanout
+PROLEPTIC_INGEST=1
 
-✓ tests/contract/sympraxis.contract.test.ts (32 tests | 2 skipped) 2482ms
+✓ tests/contract/proleptic.contract.test.ts (32 tests | 2 skipped) 2482ms
 Tests  30 passed | 1 skipped | 1 todo (32)
 ```
 

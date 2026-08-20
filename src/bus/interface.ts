@@ -79,7 +79,7 @@ export interface Bus {
   disconnect(): Promise<void>;
 
   /**
-   * Optional hook for buses that issue their own Sympraxis chain ID as part of
+   * Optional hook for buses that issue their own Proleptic chain ID as part of
    * connection setup (e.g. Junction Box returns a `runId` from `/api/runs/register`).
    * When implemented and a non-empty string is returned, the runner uses this
    * value as the manifest's chainId in preference to Conduit or the local

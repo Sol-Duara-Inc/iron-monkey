@@ -78,7 +78,7 @@ export interface ManifestEvent {
   workflowEventId: string;
   /**
    * Positional, axis-prefixed binding key from the chain tree (e.g. `'p0'`,
-   * `'p1.p1.p0'`, `'p1.b0.p2'`). Stable across producer/observer; the Sympraxis
+   * `'p1.p1.p0'`, `'p1.b0.p2'`). Stable across producer/observer; the Proleptic
    * RELATION/registry binding key. See {@link module:workflow/chain-tree}.
    */
   treePath?: string;
@@ -90,7 +90,7 @@ export interface ManifestEvent {
   stageTool: string;
   /** CDEvents `context.source` URI identifying the originating tool. */
   source: string;
-  /** The Sympraxis chain ID shared by all events in this run. */
+  /** The Proleptic chain ID shared by all events in this run. */
   chainId: string;
   /** Name of the message bus this event is destined for. */
   targetBus: string;
@@ -156,7 +156,7 @@ export interface CDEventContext {
   type: string;
   /** ISO 8601 timestamp of when the event was scheduled for emission. */
   timestamp: string;
-  /** Sympraxis chain ID correlating all events in a workflow run. */
+  /** Proleptic chain ID correlating all events in a workflow run. */
   chainId?: string;
   /** Ordered array of link entries connecting this event to others in the chain. */
   links?: LinkEntry[];
@@ -191,7 +191,7 @@ export interface CDEventPayload {
 
 /**
  * A pre-allocated detached or blocking spawned sub-chain within a manifest.
- * Each sub-chain is its own Sympraxis chain (its own {@link chainId}), spawned
+ * Each sub-chain is its own Proleptic chain (its own {@link chainId}), spawned
  * by an event in a parent chain. The spawning event carries a `RELATION` link
  * to this chain's first event; this chain's events carry their own internal
  * `PATH` links and an `END` link on the last event.
@@ -212,7 +212,7 @@ export interface DetachedManifestChain {
   role: 'detached' | 'blocking';
   /** Positional binding key (chain anchor) from the chain tree, e.g. `'p1.p1.p0.d'`, `'p1.s0'`. */
   chainRef: string;
-  /** This chain's own Sympraxis chain ID, stamped on every one of its events. */
+  /** This chain's own Proleptic chain ID, stamped on every one of its events. */
   chainId: string;
   /** How this chain's `chainId` was obtained (Slice 1: always `'fallback'`; acquisition is Slice 2). */
   chainIdSource: 'conduit' | 'bus' | 'fallback';
@@ -246,7 +246,7 @@ export interface Manifest {
   workflowId: string;
   /** The workflow `name` field from the YAML. */
   workflowName: string;
-  /** The Sympraxis chain ID shared across all events in this run. */
+  /** The Proleptic chain ID shared across all events in this run. */
   chainId: string;
   /**
    * Indicates how `chainId` was obtained:

@@ -86,7 +86,7 @@ export interface ResolvedChainEvent {
 }
 
 /**
- * A resolved Sympraxis chain: the main chain (`role: 'main'`, `chainRef:
+ * A resolved Proleptic chain: the main chain (`role: 'main'`, `chainRef:
  * 'root'`) or a detached side-chain (`role: 'detached'`). Detached chains are
  * carried in {@link ResolvedChain.spawns}, never inlined into the parent's
  * `events`, so the producer can fire them independently (fire-and-forget) and

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 600" font-family="ui-sans-serif, system-ui, sans-serif">
   <title>Concurrent branches (Shipwreck SA verify) — two branches run at once, monitored under the suite (breach rolls up)</title>
-  <desc>testsuiterun.started forks into two test-case branch chains (b axis), each role=concurrent with its own chainId. Two event streams are emitted simultaneously — one token per branch, moving in lockstep — so both branches genuinely run in parallel. The emitter does not join or block. The receiver (Sympraxis, holding the same YAML) monitors each branch UNDER the suite: a branch's breach rolls up to the suite, and the suite reaches complete when both branches complete.</desc>
+  <desc>testsuiterun.started forks into two test-case branch chains (b axis), each role=concurrent with its own chainId. Two event streams are emitted simultaneously — one token per branch, moving in lockstep — so both branches genuinely run in parallel. The emitter does not join or block. The receiver (Proleptic Event Orchestrator, holding the same YAML) monitors each branch UNDER the suite: a branch's breach rolls up to the suite, and the suite reaches complete when both branches complete.</desc>
   <style>
     .bg{fill:#0f1420}.title{fill:#e8eef7;font-size:21px;font-weight:700}.sub{fill:#8aa0bd;font-size:12.5px}
     .lbl{fill:#cdd9e8;font-size:11px}.lblb{fill:#e8eef7;font-size:11.5px;font-weight:600}
@@ -137,6 +137,6 @@
 
   <!-- footnote -->
   <text class="muted" x="40" y="556" fill="#cdd9e8" font-size="12" font-weight="600">Emitter's job:</text>
-  <text class="muted" x="128" y="556">resolve the chains, get a chainId per chain from Sympraxis, emit BOTH streams at once — each event stamped with its chainId.</text>
+  <text class="muted" x="128" y="556">resolve the chains, get a chainId per chain from Proleptic Event Orchestrator, emit BOTH streams at once — each event stamped with its chainId.</text>
   <text class="muted" x="40" y="578" fill="#5a6478" font-size="10.5">No join/block on the emitter side. The two tokens run in lockstep = parallel. The rollup is the RECEIVER's: a concurrent branch's breach rolls up to the suite (and the suite completes when both branches do). As Chaos Monkey, Iron Monkey can withhold a branch event to drive that breach rollup.</text>
 </svg>

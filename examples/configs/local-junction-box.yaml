@@ -1,7 +1,7 @@
 # Iron Monkey config: emit directly to a local Junction Box instance.
 # Mirrors the connection flow of scripts/cdevents/fire-sequence.zsh:
 #   GET  /health         (preflight)
-#   POST /api/launch     (returns runId, used as Sympraxis chainId)
+#   POST /api/launch     (returns runId, used as Proleptic chainId)
 #   POST /api/events     (one POST per CDEvent, expects HTTP 202)
 buses:
   default:

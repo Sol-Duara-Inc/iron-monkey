@@ -50,11 +50,11 @@ The chain's terminator is an **embedded** `END` link on the last event, not a
 separate sentinel message (`links/builder.ts` builds it; the runner attaches it
 after injections, so it rides whatever envelope actually ships).
 
-## Sympraxis chain
+## Proleptic chain
 
-Iron Monkey emits **Sympraxis-conformant chains**. Sympraxis is the three-pillared language system of CDEvents (vocabulary), CDrus Expressions (grammar), and Koine DSL (execution).
+Iron Monkey emits **Proleptic-conformant chains**. Proleptic Event Orchestrator is the three-pillared language system of CDEvents (vocabulary), CDrus Expressions (grammar), and Koine DSL (execution).
 
-In a Sympraxis workflow:
+In a Proleptic Event Orchestrator workflow:
 
 - **Each tool's portion opens with its own `pipelineRun.started` event.** This brackets the tool's contribution to the overall chain.
 - **`pipelineRun.queued` is a passive signaling event.** It signals a handoff between tools (e.g., Jenkins notifying JFrog that artifacts are ready for packaging). Iron Monkey emits it **only when explicitly listed** in the workflow YAML — it is never auto-injected at tool boundaries.

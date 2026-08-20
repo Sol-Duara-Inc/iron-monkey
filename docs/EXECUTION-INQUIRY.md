@@ -233,7 +233,7 @@ Surfaced per §0 of the integration guide. Each carries a recommendation;
 the ruling is Dadisi's.
 
 **F1 — a contract-suite test breaks under the 2026-08-14 sole-authority
-ruling, and here it is.** `tests/contract/sympraxis.contract.test.ts:921`
+ruling, and here it is.** `tests/contract/proleptic.contract.test.ts:921`
 emits `envelope-${uuid()}` as a chainId and asserts `202`, proving 400s are
 typed rather than text-matched. That id was never issued, so it now gets
 `422`. The probe cannot be repaired by planting "envelope" inside a
@@ -277,7 +277,7 @@ evidence marked "producer record aged out" so the human sees a retention
 artifact rather than a pipeline truth.
 
 **F6 — `413` vs `422` precedence is unspecified.** An over-cap body carrying
-an unissued chainId could answer either. `sympraxis.contract.test.ts:933`
+an unissued chainId could answer either. `proleptic.contract.test.ts:933`
 fabricates a UUID for the 413 probe, so its outcome now depends on an order
 nobody has ruled.
 _Recommended:_ size cap first (cheapest check, and the body may be
