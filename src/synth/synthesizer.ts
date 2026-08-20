@@ -17,7 +17,7 @@
 export interface SynthContext {
   /** CDEvents `context.source` URI of the emitting tool — used to derive URIs and source fields. */
   toolSource: string;
-  /** Sympraxis chain ID — used as the seed input for deterministic short-hashes. */
+  /** Proleptic chain ID — used as the seed input for deterministic short-hashes. */
   chainId: string;
   /** Fully-qualified CDEvent type string. */
   eventType: string;

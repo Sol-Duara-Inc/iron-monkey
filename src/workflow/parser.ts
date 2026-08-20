@@ -12,8 +12,8 @@ import type { WorkflowFile } from './types.js';
 
 /**
  * Reads, YAML-parses, and schema-validates a workflow file. Provides
- * Sympraxis-aware error messages for common mistakes such as using `bus` or
- * `stages` keys that are not permitted in the Sympraxis paradigm.
+ * Proleptic-aware error messages for common mistakes such as using `bus` or
+ * `stages` keys that are not permitted in the Proleptic Event Orchestrator paradigm.
  *
  * @param filePath - Absolute or relative path to the workflow YAML file.
  * @returns The parsed and validated {@link WorkflowFile}.
@@ -37,10 +37,10 @@ export async function validateWorkflow(filePath: string): Promise<WorkflowFile> 
           if (e.keyword === 'additionalProperties') {
             const prop = e.params?.additionalProperty as string | undefined;
             if (prop === 'bus') {
-              return `  ${e.instancePath || '(root)'}: 'bus' field is not allowed — bus is selected via --bus flag or IRON_MONKEY_BUS_NAME env var (Sympraxis paradigm)`;
+              return `  ${e.instancePath || '(root)'}: 'bus' field is not allowed — bus is selected via --bus flag or IRON_MONKEY_BUS_NAME env var (Proleptic Event Orchestrator paradigm)`;
             }
             if (prop === 'stages') {
-              return `  ${e.instancePath || '(root)'}: 'stages' field is not allowed — use 'produces' instead (Sympraxis paradigm)`;
+              return `  ${e.instancePath || '(root)'}: 'stages' field is not allowed — use 'produces' instead (Proleptic Event Orchestrator paradigm)`;
             }
           }
           return formatAjvErrorLine(e);

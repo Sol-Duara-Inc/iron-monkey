@@ -9,11 +9,11 @@ The name is a nod to Iron Mike (the pitching machine) and Chaos Monkey (Netflix'
 
 ---
 
-## Sympraxis
+## Proleptic Event Orchestrator
 
-Iron Monkey emits **Sympraxis-conformant chains**. Sympraxis is the three-pillared language system of CDEvents (vocabulary), CDrus Expressions (grammar), and Koine DSL (execution). Workflows authored for Iron Monkey follow the CDrus layer — the `$schema` modeline on every workflow YAML points to `cdrus.dev` because the workflow grammar is the CDrus layer of Sympraxis.
+Iron Monkey emits **Proleptic-conformant chains**. Proleptic Event Orchestrator is the three-pillared language system of CDEvents (vocabulary), CDrus Expressions (grammar), and Koine DSL (execution). Workflows authored for Iron Monkey follow the CDrus layer — the `$schema` modeline on every workflow YAML points to `cdrus.dev` because the workflow grammar is the CDrus layer of Proleptic Event Orchestrator.
 
-A Sympraxis chain is tool-bracketed: each tool's contribution opens with a `pipelineRun.started`, optional `pipelineRun.queued` events signal handoffs between tools, and a single `pipelineRun.finished` closes the chain regardless of how many tools participated.
+A Proleptic chain is tool-bracketed: each tool's contribution opens with a `pipelineRun.started`, optional `pipelineRun.queued` events signal handoffs between tools, and a single `pipelineRun.finished` closes the chain regardless of how many tools participated.
 
 ---
 
@@ -598,7 +598,7 @@ Iron Monkey emits each spawned chain's events with its own `chainId`; the event 
 
 Every chain — main, blocking, and detached — gets its **own** chain ID, acquired through the same cascade as the main chain: when a Conduit service is configured (and `--no-conduit` is not set) the ID is minted by Conduit. A local fallback URN is generated **only when no daemon answers** (unconfigured, unreachable, or timed out) so offline runs are never blocked; if a daemon answers unusably the run fails visibly (`ConduitAnsweredError`) rather than silently minting a non-UUID id that would exit reconciliation. Each sub-chain is registered under the name `<workflow>:<chainRef>` so it is individually addressable, and the `chainIdSource` (`conduit` / `bus` / `fallback`) is recorded on every chain in the manifest.
 
-> Sub-chains are acquired one call per chain today. The Sympraxis protocol defines a single batch register (`POST /api/runs` with the whole run graph → a `chainRef`→`chainId` map); swapping it in changes only `acquireChainIds` in `src/chain/acquire.ts`.
+> Sub-chains are acquired one call per chain today. The Proleptic Event Orchestrator protocol defines a single batch register (`POST /api/runs` with the whole run graph → a `chainRef`→`chainId` map); swapping it in changes only `acquireChainIds` in `src/chain/acquire.ts`.
 
 ### Adding a new expression bundle
 
@@ -739,8 +739,8 @@ npm test                  # unit tests
 npm run test:coverage     # unit tests with coverage report (80% global threshold)
 npm run test:integration  # integration tests (requires RabbitMQ on localhost:5672;
                           # honours IRON_MONKEY_BUS_URL, e.g. amqp://admin:admin@localhost:5672)
-npm run test:contract     # Sympraxis chain-protocol conformance suite (hand-off to the
-                          # control-plane engineer; skips unless SYMPRAXIS_BASE_URL is set)
+npm run test:contract     # Proleptic chain-protocol conformance suite (hand-off to the
+                          # control-plane engineer; skips unless PROLEPTIC_BASE_URL is set)
 npm run lint
 npm run typecheck
 npm run format:check      # Prettier — CI runs this; use `format` to fix in place

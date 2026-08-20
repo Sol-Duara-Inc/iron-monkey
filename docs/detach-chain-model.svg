@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 670" font-family="ui-sans-serif, system-ui, sans-serif">
-  <title>How `detach` becomes its own Sympraxis chain (and Iron Monkey emits it)</title>
+  <title>How `detach` becomes its own Proleptic chain (and Iron Monkey emits it)</title>
   <desc>Iron Monkey resolves a workflow's produces/detach grammar into a main chain (p-axis) plus detached chains (d-axis), each with its own chainId. It throws BOTH: the main chain runs to its terminal while the detached chain is emitted fire-and-forget on its own chainId and resolves in parallel — the main run never waits on it.</desc>
 
   <style>
@@ -135,5 +135,5 @@
     <line x1="360" y1="-4" x2="386" y2="-4" class="relation" style="animation:none;opacity:1"/>
     <text class="muted" x="392" y="0">RELATION (parent → detached)</text>
   </g>
-  <text class="muted" x="40" y="644" fill="#5a6478">Default: both chains resolve. As Chaos Monkey, Iron Monkey can withhold or malform the detached stream — then the observer's babysitter (Sympraxis) catches it as a breach. Iron Monkey only throws; the observer renders the outcome.</text>
+  <text class="muted" x="40" y="644" fill="#5a6478">Default: both chains resolve. As Chaos Monkey, Iron Monkey can withhold or malform the detached stream — then the observer's babysitter (Proleptic Event Orchestrator) catches it as a breach. Iron Monkey only throws; the observer renders the outcome.</text>
 </svg>

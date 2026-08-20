@@ -1,41 +1,41 @@
 /**
- * Sympraxis Chain-Declaration Protocol — CONTRACT / ACCEPTANCE TESTS
+ * Proleptic Chain-Declaration Protocol — CONTRACT / ACCEPTANCE TESTS
  * ==================================================================
  *
- * Audience: the engineer implementing the Sympraxis control plane (Junction
+ * Audience: the engineer implementing the Proleptic Event Orchestrator control plane (Junction
  * Box / Conduit / Legion). These are BLACK-BOX HTTP conformance tests — no
  * assumptions about server internals, only the contract Iron Monkey depends on
  * to emit `detach` / parallel chains.
  *
  * SINGLE SOURCE OF TRUTH: the Proleptic Event Chain Protocol
  * (`cdevents-object-inheritance/reference/proleptic-event-chain-protocol.md`,
- * successor to the Sympraxis Chain-Declaration Protocol of 2026-05-28) plus
+ * successor to the Chain-Declaration Protocol of 2026-05-28) plus
  * the coordinate contract ratified 2026-08-04 (axes `p`/`s`/`d`; roles
  * `main`/`blocking`/`detached`; goldens in
  * `conduit-go/pkg/cdrus/testdata/goldens/`). This suite is the executable
  * form; if they disagree, the doc wins and this file is the bug.
  *
- * This is a TDD hand-off: expect FAILURES until Sympraxis implements the doc.
+ * This is a TDD hand-off: expect FAILURES until the control plane implements the doc.
  *
- *   SYMPRAXIS_BASE_URL=https://jb.local \
- *   SYMPRAXIS_WORKFLOW_ID=prod-api-gateway-production-deploy-gated \
+ *   PROLEPTIC_BASE_URL=https://jb.local \
+ *   PROLEPTIC_WORKFLOW_ID=prod-api-gateway-production-deploy-gated \
  *   npm run test:contract
  *
- * Skips cleanly when SYMPRAXIS_BASE_URL is unset (safe in offline CI).
+ * Skips cleanly when PROLEPTIC_BASE_URL is unset (safe in offline CI).
  *
  * ---------------------------------------------------------------------------
  * THE LOAD-BEARING DECISIONS (see the doc for full normative text)
  * ---------------------------------------------------------------------------
- *  1. Sympraxis is the SOLE authority for chain UUIDs. A client never supplies
+ *  1. The control plane is the SOLE authority for chain UUIDs. A client never supplies
  *     a `chainId` — there is no client-mint path.
  *  2. The client mints each event's `context.id` (to wire PATH/RELATION/END
- *     links before emit). Sympraxis associates by `context.chainId`.
+ *     links before emit). The control plane associates by `context.chainId`.
  *  3. The binding key is the positional `treePath` (axis-prefixed: `p`=produces,
  *     `d`=detach, e.g. `p1.p1.p0.d0`), NOT the `workflowEventId` slug — slug
  *     dedup-counts diverge across producer/observer exactly on detached chains.
  *     `workflowEventId` rides along as a human label / RELATION target only.
  *  4. Single-originator rule: each chain's `chainRef` is originated by exactly
- *     one side — Sympraxis for YAML chains (returned, never re-derived), the
+ *     one side — the control plane for YAML chains (returned, never re-derived), the
  *     client for non-YAML chains (its own label).
  *  5. `parentChainId` is structural (returned at register). `parentEventId` is
  *     runtime-discovered: null until the spawning event's RELATION link is
@@ -49,12 +49,12 @@
  *   GET  {CHAINS_PATH}/{chainId}  — babysitter view
  *   POST {EVENTS_PATH}            — CDEvent ingestion (chainId association)
  *
- * FIXTURE REQUIREMENT: SYMPRAXIS_WORKFLOW_ID must name a workflow registered on
+ * FIXTURE REQUIREMENT: PROLEPTIC_WORKFLOW_ID must name a workflow registered on
  * the instance that contains at least one detached chain (the default is the
  * doc's gated-deploy example). The content-identical-sibling test additionally
- * needs SYMPRAXIS_FANOUT_WORKFLOW_ID → a workflow with >=2 sibling detached
+ * needs PROLEPTIC_FANOUT_WORKFLOW_ID → a workflow with >=2 sibling detached
  * chains sharing the same expectedEvents (e.g. a `build-with-async-scan`
- * fan-out). Ingestion tests run only when SYMPRAXIS_INGEST=1.
+ * fan-out). Ingestion tests run only when PROLEPTIC_INGEST=1.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -72,15 +72,21 @@ import { loadExpressionRegistry } from '../../src/expressions/loader.js';
 import { createLogger, setLogger } from '../../src/logger/index.js';
 
 // ── Configuration ───────────────────────────────────────────────────────────
-const BASE_URL = process.env.SYMPRAXIS_BASE_URL;
-const TOKEN = process.env.SYMPRAXIS_TOKEN;
-const CHAINS_PATH = process.env.SYMPRAXIS_CHAINS_PATH ?? '/api/runs';
-const EVENTS_PATH = process.env.SYMPRAXIS_EVENTS_PATH ?? '/api/events';
-const EVENTS_STATUS = Number(process.env.SYMPRAXIS_EVENTS_STATUS ?? '202');
-const WORKFLOW_ID = process.env.SYMPRAXIS_WORKFLOW_ID ?? 'prod-api-gateway-production-deploy-gated';
-const FANOUT_WORKFLOW_ID = process.env.SYMPRAXIS_FANOUT_WORKFLOW_ID;
-const REQUIRE_AUTH = process.env.SYMPRAXIS_REQUIRE_AUTH === '1';
-const RUN_INGEST = process.env.SYMPRAXIS_INGEST === '1';
+// Transitional: PROLEPTIC_* is the name; SYMPRAXIS_* still answers so that
+// conduit-go's documented gate command keeps working until its guide is
+// updated. Drop the fallback once both sides have moved.
+const env = (name: string): string | undefined =>
+  process.env[`PROLEPTIC_${name}`] ?? process.env[`SYMPRAXIS_${name}`];
+
+const BASE_URL = env('BASE_URL');
+const TOKEN = env('TOKEN');
+const CHAINS_PATH = env('CHAINS_PATH') ?? '/api/runs';
+const EVENTS_PATH = env('EVENTS_PATH') ?? '/api/events';
+const EVENTS_STATUS = Number(env('EVENTS_STATUS') ?? '202');
+const WORKFLOW_ID = env('WORKFLOW_ID') ?? 'prod-api-gateway-production-deploy-gated';
+const FANOUT_WORKFLOW_ID = env('FANOUT_WORKFLOW_ID');
+const REQUIRE_AUTH = env('REQUIRE_AUTH') === '1';
+const RUN_INGEST = env('INGEST') === '1';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?/;
@@ -296,10 +302,10 @@ const RUN = Boolean(BASE_URL);
 const describeContract = RUN ? describe : describe.skip;
 
 if (!RUN) {
-  console.log('SYMPRAXIS_BASE_URL not set — skipping Sympraxis contract suite.');
+  console.log('PROLEPTIC_BASE_URL not set — skipping Proleptic contract suite.');
 }
 
-describeContract('Sympraxis chain-declaration protocol', () => {
+describeContract('Proleptic chain-declaration protocol', () => {
   // ── §1 Batch register ──────────────────────────────────────────────────────
   describe('POST {CHAINS_PATH} — batch register', () => {
     it('returns the full minted chain set with valid structure', async () => {
@@ -313,11 +319,11 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       const detached = aDetachedChain(chainsOf(res.body));
       expect(
         detached,
-        `SYMPRAXIS_WORKFLOW_ID='${WORKFLOW_ID}' must contain a detached/parallel chain`,
+        `PROLEPTIC_WORKFLOW_ID='${WORKFLOW_ID}' must contain a detached/parallel chain`,
       ).toBeTruthy();
     });
 
-    it('never honors a client-supplied chainId (Sympraxis is sole authority)', async () => {
+    it('never honors a client-supplied chainId (the control plane is sole authority)', async () => {
       const planted = uuid();
       const res = await postChains({
         workflowId: WORKFLOW_ID,
@@ -361,7 +367,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       const seed = await postChains({ workflowId: WORKFLOW_ID });
       const detached = aDetachedChain(chainsOf(seed.body));
       if (!detached) {
-        expect.fail(`SYMPRAXIS_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain`);
+        expect.fail(`PROLEPTIC_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain`);
         return;
       }
 
@@ -453,7 +459,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
         const twins = [...groups.values()].find((g) => g.length >= 2);
         expect(
           twins,
-          `SYMPRAXIS_FANOUT_WORKFLOW_ID='${FANOUT_WORKFLOW_ID}' must have >=2 content-identical sibling chains`,
+          `PROLEPTIC_FANOUT_WORKFLOW_ID='${FANOUT_WORKFLOW_ID}' must have >=2 content-identical sibling chains`,
         ).toBeTruthy();
         if (!twins) return;
 
@@ -516,7 +522,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
       const reg = await postChains({ workflowId: WORKFLOW_ID });
       const detached = aDetachedChain(chainsOf(reg.body));
       if (!detached) {
-        expect.fail(`SYMPRAXIS_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain`);
+        expect.fail(`PROLEPTIC_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain`);
         return;
       }
 
@@ -606,7 +612,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
         const reg = await postChains({ workflowId: WORKFLOW_ID });
         const detached = aDetachedChain(chainsOf(reg.body));
         if (!detached) {
-          expect.fail(`SYMPRAXIS_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain`);
+          expect.fail(`PROLEPTIC_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain`);
           return;
         }
         const { chainId, expectedEvents } = detached;
@@ -667,7 +673,7 @@ describeContract('Sympraxis chain-declaration protocol', () => {
         const detached = chains.find((c) => c.role === 'detached');
         if (!detached) {
           expect.fail(
-            `SYMPRAXIS_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain spawned from a parent`,
+            `PROLEPTIC_WORKFLOW_ID='${WORKFLOW_ID}' needs a detached chain spawned from a parent`,
           );
           return;
         }
