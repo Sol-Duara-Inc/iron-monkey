@@ -101,19 +101,24 @@ workflow:
       as: verify-finished
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
-      # TOTAL-AWARE BUDGET (TTL semantics ruled 2026-08-10). This position
-      # follows a `spawn:` of two Blocking chains, and a TTL is used exactly
-      # as authored — the engine never extends it to cover the wait. The
-      # workflow default of 300000 would arm this clock for 5 minutes while
-      # the declared children budget up to 1200000ms, so it would breach on
-      # its own terms before they could finish. The number below covers the
-      # children plus this step.
+      # TOTAL-AWARE BUDGET (TTL semantics ruled 2026-08-10; arithmetic ruled
+      # 2026-08-19). This position follows a `spawn:` of two Blocking chains,
+      # and a TTL is used exactly as authored — the engine never extends it to
+      # cover the wait. The workflow default of 300000 would arm this clock for
+      # 5 minutes against a dependency that can run to 600000ms, so it would
+      # breach on its own terms before the children could finish.
       #
-      # The alternative the engine offers is to OMIT a TTL here and let it
-      # derive Σ(children) exactly; that is not available while `defaults`
-      # sets timeout_ms, because a default counts as authored everywhere it
-      # reaches.
-      timeout_ms: 1500000
+      # The dependency is max ACROSS the two parallel chains (600000 each), not
+      # their sum: sibling chains run concurrently, and summing them would
+      # over-budget by the degree of parallelism. 600000 for the children plus
+      # 300000 for this step. An over-generous budget is not free — it delays a
+      # real breach, and nothing recovers that the way an under-budget recovers
+      # (the babysitter keeps watching and the late arrival still grafts).
+      #
+      # Omitting the TTL here would let the engine derive exactly this max, but
+      # that is unavailable while `defaults` sets timeout_ms: a default counts
+      # as authored at every position it reaches.
+      timeout_ms: 900000
 
     # ── GKE: canary deploy → release ──────────────────────────────────────────
     - event: dev.cdevents.service.deployed.0.3.0

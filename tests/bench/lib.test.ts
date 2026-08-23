@@ -317,3 +317,23 @@ describe('shortestTtlMs', () => {
     expect(shortestTtlMs(['workflow:\n  id: x'])).toBe(Infinity);
   });
 });
+
+describe('the gate must not blame the breach for a missing fixture', () => {
+  it('names the absent fixture instead of reporting "never breached"', () => {
+    // Reporting a breach failure when the loop was never ATTEMPTED is the same
+    // dishonesty the gate exists to prevent — it would send someone hunting a
+    // timing bug that does not exist.
+    const out = evaluateCallbackGate({
+      shortestTtlMs: 5_000,
+      breachBudgetMs: 60_000,
+      busConfigured: true,
+      workflowAvailable: false,
+      breachObserved: false,
+      inquiryReceived: false,
+      backfillObserved: false,
+    });
+    expect(out.status).toBe('not-exercised');
+    expect(out.reasons.at(-1)).toMatch(/no callback fixture to drive/);
+    expect(out.reasons.at(-1)).toMatch(/NOT the same as a breach that failed to fire/);
+  });
+});
