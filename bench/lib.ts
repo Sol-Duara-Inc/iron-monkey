@@ -293,6 +293,10 @@ export interface CallbackObservations {
    */
   busConfigured: boolean;
   /** Conduit's babysitter reported the withheld position breached. */
+  /** The callback fixture named for the round exists on disk. */
+  workflowAvailable?: boolean;
+  /** Conduit's chain id for the triggered run; empty when it never registered. */
+  chainId?: string;
   breachObserved: boolean;
   /** IM's endpoint was actually called about the triggered execution. */
   inquiryReceived: boolean;
@@ -342,6 +346,23 @@ export function evaluateCallbackGate(obs: CallbackObservations): CallbackGateRes
     reasons.push(
       'no bus is configured for triggered runs (set BENCH_IM_CONFIG, or IRON_MONKEY_BUS_URL) — ' +
         'the producer cannot emit, so no position can breach',
+    );
+    return { status: 'not-exercised', reasons };
+  }
+
+  if (obs.workflowAvailable === false) {
+    reasons.push(
+      'no callback fixture to drive: set BENCH_CALLBACK_WORKFLOW (and _WITHHOLD), or add ' +
+        'bench-callback.workflow.yaml to the canonical catalog — the loop was never attempted, ' +
+        'which is NOT the same as a breach that failed to fire',
+    );
+    return { status: 'not-exercised', reasons };
+  }
+
+  if (obs.chainId === '') {
+    reasons.push(
+      'the triggered run never registered with the daemon, so no chain exists to breach — ' +
+        'check that the round handed the run a conduit URL for THIS round',
     );
     return { status: 'not-exercised', reasons };
   }

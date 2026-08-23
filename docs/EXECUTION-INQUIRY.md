@@ -205,15 +205,15 @@ performs. Do not read IM's log line as a security assertion.
 
 ## 3. Scenario controls
 
-Two of the three the bench needs already exist as **launch-time injections**,
-which is better than a runtime API: declarative, reproducible, and recorded in
-the manifest.
+All three the bench needs are built. Two are **launch-time injections**,
+which beats a runtime API where it is possible: declarative, reproducible, and
+recorded in the manifest. Going dark is inherently runtime, so it is a route.
 
-| Scenario         | Mechanism                                       |
-| ---------------- | ----------------------------------------------- |
-| withhold event N | `--inject missing:<eventId>` (existing)         |
-| fail execution X | `--inject abort:<eventId>[:reason]` (F4, BUILT) |
-| go dark          | runtime toggle, bench-only (not built yet)      |
+| Scenario         | Mechanism                                                     |
+| ---------------- | ------------------------------------------------------------- |
+| withhold event N | `--inject missing:<eventId>`, or `inject` in the trigger body |
+| fail execution X | `--inject abort:<eventId>[:reason]` (BUILT)                   |
+| go dark          | `POST /api/control/go-dark` on the daemon (BUILT)             |
 
 `abort` fails the execution AT that event, which is the shape a real pipeline
 failure has: prior events emitted, that one errored, everything after it never
@@ -221,9 +221,12 @@ reached. It is deliberately NOT `missing` — a withheld event lets the run
 continue and is backfillable; an aborted run's unreached events are neither.
 
 IM's injection vocabulary is `missing | malformed | out-of-order | late |
-duplicate | abort`. Any mutation surface (go-dark) sits behind an explicit bench-
-controls flag, default off, loopback only: a read-only inquiry endpoint and a
-remote-control endpoint deserve different postures.
+duplicate | abort`. The mutation surface is gated by the COMMAND, not a
+separate flag: `run --serve` passes no control plane and is strictly read-only,
+while `iron-monkey serve` enables triggering and go-dark. Both bind loopback by
+default and accept `--token`. (An earlier draft of this section promised a
+`--bench-controls` flag; that is not what was built, and the command split does
+the same job.)
 
 ---
 
@@ -274,7 +277,8 @@ existing `--inject` surface.
 silence, and it means something specific: the record aged out.
 _Recommended:_ treat it as BREACH→human like the no-answer row, but with the
 evidence marked "producer record aged out" so the human sees a retention
-artifact rather than a pipeline truth.
+artifact rather than a pipeline truth. **RULED — already in the plugin**: 410
+maps to a breach reading "producer record aged out of retention".
 
 **F6 — `413` vs `422` precedence is unspecified.** An over-cap body carrying
 an unissued chainId could answer either. `proleptic.contract.test.ts:933`
@@ -293,7 +297,12 @@ the link-service rewrite that already carries `workflowID`.
 _Recommended:_ note the sequencing in the guide so nobody builds against
 on-ramp 2 in the gap and concludes their validator is broken. IM will **not**
 patch `context.workflowId` locally — it mirrors the rewritten schema when it
-lands, under the same judge model as the catalog and hint table.
+lands, under the same judge model as the catalog and hint table. **RULED
+2026-08-16**: Conduit accepts `context.workflowId` today, so on-ramp 2 works
+against Conduit; the obstacle is upstream, where the CDEvents schemas close
+`context` and do not declare it. Patching the vendored copies locally is
+explicitly forbidden — it would make events pass IM's validator and nobody
+else's. A SIG request to open `context` is outstanding.
 
 **F8 — `executionID` casing is a silent no-op during the transition.** The
 capital-`ID` convention is the link-service convention arriving, not a wart —
@@ -309,6 +318,36 @@ emit time.
 _Recommended:_ the ruling stands; IM attaches the scheduled time in `detail`
 so the human sees "due at T+X, deliberately delayed" rather than an
 unexplained still-running.
+
+**F10 — the derived budget sums PARALLEL blocking chains, which over-budgets.**
+When a post-spawn position omits its TTL, the engine derives Σ(children
+budgets). Sibling blocking chains spawned by one event run CONCURRENTLY, so
+their wall-clock cost is `max`, not `sum`. Measured on
+`cdcon-2026-anchored-release-showcase.yaml` at `p3 -> p4` (two parallel
+Blocking chains):
+
+|                                     | ms                                    |
+| ----------------------------------- | ------------------------------------- |
+| engine derivation, Σ(children TTLs) | 1,200,000                             |
+| wall-clock truth, max(chain TTLs)   | 600,000                               |
+| IM's planned span for those chains  | 2,099 (parallel; 4,003 if sequential) |
+
+IM's own planner already spans them in parallel — `planTiming` anchors each
+spawned chain at the spawning event's time and takes `max` of their ends — so
+the producer and the engine currently disagree about what the same document
+costs.
+
+_Recommended:_ derive `max` over sibling chains and `sum` within a chain's
+sequence. Erring high is safe for a backstop, so this is precision, not a
+defect — but a 2x over-budget on a position that omits its TTL delays a real
+breach by that factor, which is the opposite of what a tight contract wants.
+_This is Conduit's to rule and to change: the derivation lives in the engine,
+and IM never sends TTLs (the register body is `{workflowId}` — the daemon
+budgets from its own catalog copy)._
+
+Note the same measurement validates the fix on IM's side: that position's
+authored budget was 300,000, which is under BOTH readings, so the total-aware
+correction stands either way.
 
 ---
 

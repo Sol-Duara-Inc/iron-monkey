@@ -20,8 +20,16 @@
 
 import { spawn, execFileSync } from 'child_process';
 import { createServer, connect } from 'net';
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, readdirSync } from 'fs';
+import {
+  mkdirSync,
+  writeFileSync,
+  appendFileSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+} from 'fs';
 import path from 'path';
+import { load as yamlLoad } from 'js-yaml';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import {
@@ -35,7 +43,7 @@ import {
   evaluateCallbackGate,
   shortestTtlMs,
 } from './lib.js';
-import { ExecutionStore } from '../src/execution/store.js';
+import { getExecutionStore } from '../src/execution/store.js';
 import { startInquiryServer } from '../src/execution/server.js';
 import { createControlPlane } from '../src/execution/control.js';
 import { registerRun } from '../src/chain/register.js';
@@ -72,7 +80,11 @@ function git(args: string[], cwd: string): string {
 }
 
 function artifact(round: Round, name: string, content: string): void {
-  writeFileSync(path.join(round.dir, name), content.endsWith('\n') ? content : `${content}\n`);
+  // Names may be nested (`callback/trigger.json`); create the parent so a
+  // grouped artifact cannot take the whole round down with an ENOENT.
+  const target = path.join(round.dir, name);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, content.endsWith('\n') ? content : `${content}\n`);
 }
 
 /** Grabs N ephemeral free ports by binding to :0 and releasing. */
@@ -208,7 +220,7 @@ async function runCallbackGate(round: Round): Promise<CallbackGateResult> {
   if (shortest > breachBudgetMs) {
     // Stand the producer up anyway and prove it answers: the IM half of the
     // loop is then demonstrably ready, and only the fixture is missing.
-    const store = new ExecutionStore();
+    const store = getExecutionStore(); // the runner records HERE
     const [producerPort] = await freePorts(1);
     const inquiries: string[] = [];
     const server = await startInquiryServer({
@@ -226,7 +238,7 @@ async function runCallbackGate(round: Round): Promise<CallbackGateResult> {
   }
 
   // A fixture CAN breach: drive the full loop.
-  const store = new ExecutionStore();
+  const store = getExecutionStore(); // the runner records HERE, not in a fresh store
   const [producerPort] = await freePorts(1);
   const inquiries: string[] = [];
   const server = await startInquiryServer({
@@ -239,10 +251,26 @@ async function runCallbackGate(round: Round): Promise<CallbackGateResult> {
   round.producer = server;
   round.facts.producerUrl = server.url;
 
-  const workflow = process.env.BENCH_CALLBACK_WORKFLOW;
-  const withhold = process.env.BENCH_CALLBACK_WITHHOLD;
-  if (!workflow || !withhold) {
-    observations.breachObserved = false;
+  // Defaults are the canonical bench fixture and the withhold target Conduit
+  // ruled for it (p2 build.finished: p0/p1 emit, the breach fires ~5s later).
+  // Point the triggered run at THIS round's engine. Without it the run mints
+  // an offline fallback URN, conduitd never hears about it, and nothing can
+  // ever breach — which reads as "the loop is broken" when it was never wired.
+  const roundConfigPath = path.join(round.dir, 'callback', 'im-config.json');
+  const baseImConfig = imConfig
+    ? (JSON.parse(
+        JSON.stringify(yamlLoad(readFileSync(imConfig, 'utf-8')) as Record<string, unknown>),
+      ) as Record<string, unknown>)
+    : {};
+  baseImConfig.conduit = { url: `http://127.0.0.1:${round.ports?.engine ?? 0}` };
+  mkdirSync(path.dirname(roundConfigPath), { recursive: true });
+  writeFileSync(roundConfigPath, JSON.stringify(baseImConfig, null, 2));
+
+  const workflow =
+    process.env.BENCH_CALLBACK_WORKFLOW ?? path.join(CANONICAL, 'bench-callback.workflow.yaml');
+  const withhold = process.env.BENCH_CALLBACK_WITHHOLD ?? 'build-finished';
+  if (!existsSync(workflow)) {
+    observations.workflowAvailable = false;
     return evaluateCallbackGate(observations);
   }
 
@@ -250,20 +278,37 @@ async function runCallbackGate(round: Round): Promise<CallbackGateResult> {
     await fetch(`${server.url}/api/executions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workflow, inject: [`missing:${withhold}`] }),
+      body: JSON.stringify({
+        workflow,
+        config: roundConfigPath,
+        inject: [`missing:${withhold}`],
+      }),
     })
   ).json()) as { executionID?: string };
   artifact(round, 'callback/trigger.json', JSON.stringify(started, null, 2));
 
+  // The babysitter view is keyed by CONDUIT'S chain id, not by IM's
+  // executionID. Read it from the STORE, never over HTTP: an HTTP self-call
+  // would trip `onInquiry` and the gate would count the harness as Conduit's
+  // plugin — reporting a closed loop that nobody outside this process drove.
+  let chainId = '';
+  for (let i = 0; i < 20 && !chainId; i++) {
+    await new Promise((r) => setTimeout(r, 300));
+    const found = store.get(started.executionID ?? '');
+    if (found.outcome === 'found' && found.record.manifest.chainIdSource === 'conduit') {
+      chainId = found.record.manifest.chainId;
+    }
+  }
+  observations.chainId = chainId;
+  artifact(round, 'callback/chain.json', JSON.stringify({ chainId }, null, 2));
+
   const deadline = Date.now() + breachBudgetMs;
-  while (Date.now() < deadline && !observations.backfillObserved) {
+  while (chainId && Date.now() < deadline && !observations.backfillObserved) {
     await new Promise((r) => setTimeout(r, 1000));
     observations.inquiryReceived = inquiries.length > 0;
     try {
       const view = (await (
-        await fetch(
-          `http://127.0.0.1:${round.ports?.engine ?? 0}/api/runs/${started.executionID ?? ''}`,
-        )
+        await fetch(`http://127.0.0.1:${round.ports?.engine ?? 0}/api/runs/${chainId}`)
       ).json()) as { status?: string; observedEvents?: { treePath?: string }[] };
       if (view.status === 'breached') observations.breachObserved = true;
       if ((view.observedEvents ?? []).some((e) => e.treePath === withhold)) {

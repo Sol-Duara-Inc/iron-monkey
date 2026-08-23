@@ -942,16 +942,24 @@ describeContract('Proleptic chain-declaration protocol', () => {
       expect(status).toBe(400);
     });
 
-    it.runIf(RUN_INGEST)('rejects a body over 4 MiB with 413', async () => {
-      // This body ALSO carries a client-minted chainId, so 413 and 422 are
-      // both defensible answers and the precedence has not been ruled
-      // (EXECUTION-INQUIRY.md F6). Asserting the size cap wins would pin an
-      // order nobody has decided, so accept either and record which arrived —
-      // the assertion tightens once the guide states the precedence.
-      const big = cdEvent(uuid(), 'dev.cdevents.change.created.0.3.0');
-      (big.subject as Record<string, unknown>).content = { pad: 'x'.repeat(4_500_000) };
-      const status = await emitCdEvent(big);
-      expect([413, 422]).toContain(status);
+    it.runIf(RUN_INGEST)(
+      'rejects a body over 4 MiB with 413, ahead of identification',
+      async () => {
+        // RULED 2026-08-16 (F6): the size cap is decided BEFORE the body is
+        // read, so 413 beats 422 even though this body also carries a chainId
+        // the authority never issued. Deciding "never issued" would mean
+        // reading a body already declined.
+        const big = cdEvent(uuid(), 'dev.cdevents.change.created.0.3.0');
+        (big.subject as Record<string, unknown>).content = { pad: 'x'.repeat(4_500_000) };
+        expect(await emitCdEvent(big)).toBe(413);
+      },
+    );
+
+    it.runIf(RUN_INGEST)('the same unissued chainId UNDER the cap still answers 422', async () => {
+      // The other half of the precedence: 413 winning is about order, not
+      // about the meaning of an unissued id changing.
+      const small = cdEvent(uuid(), 'dev.cdevents.change.created.0.3.0');
+      expect(await emitCdEvent(small)).toBe(422);
     });
   });
 
