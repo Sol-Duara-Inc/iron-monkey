@@ -1,4 +1,4 @@
-<p style="text-align: center;"><a href="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml"><img src="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml/badge.svg" alt="CI"></a> <img src="https://img.shields.io/github/license/Sol-Duara-Inc/iron-monkey.svg" alt="License"> <img src="https://img.shields.io/github/v0.1.0-alpha/release/Sol-Duara-Inc/iron-monkey.svg" alt="Latest Release"></p>
+<p style="text-align: center;"><a href="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml"><img src="https://github.com/Sol-Duara-Inc/iron-monkey/actions/workflows/ci.yml/badge.svg" alt="CI"></a> <img src="https://img.shields.io/github/license/Sol-Duara-Inc/iron-monkey.svg" alt="License"> <img src="https://img.shields.io/github/v/release/Sol-Duara-Inc/iron-monkey.svg" alt="Latest Release"></p>
 <img src="docs/iron-monkey-logo.png" alt="Iron Monkey logo" width="200" />
 
 A CDEvents pitching machine for testing SDLC orchestration platforms.
@@ -27,14 +27,10 @@ A Proleptic chain is tool-bracketed: each tool's contribution opens with a `pipe
 
 ## Installation
 
-```bash
-npm install -g iron-monkey
-```
-
-Or run from source:
+Iron Monkey is not published to npm yet, so install from source:
 
 ```bash
-git clone https://github.com/solduara/iron-monkey.git
+git clone https://github.com/Sol-Duara-Inc/iron-monkey.git
 cd iron-monkey
 npm install
 npm run build
@@ -135,6 +131,28 @@ iron-monkey version                   Print version and exit
 ```
 --from <repertoire.yaml>   Path to the repertoire YAML file (required)
 --config <path>            Path to Iron Monkey config file
+--log-level <level>        error | warn | info | debug  (default: info)
+--log-format <fmt>         json | text                  (default: json)
+
+--serve                    After the pitch, keep answering expiry inquiries
+--inquiry-port <port>      Port for --serve (0 picks a free one)
+--inquiry-host <host>      Bind address for --serve (default 127.0.0.1)
+--inquiry-token <tok>      Require this bearer credential on inquiries
+--idle-timeout <ms>        Quiet window before --serve retires itself; 0 never
+                           retires (default 3600000)
+```
+
+### `serve` flags
+
+```
+--port <port>              Listen port (default 8137; 0 picks a free one)
+--host <host>              Bind address (default 127.0.0.1)
+--token <token>            Require this bearer credential on every request
+--config <path>            Default Iron Monkey config for triggered runs
+--bus <name>               Default bus for triggered runs
+--workflow-root <dir>      Restrict triggered workflows to paths inside this dir
+--idle-timeout <ms>        Quiet window before the daemon retires itself; 0
+                           never retires (default 3600000)
 --log-level <level>        error | warn | info | debug  (default: info)
 --log-format <fmt>         json | text                  (default: json)
 ```
@@ -596,9 +614,9 @@ Iron Monkey emits each spawned chain's events with its own `chainId`; the event 
 
 #### Chain IDs for sub-chains
 
-Every chain — main, blocking, and detached — gets its **own** chain ID, acquired through the same cascade as the main chain: when a Conduit service is configured (and `--no-conduit` is not set) the ID is minted by Conduit. A local fallback URN is generated **only when no daemon answers** (unconfigured, unreachable, or timed out) so offline runs are never blocked; if a daemon answers unusably the run fails visibly (`ConduitAnsweredError`) rather than silently minting a non-UUID id that would exit reconciliation. Each sub-chain is registered under the name `<workflow>:<chainRef>` so it is individually addressable, and the `chainIdSource` (`conduit` / `bus` / `fallback`) is recorded on every chain in the manifest.
+Every chain — main, blocking, and detached — gets its **own** chain ID, minted by Conduit in a single atomic batch register when a Conduit service is configured (and `--no-conduit` is not set). A local fallback URN is generated **only when no daemon answers** (unconfigured, unreachable, or timed out) so offline runs are never blocked; if a daemon answers unusably the run fails visibly (`ConduitAnsweredError`) rather than silently minting a non-UUID id that would exit reconciliation. Each sub-chain is registered under the name `<workflow>:<chainRef>` so it is individually addressable, and the `chainIdSource` (`conduit` / `bus` / `fallback`) is recorded on every chain in the manifest.
 
-> Sub-chains are acquired one call per chain today. The Proleptic Event Orchestrator protocol defines a single batch register (`POST /api/runs` with the whole run graph → a `chainRef`→`chainId` map); swapping it in changes only `acquireChainIds` in `src/chain/acquire.ts`.
+> One `POST /api/runs` per run mints the entire chain set, keyed by `chainRef`. Before any event is emitted, the producer asserts that the daemon's derivation matches its own — same chains, same `treePath`/`order`/type per chain — so two documents under one workflow id fail loudly rather than being discovered later. The run also declares its `executionID` there, which is how the expiry callback finds it again.
 
 ### Adding a new expression bundle
 
@@ -736,7 +754,7 @@ See [docs/SCHEMAS.md](docs/SCHEMAS.md) for the complete schema format requiremen
 npm install
 npm run build
 npm test                  # unit tests
-npm run test:coverage     # unit tests with coverage report (80% global threshold)
+npm run test:coverage     # coverage report (thresholds: 80% lines/statements, 75% branches)
 npm run test:integration  # integration tests (requires RabbitMQ on localhost:5672;
                           # honours IRON_MONKEY_BUS_URL, e.g. amqp://admin:admin@localhost:5672)
 npm run test:contract     # Proleptic chain-protocol conformance suite (hand-off to the
