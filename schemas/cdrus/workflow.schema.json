@@ -44,6 +44,32 @@
           "minLength": 1,
           "description": "Human-readable pipeline name."
         },
+        "controller": {
+          "type": "object",
+          "description": "Optional controller declaration: the code that walks this workflow's run as the originator. Name and namespace are separate declared values; a controller inheriting from a parent controller declares the parent's namespace.",
+          "required": [
+            "name",
+            "namespace"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The controller's name. Which code walks the graph."
+            },
+            "namespace": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+              "description": "The reverse-DNS namespace this controller serves. Lowercase dot-separated labels, each starting with a letter."
+            },
+            "parent_namespace": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+              "description": "The namespace of the parent controller this one inherits from, when it has one. Never the sanctioned namespace, and never equal to this controller's own namespace — those refusals are enforced by the engine, not this schema."
+            }
+          }
+        },
         "cdrus": {
           "type": "object",
           "required": [
@@ -131,7 +157,7 @@
         "event": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^dev\\.cdevents(\\.[a-z]+\\.[a-z]+|x\\.[a-z][a-z0-9-]*\\.[a-z]+)(\\.\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?|:[^\\s]+)?$"
+          "pattern": "^(dev\\.cdevents(\\.[a-z]+\\.[a-z]+|x\\.[a-z][a-z0-9-]*\\.[a-z]+)(\\.\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?|:[^\\s]+)?|[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*\\.[a-z]+\\.[a-z]+\\.\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?)$"
         },
         "event_schema_uri": {
           "type": "string",

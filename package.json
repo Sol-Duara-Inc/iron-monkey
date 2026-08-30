@@ -1,6 +1,6 @@
 {
   "name": "iron-monkey",
-  "version": "0.5.0-alpha",
+  "version": "0.6.0",
   "description": "A CDEvents pitching machine for testing SDLC orchestration platforms",
   "type": "module",
   "main": "./dist/index.js",

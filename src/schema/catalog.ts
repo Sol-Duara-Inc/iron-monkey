@@ -252,6 +252,25 @@ export function resolveEventType(authored: string, catalog: EventCatalog): Resol
   const base = hasColon ? authored.slice(0, colonIdx) : authored;
   const spec = hasColon ? authored.slice(colonIdx + 1) : '';
 
+  // A namespaced non-CDEvents type: `<ns...>.<subject>.<predicate>.<M.m.p>`.
+  // The last three segments are the version; the two before them are the
+  // subject and predicate; everything earlier is the namespace. Opaque like
+  // an extension type — the catalog has no opinion about vendor namespaces.
+  if (!base.startsWith('dev.cdevents')) {
+    const m = EMBEDDED_VERSION.exec(base);
+    const parts = m === null ? [] : m[1].split('.');
+    if (m !== null && parts.length >= 3) {
+      return {
+        authored,
+        subject: parts[parts.length - 2],
+        predicate: parts[parts.length - 1],
+        version: m[2],
+        extension: true,
+        wireType: authored,
+      };
+    }
+  }
+
   if (base.startsWith('dev.cdeventsx.')) {
     const parts = base.split('.');
     if (parts.length < 4) throw new Error(`malformed extension type '${authored}'`);
