@@ -74,7 +74,7 @@
         "event": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^dev\\.cdevents(\\.[a-z]+\\.[a-z]+|x\\.[a-z][a-z0-9-]*\\.[a-z]+)(\\.\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?|:[^\\s]+)?$",
+          "pattern": "^(dev\\.cdevents(\\.[a-z]+\\.[a-z]+|x\\.[a-z][a-z0-9-]*\\.[a-z]+)(\\.\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?|:[^\\s]+)?|[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*\\.[a-z]+\\.[a-z]+\\.\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?)$",
           "description": "CDEvent type to emit. CDEvents themselves are versioned by the CDEvents specification \u2014 distinct from CDrus Expression identity, which is unversioned. Multiple forms are accepted and resolve identically: (1) canonical embedded-version form 'dev.cdevents.build.started.0.3.0' (exact match); (2) colon form 'dev.cdevents.build.started:0.1.1' (exact match, equivalent); (3) no version 'dev.cdevents.build.started' (resolves to latest available); (4) colon-separated semver range 'dev.cdevents.build.started:^0.1.0' (resolves to highest matching). Standard semver range syntax applies \u2014 caret, tilde, x-ranges, and explicit ranges (the last must be quoted in YAML). Extended (vendor-specific) event types are referenced by their full extended type string in the 'dev.cdeventsx.<tool>-<subject>.<predicate>' form (e.g. 'dev.cdeventsx.mytool-build.started.0.2.0'), with the same version forms as core types; how extended types are created is out of scope for CDrus. Detailed semver-range validation occurs at resolution time. Linters may normalize between the canonical and colon forms."
         },
         "event_schema_uri": {

@@ -152,3 +152,49 @@ describe.skipIf(!existsSync(CANONICAL))('catalog sync-check (canonical: conduit-
     expect(readFileSync(VENDORED, 'utf-8')).toBe(readFileSync(CANONICAL, 'utf-8'));
   });
 });
+
+describe('namespaced non-CDEvents types (the 2026-08 grammar widening)', () => {
+  // The schema now admits `<ns...>.<subject>.<predicate>.<M.m.p>`. The
+  // resolver must admit them too: a pitching machine that cannot resolve a
+  // type the grammar accepts cannot pitch the workflow an author wrote.
+  it('resolves a namespaced type opaquely, keeping the authored string on the wire', () => {
+    const r = resolveEventType('com.example.build.started.1.0.0', cat);
+    expect(r).toMatchObject({
+      subject: 'build',
+      predicate: 'started',
+      version: '1.0.0',
+      extension: true, // opaque: the catalog has no opinion on vendor namespaces
+      wireType: 'com.example.build.started.1.0.0',
+    });
+  });
+
+  it('takes the LAST two segments before the version as subject and predicate', () => {
+    expect(resolveEventType('acme.tools.ci.deploy.finished.2.1.0', cat)).toMatchObject({
+      subject: 'deploy',
+      predicate: 'finished',
+      version: '2.1.0',
+    });
+  });
+
+  it('does not consult the catalog — an unknown namespaced subject still resolves', () => {
+    // The same subject under dev.cdevents would be a hard §6.2 failure.
+    expect(() => resolveEventType('dev.cdevents.nosuch.thing.1.0.0', cat)).toThrow();
+    expect(resolveEventType('vendor.nosuch.thing.1.0.0', cat).extension).toBe(true);
+  });
+
+  it('still rejects a namespaced string with no version', () => {
+    // Versionless resolution means "latest in the catalog", and there is no
+    // catalog for a vendor namespace — so the version is not optional here.
+    expect(() => resolveEventType('com.example.build.started', cat)).toThrow(
+      /malformed event type/,
+    );
+  });
+
+  it('leaves dev.cdevents and dev.cdeventsx resolution untouched', () => {
+    expect(resolveEventType('dev.cdevents.build.started', cat).version).toBe('0.3.0');
+    expect(resolveEventType('dev.cdeventsx.mytool-build.started.0.2.0', cat)).toMatchObject({
+      subject: 'mytool-build',
+      extension: true,
+    });
+  });
+});
