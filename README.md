@@ -243,7 +243,7 @@ aged-out execution answers `410 Gone`, which is a different fact from `404`
 
 ## Event type versions
 
-The `event:` field accepts all four CDrus §6.1 forms, resolved against a
+The `event:` field accepts the four CDrus §6.1 forms, resolved against a
 vendored CDEvents catalog that is kept byte-identical with Conduit's:
 
 ```yaml
@@ -253,111 +253,31 @@ vendored CDEvents catalog that is kept byte-identical with Conduit's:
 - event: 'dev.cdevents.build.started:^0.1.0' # semver range
 ```
 
-Extension types (`dev.cdeventsx.<tool>-<subject>.<predicate>`) pass through
-unresolved. The wire always carries the concrete resolved version; the string
-you authored is what chain derivation and registration compare. An unknown type
-or an unsatisfiable range fails resolution with the position that caused it.
-
----
-
-## Answering Conduit: executions and the expiry inquiry
-
-When a declared event never arrives, Conduit's TTL for that position expires
-and it asks the producer what happened. Iron Monkey keeps every run queryable
-so it can answer.
-
-Each run has an **executionID** — Iron Monkey's own run identity, declared to
-Conduit at registration. One identity per producer, not per simulated tool:
-every event still carries its own `tool` binding, so per-tool attribution is
-unaffected.
-
-```bash
-# Run, then keep answering inquiries about it (read-only)
-iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
-  --config examples/configs/local-rabbit.yaml --no-conduit --bus default \
-  --inject missing:artifact-signed \
-  --serve --inquiry-port 8137
-```
-
-```
-GET /api/executions/<executionID>
-{
-  "executionID": "...",
-  "status": "queued" | "running" | "finished" | "failed",
-  "emitted":  [ { ...full CDEvent envelope... } ],
-  "withheld": [ { ...full CDEvent envelope... } ],
-  "detail":   { ... per-event evidence ... }
-}
-```
-
-The answer is truthful, including that a failure was simulated: a withheld
-event reports as _"produced but deliberately not sent"_ and carries its full
-envelope, because Iron Monkey pre-allocates every payload before deciding
-whether to send it. A real tool could not hand you the event it never sent.
-
-**`withheld` and "never reached" are not the same thing.** A withheld event was
-built and deliberately suppressed — real, complete, safe to backfill. An event
-after an aborted run was never produced at all; it appears in `detail` as
-`pending`, never in `withheld`.
-
-The server outlives the run, because a TTL can expire long after the last event
-ships. It retires itself after a quiet window (`--idle-timeout`, one hour by
-default, `0` to disable), and a run still in flight always vetoes shutdown.
-
-### The daemon
-
-`iron-monkey serve` adds a control plane, so the whole callback path can be
-driven from outside the process — start a run, withhold an event, ask what
-happened, take the endpoint away:
-
-```bash
-iron-monkey serve --port 8137 --config examples/configs/local-rabbit.yaml --bus default
-```
-
-```
-POST   /api/executions        start a run -> 202 { executionID }
-GET    /api/executions        the retained records
-GET    /api/executions/{id}   the inquiry answer
-POST   /api/control/go-dark   stop answering: { "mode": "5xx"|"hang", "seconds": 30 }
-DELETE /api/control/go-dark   answer again
-GET    /healthz               always answers, even while dark
-```
-
-```bash
-curl -X POST localhost:8137/api/executions -H 'Content-Type: application/json' \
-  -d '{"workflow":"examples/workflows/prod-payments-blue-green-cutover.yaml",
-       "noConduit":true,"interval":200,"inject":["missing:artifact-signed"]}'
-```
-
-`/healthz` and the control plane keep answering while dark on purpose — an
-endpoint you darkened and cannot restore is a wedged rig. `run --serve` has no
-control plane: it answers about its own run and nothing more. Use
-`--workflow-root` to confine triggered workflow paths, and `--token` to require
-a bearer credential.
-
-Records are kept for the current run plus the last nine — but that count is a
-floor, not a cap: a record still inside its inquiry window is never evicted. An
-aged-out execution answers `410 Gone`, which is a different fact from `404`
-(never known). See [docs/EXECUTION-INQUIRY.md](docs/EXECUTION-INQUIRY.md).
-
----
-
-## Event type versions
-
-The `event:` field accepts all four CDrus §6.1 forms, resolved against a
-vendored CDEvents catalog that is kept byte-identical with Conduit's:
+Two kinds of type pass through **unresolved** — the catalog has no opinion
+about them, so the authored string goes on the wire verbatim:
 
 ```yaml
-- event: dev.cdevents.build.started.0.3.0 # embedded version, exact
-- event: 'dev.cdevents.build.started:0.1.1' # colon form, exact (equivalent)
-- event: dev.cdevents.build.started # no version -> latest release
-- event: 'dev.cdevents.build.started:^0.1.0' # semver range
+- event: dev.cdeventsx.mytool-build.started.0.2.0 # CDEvents extension type
+- event: com.example.build.started.1.0.0 # fully namespaced type
+- event: acme.tools.ci.deploy.finished.2.1.0 # …any namespace depth
 ```
 
-Extension types (`dev.cdeventsx.<tool>-<subject>.<predicate>`) pass through
-unresolved. The wire always carries the concrete resolved version; the string
-you authored is what chain derivation and registration compare. An unknown type
-or an unsatisfiable range fails resolution with the position that caused it.
+A namespaced type is `<namespace…>.<subject>.<predicate>.<MAJOR.MINOR.PATCH>`;
+the version is required there, since "latest" has no meaning without a catalog
+to be latest _in_. Iron Monkey still needs a payload schema to build and
+validate the event — see [Adding CDEvent schemas](#adding-cdevent-schemas) —
+so an unknown namespaced type fails with `No schema found for event type …`,
+naming the directory to put it in.
+
+The wire always carries the concrete resolved version; the string you authored
+is what chain derivation and registration compare. An unknown `dev.cdevents`
+type or an unsatisfiable range fails resolution with the position that caused
+it.
+
+> The grammar Iron Monkey validates against — `schemas/cdrus/workflow.schema.json`
+> and `schemas/cdrus/expression.schema.json` — is mirrored from
+> [Sol-Duara-Inc/cdrus](https://github.com/Sol-Duara-Inc/cdrus), the canonical
+> home. A sync-check test fails if the mirror drifts; canonical wins.
 
 ---
 
@@ -446,6 +366,11 @@ workflow:
     version: '0.1.0'
     metadata:
       description: Example
+  # Optional: the code that walks this run as the originator. Both fields are
+  # required when the block is present; `namespace` is dotted lowercase.
+  controller:
+    name: conduitd
+    namespace: sol-duara.conduit
   defaults:
     pipeline: my-pipeline
     timeout_ms: 30000
