@@ -18,7 +18,7 @@ import type { LinkEntry } from '../../src/manifest/types.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMAS_DIR = path.resolve(__dirname, '../../schemas/cdevents');
 const EXPRESSIONS_DIR = path.resolve(__dirname, '../../expressions');
-const WORKFLOWS_DIR = path.resolve(__dirname, '../../examples/workflows');
+const WORKFLOWS_DIR = path.resolve(__dirname, '../../catalog');
 
 const BUILD_STARTED = 'dev.cdevents.build.started.0.3.0';
 const BUILD_FINISHED = 'dev.cdevents.build.finished.0.3.0';
@@ -205,9 +205,9 @@ describe('buildManifest — detached / branch sub-chains', () => {
     expect(mainIds.has(dc.chainId)).toBe(false);
   });
 
-  it('models the detached chain end-to-end from the real gated workflow', async () => {
+  it('models the detached chain end-to-end from a real catalog workflow', async () => {
     const wf = await validateWorkflow(
-      path.join(WORKFLOWS_DIR, 'prod-api-gateway-production-deploy-gated.yaml'),
+      path.join(WORKFLOWS_DIR, 'cdcon-2026-anchored-release-showcase.workflow.yaml'),
     );
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
     const mainChain = resolveChainTree(wf, registry);
@@ -219,14 +219,17 @@ describe('buildManifest — detached / branch sub-chains', () => {
       { noConduit: true },
     );
 
-    // The gated workflow's `deploy` spawns a detached ticket-associate pair.
+    // The showcase spawns one DETACHED chain alongside two blocking ones;
+    // only the detached one is asserted here, because the thing under test is
+    // that a detached chain gets an identity of its own.
     expect(m.events.length).toBeGreaterThan(5);
-    expect(m.detachedChains).toHaveLength(1);
-    const dc = m.detachedChains![0];
+    const detached = m.detachedChains!.filter((c) => c.role === 'detached');
+    expect(detached).toHaveLength(1);
+    const dc = detached[0];
     expect(dc.role).toBe('detached');
     expect(dc.events.map((e) => e.type)).toEqual([
-      'dev.cdevents.ticket.created.0.2.0',
-      'dev.cdevents.ticket.updated.0.2.0',
+      'dev.cdevents.artifact.signed.0.3.0',
+      'dev.cdevents.testoutput.published.0.3.0',
     ]);
     expect(dc.chainId).not.toBe(m.chainId);
 

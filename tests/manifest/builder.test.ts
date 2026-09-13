@@ -12,7 +12,7 @@ import type { IronMonkeyConfig } from '../../src/config/types.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMAS_DIR = path.resolve(__dirname, '../../schemas/cdevents');
 const EXPRESSIONS_DIR = path.resolve(__dirname, '../../expressions');
-const WORKFLOWS_DIR = path.resolve(__dirname, '../../examples/workflows');
+const WORKFLOWS_DIR = path.resolve(__dirname, '../../catalog');
 
 const singleEvent: ResolvedEvent = {
   id: 'build-started',
@@ -168,8 +168,10 @@ describe('buildManifest', () => {
 });
 
 describe('buildManifest — real workflow end-to-end', () => {
-  it('builds a schema-valid manifest from prod-auth-hotfix-fast-path.yaml', async () => {
-    const wf = await validateWorkflow(path.join(WORKFLOWS_DIR, 'prod-auth-hotfix-fast-path.yaml'));
+  it('builds a schema-valid manifest from a real catalog workflow', async () => {
+    const wf = await validateWorkflow(
+      path.join(WORKFLOWS_DIR, 'cdcon-2026-jenkins-spinnaker-demo.workflow.yaml'),
+    );
     const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
     const mainChain = resolveChainTree(wf, registry);
 
@@ -189,7 +191,7 @@ describe('buildManifest — real workflow end-to-end', () => {
       { noConduit: true },
     );
 
-    expect(manifest.workflowId).toBe('prod-auth-hotfix-fast-path');
+    expect(manifest.workflowId).toBe('cdcon-2026-jenkins-spinnaker-demo');
     expect(manifest.events.length).toBeGreaterThan(5);
     expect(manifest.events[0].payload.context.specversion).toBe('0.6.0-draft');
     expect(manifest.events[manifest.events.length - 1].isLast).toBe(true);

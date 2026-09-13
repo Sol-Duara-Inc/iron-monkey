@@ -61,7 +61,7 @@ In a Proleptic Event Orchestrator workflow:
 - **The workflow ends with a single terminal `pipelineRun.finished`**, regardless of how many tool boundaries appeared.
 - **`targetBus`** is stamped on every manifest entry as a seam for future multi-bus support. On day 1, every entry carries the same value (the selected bus name).
 
-A typical 2-tool cross-tool sequence (as in `examples/workflows/happy-path.yaml`) looks like:
+A typical 2-tool cross-tool sequence (as in `catalog/cdcon-2026-jenkins-spinnaker-demo.workflow.yaml`) looks like:
 
 ```
 pipelineRun.started   (tool 1 — Jenkins)
