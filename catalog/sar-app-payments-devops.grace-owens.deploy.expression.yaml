@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
+#
+# Follows sol-duara/dsanyika/deploy. Payments devops keeps the guide's bracket
+# and its smoke suite, and deepens the release to org vocabulary — a payments
+# release carries fields no other division reads.
+group: sar-app-payments-devops
+author: grace-owens
+expression: deploy
+description: >
+  A payments deployment — canary, release, and a smoke suite inside the
+  deployment bracket.
+produces:
+  - event: com.solduara.deployment.started.0.1.0
+  - event: dev.cdevents.service.deployed.0.3.0
+  - event: com.saronis.payments.service.published.0.1.0
+  - event: dev.cdevents.testsuiterun.started.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0
+  - event: com.opsmx.service.healthy.0.1.0
+  - event: com.solduara.deployment.finished.0.1.0

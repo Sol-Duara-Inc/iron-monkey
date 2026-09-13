@@ -1,0 +1,87 @@
+{
+  "$id": "https://spec.solduara.com/conduit/incident-detected",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {
+            "budgetMs": {
+              "type": "number"
+            },
+            "budgetSource": {
+              "type": "string"
+            },
+            "chainId": {
+              "type": "string"
+            },
+            "chainRef": {
+              "type": "string"
+            },
+            "eventType": {
+              "type": "string"
+            },
+            "evidence": {},
+            "instance": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "treePath": {
+              "type": "string"
+            },
+            "workflowId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "runId",
+            "workflowId",
+            "chainId",
+            "chainRef",
+            "instance",
+            "treePath",
+            "eventType",
+            "reason",
+            "budgetMs",
+            "budgetSource"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.solduara.conduit incident.detected",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [
+      "https://cdevents.dev/0.5.1/schema/incident-detected-event"
+    ],
+    "predicate": "detected",
+    "subject": "incident",
+    "type": "com.solduara.conduit.incident.detected.0.1.0"
+  }
+}

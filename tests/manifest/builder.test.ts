@@ -208,83 +208,168 @@ describe('buildManifest — chain-id acquisition without --no-conduit', () => {
   });
 });
 
-describe('buildManifest — batch register (Proleptic §1)', () => {
+describe('buildManifest — the chain handshake', () => {
   const CONDUIT_CFG: IronMonkeyConfig = {
     buses: { default: { type: 'rabbitmq', url: 'amqp://localhost' } },
     tools: {},
     schemasPath: SCHEMAS_DIR,
-    conduit: { url: 'http://conduit.example:8091' },
+    conduit: { url: 'http://conduit.example:8080' },
   };
 
-  const registerResponse = (chainId: string) => ({
-    ok: true,
-    status: 200,
-    json: async () => ({
-      runId: chainId,
-      instanceId: 'conduitd:u@h:1:boot',
-      issuedAt: '2026-08-09T00:00:00Z',
-      chains: [
-        {
-          chainRef: 'root',
-          chainId,
-          role: 'main',
-          status: 'declared',
-          parentChainId: null,
-          parentChainRef: null,
-          parentEventId: null,
-          linkKind: null,
-          expectedEvents: [
-            {
-              type: singleEvent.type,
-              treePath: 'p0',
-              order: 0,
-              timeoutMs: singleEvent.timeout_ms,
-            },
-          ],
-        },
-      ],
-    }),
+  /** The answered chain set, in the shape the line actually returns. */
+  const chainsResponse = (chains: Record<string, string>, status = 200) => ({
+    ok: status < 400,
+    status,
+    text: async () =>
+      JSON.stringify({
+        runId: chains.root,
+        workflowId: meta.id,
+        executionId: 'whatever-the-caller-sent',
+        chains,
+      }),
   });
 
-  it('uses the registered chain set: one call, server-minted id, pinned instanceId', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValueOnce(registerResponse('99999999-aaaa-4bbb-8ccc-dddddddddddd')),
-    );
+  const ROOT = '99999999-aaaa-4bbb-8ccc-dddddddddddd';
+
+  it('acquires every chain in ONE GET and runs on the id the authority minted', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(chainsResponse({ root: ROOT })));
     try {
       const manifest = await buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false });
-      expect(manifest.chainId).toBe('99999999-aaaa-4bbb-8ccc-dddddddddddd');
+      expect(manifest.chainId).toBe(ROOT);
       expect(manifest.chainIdSource).toBe('conduit');
-      expect(manifest.instanceId).toBe('conduitd:u@h:1:boot');
-      expect(fetch).toHaveBeenCalledTimes(1); // ONE batch register, no shim loop
-      const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
-      expect(url).toBe('http://conduit.example:8091/api/runs');
+      expect(fetch).toHaveBeenCalledTimes(1);
+      const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string,
+        { method: string },
+      ];
+      expect(init.method).toBe('GET');
+      const parsed = new URL(url);
+      expect(parsed.origin + parsed.pathname).toBe('http://conduit.example:8080/api/v1/chains');
+      expect(parsed.searchParams.get('workflow')).toBe(meta.id);
+      // The handshake is REFUSED without a tool, and the run is keyed
+      // `tool + ":" + execution` — so both must actually be on the wire.
+      expect(parsed.searchParams.get('tool')).toBe('iron-monkey');
+      expect(parsed.searchParams.get('execution')).toBe(manifest.runId);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it('fails the run BEFORE emitting when derivations diverge (producer machine gate)', async () => {
-    const diverged = registerResponse('99999999-aaaa-4bbb-8ccc-dddddddddddd');
-    const body = await diverged.json();
-    body.chains[0].expectedEvents[0].type = 'dev.cdevents.change.merged.0.3.0';
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ...diverged, json: async () => body }));
+  it('asks under the configured tool identity when one is named', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(chainsResponse({ root: ROOT })));
+    try {
+      await buildManifest(
+        meta,
+        [singleEvent],
+        { ...CONDUIT_CFG, conduit: { url: 'http://conduit.example:8080', tool: 'jenkins-prod' } },
+        { noConduit: false },
+      );
+      const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+      expect(new URL(url).searchParams.get('tool')).toBe('jenkins-prod');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('fails the run BEFORE emitting when the two derivations name different chains', async () => {
+    // The daemon names a chain this producer never derived: two documents
+    // under one workflow id. Emitting anyway would put every event of the
+    // unmatched chain on an id the authority refuses.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(chainsResponse({ root: ROOT, 'p6.s0': 'other-id' })),
+    );
     try {
       await expect(
         buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false }),
-      ).rejects.toThrow(/derivation mismatch/);
+      ).rejects.toThrow(/handshake mismatch — two documents under one workflow id/);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it('falls back offline when no daemon answers the register', async () => {
+  it('names both derivations in the mismatch, so the divergence is diagnosable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(chainsResponse({ root: ROOT, 'p6.s0': 'other-id' })),
+    );
+    try {
+      await buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false });
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect((err as Error).message).toContain('producer derived: root');
+      expect((err as Error).message).toContain('daemon answered:  p6.s0, root');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('refuses to proceed when the daemon answers unusably', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'not json' }));
+    try {
+      await expect(
+        buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false }),
+      ).rejects.toThrow(/unusable body/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('surfaces a refusal rather than minting locally behind it', async () => {
+    // A daemon that is ANSWERING must never be routed around: the fallback id
+    // would be refused at the door on every single event.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ error: 'expected ?workflow=&tool=' }),
+      }),
+    );
+    try {
+      await expect(
+        buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false }),
+      ).rejects.toThrow(/HTTP 400/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('lets Conduit OUTRANK a chainId the bus supplied', async () => {
+    // A bus-supplied id is only usable if that bus got it from the authority,
+    // which the producer cannot verify. Letting it win silently means the
+    // handshake is never made and every event is refused.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(chainsResponse({ root: ROOT })));
+    try {
+      const manifest = await buildManifest(meta, [singleEvent], CONDUIT_CFG, {
+        noConduit: false,
+        chainId: 'bus-minted-id',
+        chainIdSource: 'bus',
+      });
+      expect(manifest.chainId).toBe(ROOT);
+      expect(manifest.chainIdSource).toBe('conduit');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('still honours a bus-supplied chainId when no Conduit is configured', async () => {
+    const noConduitCfg: IronMonkeyConfig = { ...CONDUIT_CFG, conduit: undefined };
+    const manifest = await buildManifest(meta, [singleEvent], noConduitCfg, {
+      noConduit: false,
+      chainId: 'bus-minted-id',
+      chainIdSource: 'bus',
+    });
+    expect(manifest.chainId).toBe('bus-minted-id');
+    expect(manifest.chainIdSource).toBe('bus');
+  });
+
+  it('falls back offline when no daemon answers the handshake', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED')));
     try {
       const manifest = await buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false });
       expect(manifest.chainIdSource).toBe('fallback');
       expect(manifest.chainId).toMatch(/^urn:sol-duara:fallback:/);
-      expect(manifest.instanceId).toBeUndefined();
     } finally {
       vi.unstubAllGlobals();
     }

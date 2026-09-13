@@ -1,0 +1,42 @@
+{
+  "$id": "https://spec.solduara.com/conduit/deployment-finished",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.solduara deployment.finished",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [],
+    "predicate": "finished",
+    "subject": "deployment",
+    "type": "com.solduara.deployment.finished.0.1.0"
+  }
+}

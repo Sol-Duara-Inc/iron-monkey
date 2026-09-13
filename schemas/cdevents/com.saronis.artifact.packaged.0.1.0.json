@@ -1,0 +1,56 @@
+{
+  "$id": "https://schema.saronis.app/artifact-packaged",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "change": {
+              "type": "object"
+            },
+            "sbom": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "change"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.saronis artifact.packaged",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [
+      "https://cdevents.dev/0.5.1/schema/artifact-packaged-event"
+    ],
+    "predicate": "packaged",
+    "subject": "artifact",
+    "type": "com.saronis.artifact.packaged.0.1.0"
+  }
+}

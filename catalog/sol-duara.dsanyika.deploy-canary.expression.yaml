@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
+#
+# THE FULL DEPLOYMENT BLOCK. The bracket binds no tool — a deployment is a
+# shape, not a vendor — which is what lets several deployments on several tools
+# live inside one release. The smoke suite is INSIDE the bracket, so the health
+# signal belongs to the deployment a subscriber receives rather than trailing
+# after it, and its absence inside the budget IS the change failure.
+group: sol-duara
+author: dsanyika
+expression: deploy-canary
+description: >
+  A canary deployment — canary, release, and a smoke suite, inside one
+  tool-free deployment bracket.
+produces:
+  - event: com.solduara.deployment.started.0.1.0
+  - event: dev.cdevents.service.deployed.0.3.0
+  - event: dev.cdevents.service.published.0.3.0
+  - event: dev.cdevents.testsuiterun.started.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0
+  - event: com.solduara.service.healthy.0.1.0
+  - event: com.solduara.deployment.finished.0.1.0

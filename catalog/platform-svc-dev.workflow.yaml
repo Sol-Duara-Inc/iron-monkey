@@ -1,0 +1,18 @@
+workflow:
+  id: platform-svc-dev
+  group: sar-app-platform-dev
+  author: sam-olsen
+  name: Platform Service Build (dev)
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1200000}
+  produces:
+    - event: dev.cdevents.build.started
+    - event: dev.cdevents.build.finished
+      as: built
+      produces:
+        - event: dev.cdevents.testsuiterun.started
+        - event: dev.cdevents.testsuiterun.finished
+          as: dev-suite-done
+          produces:
+            - event: dev.cdevents.artifact.packaged
+              as: dev-packaged

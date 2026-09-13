@@ -1,0 +1,11 @@
+workflow:
+  id: payments-nightly
+  group: sar-app-payments-qa
+  author: carol-diaz
+  name: Payments Nightly Integration
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 3600000}
+  produces:
+    - event: dev.cdevents.testsuiterun.started
+    - event: dev.cdevents.testsuiterun.finished
+      as: suite-done

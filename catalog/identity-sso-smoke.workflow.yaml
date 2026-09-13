@@ -1,0 +1,11 @@
+workflow:
+  id: identity-sso-smoke
+  group: sar-app-identity-qa
+  author: aria-khan
+  name: Identity SSO Smoke
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 900000}
+  produces:
+    - event: dev.cdevents.testcaserun.started
+    - event: dev.cdevents.testcaserun.finished
+      as: smoke-done

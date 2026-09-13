@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Platform Service Release — a STANDALONE service, merge to release
+# ─────────────────────────────────────────────────────────────────────────────
+# Every `tool:` is im-callback, and the comment beside it names the tool it
+# stands in for. That is honest, and it is the argument: the shape of each
+# event was fixed before anything ran, so which system actually answers is not
+# something this graph has an opinion about. Every tool below is mocked.
+#
+# The two brackets are CDrus Expressions — the build block (Jenkins) and the
+# deployment block (ArgoCD). Everything else is the pipeline hand-off between
+# them: Jenkins closes its pipeline, ArgoCD opens its own.
+#
+# DORA falls out of this graph as arithmetic, not as a join:
+#   lead time            change.merged -> service.published, both in THIS run
+#   deployment frequency count of the deploy expression's completion per window
+#   change failure rate  runs whose com.opsmx.service.healthy coordinate BREACHED
+#   time to restore      that breach's DEADLINE -> the restoring run's release
+#
+# Layer depth varies per event on purpose; see each event's comment. An OpsMX
+# controller reading a testcaserun gets the public object, because com.opsmx is
+# not in that event's lineage — a vendor is never broken by an event that does
+# not mention it.
+# ─────────────────────────────────────────────────────────────────────────────
+workflow:
+  id: platform-svc-release
+  group: sar-app-platform-dev
+  author: sam-olsen
+  name: Platform Service Release (standalone)
+  cdrus:
+    version: "0.1.0"
+    metadata:
+      shape: standalone-service
+      owner: Saronis Applications — Platform, dev
+
+  # The team's controller walks this graph and passes up to OpsMX. OpsMX holds
+  # the model registry keyed (event type, tool) and dispatches to the Jenkins
+  # and Argo models directly, so the two-tool fan-in is a lookup, not
+  # inheritance.
+  #
+  # THE PARENT IS NOT NAMED HERE. This controller extends the OpsMX one in
+  # code, and koinegen records that in its manifest strata; the engine reads
+  # the parent from there. A namespace written in this file would be a third
+  # party's account of somebody else's ancestry.
+  # PENCIL — a placeholder name, not a ruling. Rename freely.
+  #          Delete this line when the thing it names is real.
+  # platform-svc-controller does not exist yet: no station under
+  # koine-dsl/controllers/
+  # claims it, so this dispatch is a no-op until one ships. The declaration
+  # itself stays — a hello-world station is coming later.
+  controller:
+    name: platform-svc
+    namespace: com.saronis.platform.svc
+
+  defaults:
+    pipeline: platform-svc-release
+    tool: im-callback
+    timeout_ms: 600000
+
+  produces:
+    # ── SCM ───────────────────────────────────────────────────────────────────
+    # Team depth: Saronis tags every change, and this team adds its own review
+    # metadata. Neither GitHub nor either vendor has anything to add.
+    - event: com.saronis.platform.svc.change.merged.0.1.0
+      tool: im-callback # GitHub
+      source: https://github.example.com/
+
+    # ── Jenkins opens ─────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.started.0.3.0
+      tool: im-callback # Jenkins
+      source: https://jenkins.example.com/
+
+    # PUBLIC depth. The pipelinerun bracket is the community's concept
+    # unchanged — the tool that runs it is a binding, not a vocabulary.
+    - event: dev.cdevents.pipelinerun.queued.0.3.0
+      tool: im-callback # Jenkins
+
+    # ── the build block ───────────────────────────────────────────────────────
+    - expression: build
+      tool: im-callback # Jenkins
+      source: https://jenkins.example.com/
+
+    # ── the hand-off: two pipelines, not one spanning two tools ───────────────
+    - event: dev.cdevents.pipelinerun.finished.0.3.0
+      tool: im-callback # Jenkins
+
+    - event: dev.cdevents.pipelinerun.started.0.3.0
+      tool: im-callback # ArgoCD
+      source: https://argocd.example.com/
+
+    # ── the deployment block ──────────────────────────────────────────────────
+    - expression: deploy
+      tool: im-callback # ArgoCD
+      source: https://argocd.example.com/
+
+    # ── terminal ──────────────────────────────────────────────────────────────
+    - event: dev.cdevents.pipelinerun.finished.0.3.0
+      tool: im-callback # ArgoCD

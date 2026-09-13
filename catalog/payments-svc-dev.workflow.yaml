@@ -1,0 +1,11 @@
+workflow:
+  id: payments-svc-dev
+  group: sar-app-payments-dev
+  author: emma-laurent
+  name: Payments Service Build (dev)
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1200000}
+  produces:
+    - event: dev.cdevents.build.started
+    - event: dev.cdevents.build.finished
+      as: built

@@ -97,6 +97,11 @@ export interface InquiryServerOptions {
   /** Supplying this enables the daemon's control plane. */
   control?: InquiryControlPlane;
   /**
+   * Catalog root, so a caller can ask what it may trigger BEFORE triggering.
+   * Answered in both modes: choosing an entry is not a control action.
+   */
+  catalogDir?: string;
+  /**
    * Called whenever an execution is inquired about. The contract bench uses
    * it to observe whether Conduit's plugin actually CALLED — which is how the
    * callback gate distinguishes "the loop broke" from "the loop never ran".
@@ -297,6 +302,26 @@ export async function startInquiryServer(opts: InquiryServerOptions): Promise<In
 
     if (method !== 'GET' && method !== 'HEAD') {
       json(res, 405, { error: 'method not allowed', allowed: ['GET'] });
+      return;
+    }
+
+    if (route === '/api/catalog') {
+      if (opts.catalogDir === undefined) {
+        json(res, 404, { error: 'no catalog configured' });
+        return;
+      }
+      const { loadCatalog } = await import('../catalog/store.js');
+      const catalog = loadCatalog(opts.catalogDir);
+      json(res, 200, {
+        dir: catalog.dir,
+        entries: catalog.list().map((e) => ({
+          ref: `catalog:${e.id}`,
+          kind: e.kind,
+          id: e.id,
+        })),
+        problems: catalog.problems().length,
+        conflicts: catalog.conflicts().map((c) => c.id),
+      });
       return;
     }
 

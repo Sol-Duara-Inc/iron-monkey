@@ -30,6 +30,11 @@ export interface ControlPlaneOptions {
    * not purely local; unset (the loopback default) allows any readable path.
    */
   workflowRoot?: string;
+  /**
+   * Catalog root for `catalog:<id>` triggers. Resolved once at daemon start so
+   * every trigger in a session reads the same corpus.
+   */
+  catalogDir?: string;
   /** Log level/format handed to triggered runs. */
   logLevel?: string;
   logFormat?: string;
@@ -54,16 +59,26 @@ export interface ControlPlaneOptions {
 export function createControlPlane(opts: ControlPlaneOptions = {}): InquiryControlPlane {
   const workflowRoot =
     opts.workflowRoot === undefined ? undefined : path.resolve(opts.workflowRoot);
+  const catalogDir = opts.catalogDir ?? '';
 
   return {
     async startRun(request: StartRunRequest): Promise<StartRunResult> {
       const logger = getLogger();
-      const { FileWorkflowSource } = await import('../workflow/source.js');
+      const { resolveWorkflowSource } = await import('../workflow/source.js');
       const runWorkflow = opts.runWorkflow ?? (await import('../emitter/runner.js')).runWorkflow;
 
-      const workflow = path.resolve(request.workflow);
-      if (workflowRoot !== undefined && !workflow.startsWith(workflowRoot + path.sep)) {
-        throw new Error(`workflow '${request.workflow}' is outside the configured workflow root`);
+      // A catalog reference is contained by the catalog root itself — it can
+      // only name an id the catalog indexed — so --workflow-root, which exists
+      // to stop a trigger naming an arbitrary FILE, does not apply to it.
+      const { isCatalogRef } = await import('../catalog/ref.js');
+      const fromCatalog = isCatalogRef(request.workflow);
+
+      let workflow = request.workflow;
+      if (!fromCatalog) {
+        workflow = path.resolve(request.workflow);
+        if (workflowRoot !== undefined && !workflow.startsWith(workflowRoot + path.sep)) {
+          throw new Error(`workflow '${request.workflow}' is outside the configured workflow root`);
+        }
       }
 
       let announce: (r: StartRunResult) => void = () => {};
@@ -71,7 +86,7 @@ export function createControlPlane(opts: ControlPlaneOptions = {}): InquiryContr
         announce = resolve;
       });
 
-      const run = runWorkflow(new FileWorkflowSource(workflow), {
+      const run = runWorkflow(resolveWorkflowSource(workflow, catalogDir), {
         config: request.config ?? opts.config,
         bus: request.bus ?? opts.bus,
         inject: request.inject,
@@ -80,6 +95,7 @@ export function createControlPlane(opts: ControlPlaneOptions = {}): InquiryContr
         // Commander's `--no-conduit` sets `conduit: false`; the runner reads
         // that, so translate rather than inventing a second flag.
         conduit: request.noConduit === true ? false : undefined,
+        catalog: catalogDir || undefined,
         logLevel: opts.logLevel,
         logFormat: opts.logFormat,
         onExecutionStarted: announce,

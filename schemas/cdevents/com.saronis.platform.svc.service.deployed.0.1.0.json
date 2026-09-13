@@ -1,0 +1,54 @@
+{
+  "$id": "https://schema.saronis.app/platform-svc-service-deployed",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "artifactId",
+            "environment"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.saronis.platform.svc service.deployed",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [
+      "https://cdevents.dev/0.5.1/schema/service-deployed-event"
+    ],
+    "predicate": "deployed",
+    "subject": "service",
+    "type": "com.saronis.platform.svc.service.deployed.0.1.0"
+  }
+}

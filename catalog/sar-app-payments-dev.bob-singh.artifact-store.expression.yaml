@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
+#
+# Follows sol-duara/dsanyika/artifact-store. Payments keeps the guide's three
+# steps and stamps its own company depth on the receipt, because Saronis
+# attaches a cost-centre to every artifact it stores.
+group: sar-app-payments-dev
+author: bob-singh
+expression: artifact-store
+description: Artifact packaging, signing and publishing, with the Saronis receipt.
+produces:
+  - event: dev.cdevents.artifact.packaged.0.3.0
+  - event: dev.cdevents.artifact.signed.0.3.0
+  - event: com.saronis.artifact.published.0.1.0

@@ -1,0 +1,12 @@
+workflow:
+  id: identity-svc-prod
+  group: sar-app-identity-dev
+  author: sofia-rossi
+  name: Identity Service Build (prod)
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1800000}
+  produces:
+    - event: dev.cdevents.change.merged
+    - event: dev.cdevents.build.started
+    - event: dev.cdevents.build.finished
+      as: built

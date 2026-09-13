@@ -13,6 +13,7 @@
  */
 
 import { validateWorkflow } from './parser.js';
+import { isCatalogRef, parseCatalogRef } from '../catalog/ref.js';
 import type { WorkflowFile } from './types.js';
 
 /**
@@ -84,4 +85,60 @@ export class FileWorkflowSource extends WorkflowSource {
   async getWorkflow(): Promise<WorkflowDefinition> {
     return validateWorkflow(this.path);
   }
+}
+
+/**
+ * Reads a workflow from the catalog by its declared id.
+ *
+ * The lookup is deferred to {@link getWorkflow} on purpose: constructing a
+ * source must never touch the catalog, so a run that only hands in paths is
+ * unaffected by a catalog that is missing, empty, or broken.
+ */
+export class CatalogWorkflowSource extends WorkflowSource {
+  constructor(
+    private readonly id: string,
+    private readonly catalogDir: string,
+  ) {
+    super();
+  }
+
+  /** The catalog id — what the operator typed, and what logs should show. */
+  get name(): string {
+    return `catalog:${this.id}`;
+  }
+
+  async getWorkflow(): Promise<WorkflowDefinition> {
+    const { loadCatalog } = await import('../catalog/store.js');
+    const file = loadCatalog(this.catalogDir).resolve('workflow', this.id);
+    const workflow = await validateWorkflow(file);
+    // The catalog is keyed on the identity the document declares, so this can
+    // only fire if the file changed between indexing and reading.
+    if (workflow.workflow.id !== this.id) {
+      throw new Error(
+        `catalog entry ${file} declares workflow id '${workflow.workflow.id}', ` +
+          `not '${this.id}'`,
+      );
+    }
+    return workflow;
+  }
+}
+
+/**
+ * Turns one reference into a source: the single place where "what does this
+ * string mean" is decided.
+ *
+ * A `catalog:` token is a catalog id and is never stat'd as a path; anything
+ * else is a path and is never retried as a catalog id. See `catalog/ref.ts`
+ * for why the test is an exact literal rather than a scheme pattern.
+ */
+export function resolveWorkflowSource(ref: string, catalogDir: string): WorkflowSource {
+  if (!isCatalogRef(ref)) return new FileWorkflowSource(ref);
+  const parsed = parseCatalogRef(ref);
+  if (parsed.kind !== 'workflow') {
+    throw new Error(
+      `'${ref}' names an expression, not a workflow. ` +
+        `A workflow reference is 'catalog:<workflow-id>' with no slashes.`,
+    );
+  }
+  return new CatalogWorkflowSource(parsed.id, catalogDir);
 }

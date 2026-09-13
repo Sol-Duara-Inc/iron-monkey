@@ -3,6 +3,7 @@ import { Command } from 'commander';
 export function addCommonFlags(cmd: Command): Command {
   return cmd
     .option('--config <path>', 'path to JSON/YAML config file')
+    .option('--catalog <dir>', 'catalog directory for catalog:<id> references')
     .option('--bus <name>', 'bus name to use (overrides IRON_MONKEY_BUS_NAME env var)')
     .option('--no-conduit', 'skip chainId acquisition; use fallback URN')
     .option(

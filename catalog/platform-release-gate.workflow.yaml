@@ -1,0 +1,12 @@
+workflow:
+  id: platform-release-gate
+  group: sar-app-platform-devops
+  author: kira-volkov
+  name: Platform Release Gate
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1800000}
+  produces:
+    - event: dev.cdevents.change.merged
+    - expression: sar-app-compliance/lena-fisher/attestation
+    - event: dev.cdevents.pipelinerun.finished
+      as: gate-done

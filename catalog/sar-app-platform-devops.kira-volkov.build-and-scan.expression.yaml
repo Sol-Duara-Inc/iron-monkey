@@ -1,0 +1,6 @@
+group: sar-app-platform-devops
+author: kira-volkov
+expression: build-and-scan
+produces:
+  - event: dev.cdevents.build.started
+  - event: dev.cdevents.build.finished

@@ -1,0 +1,6 @@
+group: sar-app-payments-qa
+author: carol-diaz
+expression: smoke-suite
+produces:
+  - event: dev.cdevents.testcaserun.started
+  - event: dev.cdevents.testcaserun.finished

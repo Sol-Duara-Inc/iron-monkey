@@ -1,0 +1,54 @@
+{
+  "$id": "https://schema.saronis.app/artifact-published",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "sbom": {
+              "type": "object"
+            },
+            "user": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.saronis artifact.published",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [
+      "https://cdevents.dev/0.5.1/schema/artifact-published-event"
+    ],
+    "predicate": "published",
+    "subject": "artifact",
+    "type": "com.saronis.artifact.published.0.1.0"
+  }
+}

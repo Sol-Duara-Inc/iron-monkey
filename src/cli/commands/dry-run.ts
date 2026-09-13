@@ -6,12 +6,13 @@ import { createCommandContext } from '../context.js';
 export function dryRunCommand(): Command {
   const cmd = new Command('dry-run')
     .description('build the manifest, print it, exit')
-    .argument('<workflow.yaml>', 'path to workflow YAML file');
+    .argument('<workflow>', 'path to a workflow YAML, or catalog:<id>');
 
   addCommonFlags(cmd);
 
   cmd.action(async (workflowPath: string, options: Record<string, unknown>) => {
-    const { validateWorkflow } = await import('../../workflow/parser.js');
+    const { resolveWorkflowSource } = await import('../../workflow/source.js');
+    const { catalogDirFor } = await import('../catalog-root.js');
     const { resolveChainTree } = await import('../../workflow/chain-tree.js');
     const { resolveBusName } = await import('../../config/loader.js');
     const { loadExpressionRegistry } = await import('../../expressions/loader.js');
@@ -21,8 +22,9 @@ export function dryRunCommand(): Command {
 
     const { logger, config } = await createCommandContext(options);
 
-    const workflow = await validateWorkflow(workflowPath);
-    const registry = loadExpressionRegistry();
+    const catalogDir = await catalogDirFor(options, config.catalog?.dir);
+    const workflow = await resolveWorkflowSource(workflowPath, catalogDir).getWorkflow();
+    const registry = loadExpressionRegistry(undefined, catalogDir);
     const mainChain = resolveChainTree(workflow, registry);
     for (const d of mainChain.diagnostics ?? []) {
       logger.warn({ diagnostic: d }, 'resolution diagnostic (RFC §6.2)');

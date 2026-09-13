@@ -27,6 +27,8 @@ import type { Manifest, ManifestEvent, DetachedManifestChain } from '../manifest
 export interface RunOptions {
   /** Path to an Iron Monkey config file (YAML or JSON). Auto-discovered when omitted. */
   config?: string;
+  /** Catalog directory for `catalog:<id>` references and catalog expressions. */
+  catalog?: string;
   /** Named bus to target. Resolved via {@link resolveBusName} when omitted. */
   bus?: string;
   /**
@@ -149,9 +151,21 @@ export async function runWorkflow(
     cliOverrides: { busName: options.bus },
   });
 
-  const resolvedSource = typeof source === 'string' ? new FileWorkflowSource(source) : source;
+  // The catalog contributes the expression bundles its own workflows resolve,
+  // so a catalog workflow expands the same way here as it does on the
+  // authority's side. Resolved once per run.
+  const { resolveCatalogRoot } = await import('../catalog/roots.js');
+  const catalogDir = resolveCatalogRoot({
+    flag: options.catalog,
+    configured: config.catalog?.dir,
+  }).dir;
+
+  const resolvedSource =
+    typeof source === 'string'
+      ? (await import('../workflow/source.js')).resolveWorkflowSource(source, catalogDir)
+      : source;
   const workflow = await resolvedSource.getWorkflow();
-  const registry = loadExpressionRegistry();
+  const registry = loadExpressionRegistry(undefined, catalogDir);
   const mainChain = resolveChainTree(workflow, registry);
   for (const d of mainChain.diagnostics ?? []) {
     logger.warn({ diagnostic: d }, 'resolution diagnostic (RFC §6.2)');

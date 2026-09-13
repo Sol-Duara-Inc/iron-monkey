@@ -1,0 +1,51 @@
+{
+  "$id": "https://schema.saronis.app/platform-service-published",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {
+            "environment": {
+              "type": "object"
+            },
+            "serviceName": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.saronis.platform service.published",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [
+      "https://cdevents.dev/0.5.1/schema/service-published-event"
+    ],
+    "predicate": "published",
+    "subject": "service",
+    "type": "com.saronis.platform.service.published.0.1.0"
+  }
+}

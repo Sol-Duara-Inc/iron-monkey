@@ -1,0 +1,6 @@
+group: sar-app-identity-qa
+author: aria-khan
+expression: auth-checks
+produces:
+  - event: dev.cdevents.testcaserun.started
+  - event: dev.cdevents.testcaserun.finished

@@ -90,11 +90,25 @@ export interface ToolConfig {
 
 /** Connection details for the Conduit chain-ID service. */
 export interface ConduitConfig {
-  /** Base URL of the Conduit service, e.g. `https://conduit.example.com`. */
+  /**
+   * Base URL of the connector line — the same door a person opens in a
+   * browser, e.g. `http://localhost:8080`. There is no tool-specific port: if
+   * a person can reach the console, a tool can reach the line.
+   */
   url: string;
   /** Bearer token for authenticating with Conduit (optional if unauthenticated). */
   token?: string;
+  /**
+   * The identity this producer asks under, e.g. `iron-monkey`, `jenkins-prod`.
+   * The handshake is refused without it, and a run is keyed
+   * `tool + ":" + execution` — so a drifting identity opens runs that no later
+   * inquiry can address. Defaults to {@link DEFAULT_CONDUIT_TOOL}.
+   */
+  tool?: string;
 }
+
+/** The identity Iron Monkey asks under when the config does not name one. */
+export const DEFAULT_CONDUIT_TOOL = 'iron-monkey';
 
 /** Fully merged Iron Monkey runtime configuration. */
 export interface IronMonkeyConfig {
@@ -117,6 +131,27 @@ export interface IronMonkeyConfig {
    * Overrides the bundled `schemas/cdevents` directory.
    */
   schemasPath?: string;
+  /** Where `catalog:<id>` references are resolved from. */
+  catalog?: {
+    /** Catalog directory; overridden by --catalog and IRON_MONKEY_CATALOG. */
+    dir?: string;
+  };
+  /**
+   * Producer bindings applied to events that name no tool and no source.
+   *
+   * A catalog authored for the AUTHORITY declares coordinates, not emitters —
+   * it has no reason to say which Jenkins produced a build. A producer must
+   * put a real `source` on the wire (the CDEvents schema requires a non-empty
+   * one), so these fill that in WITHOUT editing the document. That is what
+   * keeps a mirrored catalog byte-identical to canonical: the producer
+   * identity lives in the producer's config, where it belongs.
+   */
+  defaults?: {
+    /** Tool identifier used when an event names none; looked up in `tools`. */
+    tool?: string;
+    /** `source` URI used when neither the event nor `tools` supplies one. */
+    source?: string;
+  };
 }
 
 /** Options controlling how {@link loadConfig} reads and merges configuration. */
