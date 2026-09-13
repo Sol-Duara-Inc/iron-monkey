@@ -307,7 +307,10 @@ describe('buildManifest — the chain handshake', () => {
   });
 
   it('refuses to proceed when the daemon answers unusably', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'not json' }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'not json' }),
+    );
     try {
       await expect(
         buildManifest(meta, [singleEvent], CONDUIT_CFG, { noConduit: false }),

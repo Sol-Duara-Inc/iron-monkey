@@ -64,7 +64,7 @@ describe('the token rule — a path is never a catalog id, and never the reverse
     expect(CATALOG_SCHEME.length).toBe(8);
   });
 
-  it("a colon path still works — the reason the rule is not a scheme regex", () => {
+  it('a colon path still works — the reason the rule is not a scheme regex', () => {
     // `notes:draft.yaml` is a legal relative path that Iron Monkey accepts
     // today. A URI-scheme pattern (^[a-z][a-z0-9+.-]*:) would turn it into a
     // hard error, which is a hand-in regression.
@@ -111,10 +111,12 @@ describe('the store — identity comes from the body', () => {
     writeFileSync(path.join(dir, 'wf-one.workflow.yaml'), workflowDoc('wf-one'));
     writeFileSync(path.join(dir, 'g.a.e.expression.yaml'), expressionDoc('g', 'a', 'e'));
     const cat = loadCatalog(dir);
-    expect(cat.list().map((e) => `${e.kind}:${e.id}`).sort()).toEqual([
-      'expression:g/a/e',
-      'workflow:wf-one',
-    ]);
+    expect(
+      cat
+        .list()
+        .map((e) => `${e.kind}:${e.id}`)
+        .sort(),
+    ).toEqual(['expression:g/a/e', 'workflow:wf-one']);
   });
 
   it('believes the BODY, not the filename', () => {

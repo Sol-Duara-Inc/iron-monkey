@@ -46,9 +46,8 @@ export function catalogCommand(): Command {
       .description('print the file backing a catalog reference')
       .argument('<ref>', 'catalog:<workflow-id> or catalog:<group>/<author>/<expression>')
       .action(async (ref: string, options: Record<string, unknown>) => {
-        const { parseCatalogRef, isCatalogRef, CATALOG_SCHEME } = await import(
-          '../../catalog/ref.js'
-        );
+        const { parseCatalogRef, isCatalogRef, CATALOG_SCHEME } =
+          await import('../../catalog/ref.js');
         // Accept a bare id too: here the argument is unambiguously a reference,
         // because `show` takes nothing else.
         const token = isCatalogRef(ref) ? ref : `${CATALOG_SCHEME}${ref}`;

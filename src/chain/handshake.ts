@@ -196,10 +196,12 @@ export function assertChainRefsMatchLocal(chainSet: ChainSet, mainChain: Resolve
 
   const diffs: string[] = [];
   for (const ref of localRefs) {
-    if (!serverRefs.has(ref)) diffs.push(`chain ${ref}: the producer derived it, the daemon did not`);
+    if (!serverRefs.has(ref))
+      diffs.push(`chain ${ref}: the producer derived it, the daemon did not`);
   }
   for (const ref of serverRefs) {
-    if (!localRefs.has(ref)) diffs.push(`chain ${ref}: the daemon derived it, the producer did not`);
+    if (!localRefs.has(ref))
+      diffs.push(`chain ${ref}: the daemon derived it, the producer did not`);
   }
 
   if (diffs.length > 0) {

@@ -6,7 +6,11 @@
  * door, every time, with the run otherwise looking healthy.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { acquireChains, assertChainRefsMatchLocal, ROOT_CHAIN_REF } from '../../src/chain/handshake.js';
+import {
+  acquireChains,
+  assertChainRefsMatchLocal,
+  ROOT_CHAIN_REF,
+} from '../../src/chain/handshake.js';
 import { resolveChainTree } from '../../src/workflow/chain-tree.js';
 import { createRegistry } from '../../src/expressions/loader.js';
 import { createLogger, setLogger } from '../../src/logger/index.js';
@@ -31,10 +35,17 @@ describe('acquireChains — what goes on the wire', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(answer(OK)));
     const set = await acquireChains('wf', CONDUIT, { tool: 'iron-monkey', execution: 'exec-1' });
     expect(set?.chains).toEqual(CHAINS);
-    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { method: string }];
+    const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { method: string },
+    ];
     expect(init.method).toBe('GET');
     const q = new URL(url).searchParams;
-    expect([q.get('workflow'), q.get('tool'), q.get('execution')]).toEqual(['wf', 'iron-monkey', 'exec-1']);
+    expect([q.get('workflow'), q.get('tool'), q.get('execution')]).toEqual([
+      'wf',
+      'iron-monkey',
+      'exec-1',
+    ]);
   });
 
   it('omits execution when there is none, rather than sending an empty one', async () => {
@@ -49,10 +60,16 @@ describe('acquireChains — what goes on the wire', () => {
   it('sends the bearer only when a token is configured', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(answer(OK)));
     await acquireChains('wf', CONDUIT, { tool: 't' });
-    const [, bare] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { headers: Record<string, string> }];
+    const [, bare] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { headers: Record<string, string> },
+    ];
     expect(bare.headers.Authorization).toBeUndefined();
     await acquireChains('wf', { ...CONDUIT, token: 'sec' }, { tool: 't' });
-    const [, withTok] = (fetch as ReturnType<typeof vi.fn>).mock.calls[1] as [string, { headers: Record<string, string> }];
+    const [, withTok] = (fetch as ReturnType<typeof vi.fn>).mock.calls[1] as [
+      string,
+      { headers: Record<string, string> },
+    ];
     expect(withTok.headers.Authorization).toBe('Bearer sec');
   });
 });
@@ -82,7 +99,9 @@ describe('acquireChains — offline is legitimate, a refusal is NOT', () => {
 
   it('names the existing run on a 409 so the caller can address it', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(answer({ ...OK, runId: 'held-by' }, 409)));
-    await expect(acquireChains('wf', CONDUIT, { tool: 't' })).rejects.toThrow(/existing runId held-by/);
+    await expect(acquireChains('wf', CONDUIT, { tool: 't' })).rejects.toThrow(
+      /existing runId held-by/,
+    );
   });
 
   it('throws on a body that is not a chain set', async () => {
@@ -91,14 +110,20 @@ describe('acquireChains — offline is legitimate, a refusal is NOT', () => {
   });
 
   it('throws when chain ids are not strings', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(answer({ runId: 'r', workflowId: 'wf', chains: { root: 7 } })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(answer({ runId: 'r', workflowId: 'wf', chains: { root: 7 } })),
+    );
     await expect(acquireChains('wf', CONDUIT, { tool: 't' })).rejects.toThrow(/unusable body/);
   });
 
   it('redelivers a 503 and succeeds, because repeating a GET is safe', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValueOnce(answer({ error: 'store' }, 503)).mockResolvedValueOnce(answer(OK)),
+      vi
+        .fn()
+        .mockResolvedValueOnce(answer({ error: 'store' }, 503))
+        .mockResolvedValueOnce(answer(OK)),
     );
     expect((await acquireChains('wf', CONDUIT, { tool: 't' }))?.runId).toBe('run-1');
     expect(fetch).toHaveBeenCalledTimes(2);

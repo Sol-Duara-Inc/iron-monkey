@@ -33,9 +33,7 @@ function bundledCatalogDir(): string {
  *
  * @param opts - `flag` is the CLI value; `configured` is `catalog.dir`.
  */
-export function resolveCatalogRoot(
-  opts: { flag?: string; configured?: string } = {},
-): CatalogRoot {
+export function resolveCatalogRoot(opts: { flag?: string; configured?: string } = {}): CatalogRoot {
   if (opts.flag) return { dir: path.resolve(opts.flag), source: 'flag' };
   const env = process.env.IRON_MONKEY_CATALOG;
   if (env) return { dir: path.resolve(env), source: 'env' };

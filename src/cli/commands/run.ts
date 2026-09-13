@@ -4,7 +4,7 @@ import { addCommonFlags } from '../flags.js';
 export function runCommand(): Command {
   const cmd = new Command('run')
     .description('emit events per the workflow(s); pass multiple paths to run them simultaneously')
-    .argument('<workflows...>', "one or more workflow YAML paths, or catalog:<id> references");
+    .argument('<workflows...>', 'one or more workflow YAML paths, or catalog:<id> references');
 
   addCommonFlags(cmd);
 
