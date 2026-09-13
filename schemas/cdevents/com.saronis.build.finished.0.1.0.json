@@ -1,0 +1,78 @@
+{
+  "$id": "https://schema.saronis.app/build-finished",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {
+            "analysisId": {
+              "type": "string"
+            },
+            "applicationName": {
+              "type": "string"
+            },
+            "artifactId": {
+              "type": "string"
+            },
+            "changeOrderNumber": {
+              "type": "string"
+            },
+            "costCenter": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "pipelineExecutionId": {
+              "type": "string"
+            },
+            "tenantId": {
+              "type": "string"
+            },
+            "verificationScore": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "applicationName",
+            "environment",
+            "pipelineExecutionId",
+            "tenantId"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.saronis build.finished",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [
+      "https://cdevents.dev/0.5.1/schema/build-finished-event",
+      "https://schemas.opsmx.com/build-finished"
+    ],
+    "predicate": "finished",
+    "subject": "build",
+    "type": "com.saronis.build.finished.0.1.0"
+  }
+}

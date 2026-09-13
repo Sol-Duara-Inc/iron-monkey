@@ -9,7 +9,7 @@
  * `expression` fields), not inferred from the filename.
  */
 
-import { readdirSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readTextFileSync, parseYaml, formatAjvErrors } from '../util/yaml-file.js';
@@ -191,15 +191,30 @@ interface IndexedBundle {
  * @param dir - Optional path to the expressions directory.
  * @returns A registry populated from every bundle that loaded cleanly.
  */
-export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
+export function loadExpressionRegistry(dir?: string, catalogDir?: string): ExpressionRegistry {
   const expressionsDir = process.env.IRON_MONKEY_EXPRESSIONS ?? dir ?? defaultExpressionsDir();
   const logger = getLogger();
 
-  let files: string[] = [];
-  try {
-    files = readdirSync(expressionsDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
-  } catch {
-    // directory may not exist in some test environments; resolve() will fail clearly
+  const gather = (from: string, filter: (f: string) => boolean): string[] => {
+    try {
+      return readdirSync(from)
+        .filter(filter)
+        .map((f) => join(from, f));
+    } catch {
+      // A directory that is not there contributes nothing; resolution of a
+      // reference that needed it fails clearly at its own call site.
+      return [];
+    }
+  };
+
+  // The expressions directory is the producer's own bundle library. The
+  // catalog contributes the expressions its workflows resolve — a UNION, not
+  // an override, because neither is a fallback for the other: a workflow
+  // pitched from the catalog may reference either. A same-identity bundle in
+  // both is a conflict this layer reports rather than silently picking.
+  let files = gather(expressionsDir, (f) => f.endsWith('.yaml') || f.endsWith('.yml'));
+  if (catalogDir !== undefined) {
+    files = files.concat(gather(catalogDir, (f) => f.endsWith('.expression.yaml')));
   }
 
   // Name-hint checking (RFC §4.1.1) follows the same fail-soft posture as the
@@ -217,10 +232,14 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
 
   const indexed: IndexedBundle[] = [];
   const findings: HintFinding[] = [];
+  /** identity -> the file that claimed it first. */
+  const seen = new Map<string, string>();
+  /** identity -> both files, when more than one claimed it. */
+  const duplicates = new Map<string, string[]>();
   let skipped = 0;
 
   for (const file of files) {
-    const filePath = join(expressionsDir, file);
+    const filePath = file;
     let bundle: ExpressionBundle;
     try {
       bundle = loadBundle(filePath);
@@ -262,6 +281,31 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
       }
     }
 
+    const prior = seen.get(identity);
+    if (prior !== undefined) {
+      // The same document reachable twice — the expressions library and the
+      // catalog both carrying a mirrored bundle — is not a conflict. Identical
+      // source is a no-op, which is how the authority treats re-admission of
+      // bytes it already holds. Only DIFFERING content under one identity is
+      // the two-documents-one-identity failure worth refusing.
+      let sameBytes = false;
+      try {
+        sameBytes = readFileSync(prior, 'utf-8') === readFileSync(filePath, 'utf-8');
+      } catch {
+        sameBytes = false;
+      }
+      if (sameBytes) continue;
+      // Two files, one identity. The registry used to index both and hand
+      // back whichever `readdir` returned first, so editing one silently
+      // changed which document expanded — decided by filesystem order.
+      duplicates.set(identity, [prior, filePath]);
+      logger.error(
+        { identity, files: [prior, filePath] },
+        'two expression bundles claim one identity; resolving it will fail',
+      );
+      continue;
+    }
+    seen.set(identity, filePath);
     indexed.push({ name: bundle.expression, group: bundle.group, author: bundle.author, bundle });
   }
 
@@ -272,7 +316,7 @@ export function loadExpressionRegistry(dir?: string): ExpressionRegistry {
     );
   }
 
-  return buildRegistry(indexed, findings, expressionsDir);
+  return buildRegistry(indexed, findings, expressionsDir, duplicates);
 }
 
 /**
@@ -293,7 +337,7 @@ export function createRegistry(bundles: ExpressionBundle[]): ExpressionRegistry 
     author: bundle.author,
     bundle,
   }));
-  return buildRegistry(indexed, [], '(in-memory registry)');
+  return buildRegistry(indexed, [], '(in-memory registry)', new Map());
 }
 
 /**
@@ -306,7 +350,25 @@ function buildRegistry(
   indexed: IndexedBundle[],
   findings: HintFinding[],
   searchedIn: string,
+  duplicates: Map<string, string[]>,
 ): ExpressionRegistry {
+  /**
+   * Refuses an identity two files claim. Silently picking one is how a
+   * documented pipeline quietly becomes a different pipeline.
+   */
+  const refuseIfAmbiguous = (bundle: ExpressionBundle): ExpressionBundle => {
+    const identity = `${bundle.group}/${bundle.author}/${bundle.expression}`;
+    const files = duplicates.get(identity);
+    if (files !== undefined) {
+      throw new Error(
+        `ambiguous expression '${identity}': claimed by ${files.join(' and ')}. ` +
+          `Identity comes from the document body, so renaming will not separate ` +
+          `them — delete or re-identify one.`,
+      );
+    }
+    return bundle;
+  };
+
   return {
     resolve(ref: string): ExpressionBundle {
       const parts = ref.split('/');
@@ -343,7 +405,7 @@ function buildRegistry(
         );
       }
 
-      return candidates[0].bundle;
+      return refuseIfAmbiguous(candidates[0].bundle);
     },
 
     resolveWithContext(ref: string, context: { group: string; author: string }): ExpressionBundle {
@@ -376,7 +438,7 @@ function buildRegistry(
         const match = indexed.find(
           (b) => b.group === c.group && b.author === c.author && b.name === c.name,
         );
-        if (match) return match.bundle;
+        if (match) return refuseIfAmbiguous(match.bundle);
       }
 
       // No candidate resolved. Surface the candidates we tried so the error

@@ -1,0 +1,12 @@
+workflow:
+  id: identity-deploy
+  group: sar-app-identity-devops
+  author: zoe-martin
+  name: Identity Deploy Pipeline
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1800000}
+  produces:
+    - event: dev.cdevents.pipelinerun.started
+    - expression: sar-app-compliance/lena-fisher/attestation
+    - event: dev.cdevents.pipelinerun.finished
+      as: deploy-done

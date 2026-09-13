@@ -41,46 +41,64 @@ npm link
 
 ## Quick start
 
+Iron Monkey ships a **catalog** — the workflows and expressions it can pitch by
+name. List it, then pitch one:
+
 ```bash
-# Validate a workflow without connecting to any bus
-iron-monkey validate examples/workflows/prod-payments-blue-green-cutover.yaml \
-  --config examples/configs/local-rabbit.yaml
+iron-monkey catalog list
+```
+
+A workflow is named either way: `catalog:<id>` reads it from the catalog, and
+anything else is a path you hand in. The two are equals — the only difference
+is eight characters.
+
+You supply the config, which says where events go and who this producer is:
+
+```yaml
+# iron-monkey.yaml
+buses:
+  default:
+    type: rabbitmq
+    url: amqp://localhost:5672
+    exchange: cdevents
+
+# Catalog workflows declare coordinates, not emitters. These name the producer
+# for any event that binds no tool or source of its own.
+defaults:
+  tool: jenkins-prod
+  source: https://jenkins.example.com/
+```
+
+```bash
+# Validate, without connecting to any bus
+iron-monkey validate catalog:cdcon-2026-jenkins-spinnaker-demo --config ./iron-monkey.yaml
 
 # Dry-run: build and print the event manifest, do not emit
-iron-monkey dry-run examples/workflows/prod-payments-blue-green-cutover.yaml \
-  --no-conduit --bus default
+iron-monkey dry-run catalog:cdcon-2026-jenkins-spinnaker-demo --no-conduit --bus default
 
-# Dry-run a single expression inline
-iron-monkey dry-run examples/workflows/prod-payments-blue-green-cutover.yaml \
-  --no-conduit --bus default --seed 42
+# Same plan, deterministically
+iron-monkey dry-run catalog:cdcon-2026-jenkins-spinnaker-demo --no-conduit --bus default --seed 42
 
-# Pitch a single workflow against a local RabbitMQ
-iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
-  --config examples/configs/local-rabbit.yaml \
-  --no-conduit --bus default
+# Pitch one workflow
+iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
+  --config ./iron-monkey.yaml --no-conduit --bus default
 
-# Pitch multiple workflows simultaneously (each runs independently)
-iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
-            examples/workflows/prod-checkout-jenkins-spinnaker-canary.yaml \
-            examples/workflows/prod-auth-hotfix-fast-path.yaml \
-  --config examples/configs/local-rabbit.yaml \
-  --no-conduit --bus default
+# Pitch several simultaneously — catalog references and paths interleave freely
+iron-monkey run catalog:payments-deploy catalog:identity-deploy ./my-own.yaml \
+  --config ./iron-monkey.yaml --no-conduit --bus default
 
 # Pitch a full repertoire — per-workflow options, all thrown at once
-iron-monkey pitch --from examples/repertoires/chaos.yaml \
-  --config examples/configs/local-rabbit.yaml
+iron-monkey pitch --from ./chaos.yaml --config ./iron-monkey.yaml
 
-# Pitch with failure injection
-iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
-  --config examples/configs/local-rabbit.yaml \
-  --no-conduit --bus default \
+# Pitch with failure injection (ids are `workflowEventId` values; see them with dry-run)
+iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
+  --config ./iron-monkey.yaml --no-conduit --bus default \
   --inject missing:build-started \
   --inject late:service-deployed:10000
 
 # Save the manifest for auditing
-iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
-  --config examples/configs/local-rabbit.yaml \
-  --no-conduit --bus default \
+iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
+  --config ./iron-monkey.yaml --no-conduit --bus default \
   --manifest-out run-$(date +%s).json
 ```
 
@@ -172,8 +190,8 @@ unaffected.
 
 ```bash
 # Run, then keep answering inquiries about it (read-only)
-iron-monkey run examples/workflows/prod-payments-blue-green-cutover.yaml \
-  --config examples/configs/local-rabbit.yaml --no-conduit --bus default \
+iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
+  --config ./iron-monkey.yaml --no-conduit --bus default \
   --inject missing:artifact-signed \
   --serve --inquiry-port 8137
 ```
@@ -210,7 +228,7 @@ driven from outside the process — start a run, withhold an event, ask what
 happened, take the endpoint away:
 
 ```bash
-iron-monkey serve --port 8137 --config examples/configs/local-rabbit.yaml --bus default
+iron-monkey serve --port 8137 --config ./iron-monkey.yaml --bus default
 ```
 
 ```
@@ -224,7 +242,7 @@ GET    /healthz               always answers, even while dark
 
 ```bash
 curl -X POST localhost:8137/api/executions -H 'Content-Type: application/json' \
-  -d '{"workflow":"examples/workflows/prod-payments-blue-green-cutover.yaml",
+  -d '{"workflow":"catalog:cdcon-2026-jenkins-spinnaker-demo",
        "noConduit":true,"interval":200,"inject":["missing:artifact-signed"]}'
 ```
 
@@ -351,7 +369,7 @@ General precedence: CLI args > environment variables > config file > built-in de
 
 ## Workflow YAML
 
-See [`examples/workflows/prod-payments-blue-green-cutover.yaml`](examples/workflows/prod-payments-blue-green-cutover.yaml) for a complete multi-tool production workflow (Jenkins → JFrog → Spinnaker / GKE).
+See [`catalog/cdcon-2026-anchored-release-showcase.workflow.yaml`](catalog/cdcon-2026-anchored-release-showcase.workflow.yaml) for a complete workflow exercising anchors, a detached chain and two blocking spawned chains.
 
 A workflow has a flat `produces[]` list. Each item is either a bare `event:` or an `expression:` reference. Workflows also carry `group` and `author` identity fields that pair with expression authorship for traceability **and drive the resolver** — bare `expression:` references resolve under `(workflow.group, workflow.author, name)` first, falling through to the `example-group / user` standard library when no team-owned bundle exists (see _Referencing an expression_ below):
 
@@ -424,21 +442,21 @@ All workflows share the same flags. For per-workflow control use `pitch`.
 A **repertoire** is a YAML file that maps each workflow to its own options. A `shared` block provides defaults; pitch-level values override them.
 
 ```yaml
-# chaos.yaml  (a runnable copy lives at examples/repertoires/chaos.yaml)
+# chaos.yaml
 shared:
   bus: rabbitmq-prod
   interval: 1000
 
 pitches:
-  - workflow: examples/workflows/prod-payments-blue-green-cutover.yaml
+  - workflow: catalog:payments-deploy
     interval: 500 # overrides shared
 
-  - workflow: examples/workflows/prod-auth-hotfix-fast-path.yaml
+  - workflow: catalog:identity-deploy
     inject:
       - missing:build-started
       - late:service-deployed:5000
 
-  - workflow: examples/workflows/prod-checkout-jenkins-spinnaker-canary.yaml
+  - workflow: ./my-own.yaml
     interval: 100
     seed: 42
     bus: local-bus # overrides shared

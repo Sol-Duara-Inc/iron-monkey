@@ -1,0 +1,12 @@
+workflow:
+  id: payments-svc-prod
+  group: sar-app-payments-dev
+  author: bob-singh
+  name: Payments Service Build (prod)
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1800000}
+  produces:
+    - event: dev.cdevents.change.merged
+    - event: dev.cdevents.build.started
+    - event: dev.cdevents.build.finished
+      as: built

@@ -20,6 +20,22 @@ export const configSchema = {
       properties: {
         url: { type: 'string', format: 'uri' },
         token: { type: 'string' },
+        // The identity this producer asks under; the handshake is refused
+        // without one, and the run is keyed `tool + ":" + execution`.
+        tool: { type: 'string', minLength: 1 },
+      },
+    },
+    catalog: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { dir: { type: 'string', minLength: 1 } },
+    },
+    defaults: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        tool: { type: 'string', minLength: 1 },
+        source: { type: 'string', minLength: 1 },
       },
     },
     buses: {

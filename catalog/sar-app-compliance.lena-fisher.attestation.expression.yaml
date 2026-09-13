@@ -1,0 +1,5 @@
+group: sar-app-compliance
+author: lena-fisher
+expression: attestation
+produces:
+  - event: com.saronis.compliance.build.finished.0.1.0

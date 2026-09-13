@@ -1,0 +1,42 @@
+{
+  "$id": "https://schemas.opsmx.com/service-healthy",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.opsmx service.healthy",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [],
+    "predicate": "healthy",
+    "subject": "service",
+    "type": "com.opsmx.service.healthy.0.1.0"
+  }
+}

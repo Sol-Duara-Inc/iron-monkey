@@ -11,7 +11,7 @@
     "pipelinerun": { "finished": ["0.1.1", "0.2.0", "0.3.0"], "queued": ["0.1.1", "0.2.0", "0.3.0"], "started": ["0.1.1", "0.2.0", "0.3.0"] },
     "repository": { "created": ["0.2.0", "0.3.0"], "deleted": ["0.2.0", "0.3.0"], "modified": ["0.2.0", "0.3.0"] },
     "service": { "deployed": ["0.1.1", "0.2.0", "0.3.0"], "published": ["0.2.0", "0.3.0"], "removed": ["0.2.0", "0.3.0"], "rolledback": ["0.2.0", "0.3.0"], "upgraded": ["0.2.0", "0.3.0"] },
-    "taskrun": { "finished": ["0.2.0", "0.3.0"], "started": ["0.2.0", "0.3.0"] },
+    "taskrun": { "finished": ["0.2.0", "0.3.0"], "queued": ["0.2.0", "0.3.0"], "started": ["0.2.0", "0.3.0"] },
     "testcaserun": { "finished": ["0.2.0", "0.3.0"], "queued": ["0.2.0", "0.3.0"], "skipped": ["0.2.0"], "started": ["0.2.0", "0.3.0"] },
     "testoutput": { "published": ["0.2.0", "0.3.0"] },
     "testsuiterun": { "finished": ["0.2.0", "0.3.0"], "queued": ["0.2.0", "0.3.0"], "started": ["0.2.0", "0.3.0"] },

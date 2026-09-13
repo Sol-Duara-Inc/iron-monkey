@@ -4,13 +4,15 @@ import { addCommonFlags } from '../flags.js';
 export function runCommand(): Command {
   const cmd = new Command('run')
     .description('emit events per the workflow(s); pass multiple paths to run them simultaneously')
-    .argument('<workflows...>', 'one or more paths to workflow YAML files');
+    .argument('<workflows...>', 'one or more workflow YAML paths, or catalog:<id> references');
 
   addCommonFlags(cmd);
 
   cmd.action(async (_workflowPaths: string[], _options: Record<string, unknown>) => {
     const { runWorkflow, runWorkflows } = await import('../../emitter/runner.js');
-    const { FileWorkflowSource } = await import('../../workflow/source.js');
+    const { resolveWorkflowSource } = await import('../../workflow/source.js');
+    const { catalogDirFor } = await import('../catalog-root.js');
+    const catalogDir = await catalogDirFor(_options);
     const { serveInquiriesUntilIdle } = await import('../inquiry.js');
 
     // Start BEFORE the run, not after: an inquiry can arrive while the
@@ -20,10 +22,10 @@ export function runCommand(): Command {
     const inquiry = await serveInquiriesUntilIdle(_options);
 
     if (_workflowPaths.length === 1) {
-      await runWorkflow(new FileWorkflowSource(_workflowPaths[0]), _options);
+      await runWorkflow(resolveWorkflowSource(_workflowPaths[0], catalogDir), _options);
     } else {
       const results = await runWorkflows(
-        _workflowPaths.map((p) => new FileWorkflowSource(p)),
+        _workflowPaths.map((p) => resolveWorkflowSource(p, catalogDir)),
         _options,
       );
       const failed = results.filter((r) => r.status === 'rejected');

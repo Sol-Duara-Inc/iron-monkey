@@ -7,6 +7,7 @@ import { dryRunCommand } from './commands/dry-run.js';
 import { inspectCommand } from './commands/inspect.js';
 import { purgeCommand } from './commands/purge.js';
 import { serveCommand } from './commands/serve.js';
+import { catalogCommand } from './commands/catalog.js';
 import { versionCommand } from './commands/version.js';
 
 const program = new Command();
@@ -20,6 +21,7 @@ program
   .addCommand(dryRunCommand())
   .addCommand(inspectCommand())
   .addCommand(purgeCommand())
+  .addCommand(catalogCommand())
   .addCommand(serveCommand())
   .addCommand(versionCommand());
 

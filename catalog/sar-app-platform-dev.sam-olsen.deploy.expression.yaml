@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
+#
+# Follows sol-duara/dsanyika/deploy. Platform keeps the guide's tool-free
+# bracket and its smoke suite, and takes the canary to team depth — the canary
+# is where this team's own vocabulary earns its place.
+#
+# NOTE: an expression cannot set per-event timing, so the health coordinate
+# inherits the referencing workflow's budget. That budget IS the change-failure
+# mechanism: no confirmation inside it is the failure, recorded at the deadline.
+group: sar-app-platform-dev
+author: sam-olsen
+expression: deploy
+description: >
+  Platform's deployment — canary, release, and a smoke suite inside the
+  deployment bracket.
+produces:
+  - event: com.solduara.deployment.started.0.1.0
+  - event: com.saronis.platform.svc.service.deployed.0.1.0
+  - event: com.saronis.platform.service.published.0.1.0
+  - event: dev.cdevents.testsuiterun.started.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0
+  - event: com.opsmx.service.healthy.0.1.0
+  - event: com.solduara.deployment.finished.0.1.0

@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
+#
+# Follows sol-duara/dsanyika/build. Platform keeps the guide's shape — units
+# exploded, artifact and signature inside the closure, the gate before
+# build.finished — and deepens the artifact receipt to company vocabulary.
+#
+# NOTE: an event inside an expression cannot bind its own tool, so the whole
+# block inherits the tool of the workflow entry that references it. The
+# artifact receipt is Artifactory's and the gate is the scanner's, but both are
+# reached BY Jenkins, which is the tool Conduit talks to.
+group: sar-app-platform-dev
+author: sam-olsen
+expression: build
+description: >
+  Platform's CI build — unit verification, the packaged and signed artifact,
+  and a blocking policy gate, all closed by build.finished.
+produces:
+  - event: dev.cdevents.build.started.0.3.0
+  - event: dev.cdevents.testsuiterun.started.0.3.0
+  - event: dev.cdevents.testcaserun.started.0.3.0
+  - event: dev.cdevents.testcaserun.finished.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0
+  - event: com.saronis.artifact.packaged.0.1.0
+  - event: com.saronis.artifact.signed.0.1.0
+  - event: com.saronis.artifact.published.0.1.0
+  - event: com.opsmx.policy.gate.0.1.0
+  - event: dev.cdevents.build.finished.0.3.0

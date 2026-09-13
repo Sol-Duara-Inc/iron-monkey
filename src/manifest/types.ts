@@ -158,6 +158,13 @@ export interface CDEventContext {
   timestamp: string;
   /** Proleptic chain ID correlating all events in a workflow run. */
   chainId?: string;
+  /**
+   * For a LAYERED type: every ancestor schema URI, in order, from the
+   * sanctioned CDEvents root outwards. Taken from the type's own schema
+   * (`x-cdevents.inherits`), so one arrival can be decomposed into one
+   * register per layer. Absent on sanctioned `dev.cdevents.*` types.
+   */
+  inherits?: string[];
   /** Ordered array of link entries connecting this event to others in the chain. */
   links?: LinkEntry[];
   /** Optional URI pointing to the JSON schema for this event type. */

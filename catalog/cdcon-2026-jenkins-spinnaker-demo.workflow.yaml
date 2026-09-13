@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../schemas/cdrus/workflow.schema.json
+# yaml-language-server: $schema=../src/schemas/cdrus/workflow.schema.json
 workflow:
   id: cdcon-2026-jenkins-spinnaker-demo
   group: sol-duara
@@ -15,7 +15,6 @@ workflow:
   defaults:
     pipeline: junction-box-demo
     timeout_ms: 300000
-    min_wait_ms: 100
 
   produces:
     # ── Jenkins (CI: tool 1) ──────────────────────────────────────────────
@@ -48,10 +47,10 @@ workflow:
       tool: spinnaker-prod
       source: https://spinnaker.example.com/
       overrides:
-        dev.cdevents.service.deployed:
+        service.deployed:
           tool: gke-prod
           source: https://gke.example.com/
-        dev.cdevents.service.published:
+        service.published:
           tool: gke-prod
           source: https://gke.example.com/
 

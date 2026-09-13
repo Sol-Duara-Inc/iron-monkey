@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import path from 'path';
+import { readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import os from 'os';
@@ -40,27 +41,18 @@ import { runWorkflow } from '../../src/emitter/runner.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../..');
-const WORKFLOWS_DIR = path.join(REPO_ROOT, 'examples/workflows');
+const WORKFLOWS_DIR = path.join(REPO_ROOT, 'catalog');
 const EXPRESSIONS_DIR = path.join(REPO_ROOT, 'expressions');
 
 /**
- * The real prod workflows bundled in `examples/workflows/`. Each one walks the
- * full pipeline against the real `expressions/` catalog. A single addition or
- * removal to the example set is welcome; the test loop adapts automatically.
+ * The shipped catalog corpus. Each one walks the full pipeline against the
+ * real expression library. Enumerated rather than listed: adding a workflow to
+ * the catalog puts it under this gate automatically, which is the point — a
+ * corpus entry that cannot be pitched is not a corpus entry.
  */
-const PROD_WORKFLOWS = [
-  'cdcon-2026-jenkins-spinnaker-demo.yaml',
-  // Exercises the `as:` anchors + detach + concurrent + per-event timing
-  // showcase end-to-end (validation → resolution → manifest → emit), so a
-  // regression in any of those features fails CI here, not just in the schema
-  // unit tests.
-  'cdcon-2026-anchored-release-showcase.yaml',
-  'prod-api-gateway-production-deploy-gated.yaml',
-  'prod-auth-hotfix-fast-path.yaml',
-  'prod-checkout-jenkins-spinnaker-canary.yaml',
-  'prod-inventory-gha-rolling-release.yaml',
-  'prod-payments-blue-green-cutover.yaml',
-];
+const PROD_WORKFLOWS = readdirSync(WORKFLOWS_DIR)
+  .filter((f) => f.endsWith('.workflow.yaml'))
+  .sort();
 
 /**
  * Writes a minimal Iron Monkey config file targeting a fake `junction-box`
@@ -80,6 +72,9 @@ async function writeMockIronMonkeyConfig(workflowId: string): Promise<string> {
     workflow_id: ${workflowId}
     health_check: false
 tools: {}
+defaults:
+  tool: test-tool
+  source: https://test.invalid/
 `;
   await writeFile(configPath, config, 'utf-8');
   return configPath;
@@ -99,7 +94,7 @@ describe('integration: full runWorkflow against bundled JB-style catalog', () =>
   for (const file of PROD_WORKFLOWS) {
     it(`completes end-to-end for ${file} (real validation, resolution, manifest)`, async () => {
       const workflowPath = path.join(WORKFLOWS_DIR, file);
-      const workflowId = path.basename(file, '.yaml');
+      const workflowId = path.basename(file, '.workflow.yaml');
       const configPath = await writeMockIronMonkeyConfig(workflowId);
 
       try {
@@ -124,7 +119,10 @@ describe('integration: full runWorkflow against bundled JB-style catalog', () =>
       // started in every bundled example. If the resolver got the order wrong
       // (or the manifest builder lost an event) this would surface here.
       const firstEmitArgs = mockBus.emit.mock.calls[0];
-      expect(firstEmitArgs[0]).toMatch(/^dev\.cdevents\./);
+      // The corpus carries LAYERED vendor types alongside the sanctioned ones,
+      // so the gate is that a fully-qualified type went on the wire — not that
+      // every corpus entry is a dev.cdevents one.
+      expect(firstEmitArgs[0]).toMatch(/^[a-z][a-z0-9.]*\.[a-z]+\.[a-z]+\.\d+\.\d+\.\d+$/);
 
       // No separate chain.end sentinel is emitted; the chain ends with its
       // last substantive event (typically pipelineRun.finished). That event
@@ -146,7 +144,10 @@ describe('integration: full runWorkflow against bundled JB-style catalog', () =>
     // every expression by counting emitted event types — at least one of
     // each from the build expression (build.started, build.finished) and one
     // from the deploy expression (service.deployed).
-    const workflowPath = path.join(WORKFLOWS_DIR, 'cdcon-2026-jenkins-spinnaker-demo.yaml');
+    const workflowPath = path.join(
+      WORKFLOWS_DIR,
+      'cdcon-2026-jenkins-spinnaker-demo.workflow.yaml',
+    );
     const configPath = await writeMockIronMonkeyConfig('cdcon-2026-jenkins-spinnaker-demo');
 
     try {

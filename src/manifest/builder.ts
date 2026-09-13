@@ -19,7 +19,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { IdAllocator } from './id-allocator.js';
 import { planTiming } from './timing.js';
 import { buildPathLink, buildEndLink, buildRelationLink } from '../links/builder.js';
-import { registerRun, assertRegisterMatchesLocal } from '../chain/register.js';
+import { acquireChains, assertChainRefsMatchLocal, ROOT_CHAIN_REF } from '../chain/handshake.js';
+import { getLogger } from '../logger/index.js';
+import { ConduitAnsweredError } from '../chain/register.js';
 import { flattenChains } from '../workflow/chain-tree.js';
 import { generateFallbackChainId } from '../chain/fallback.js';
 import { loadSchemas, validateEvent } from '../schema/validator.js';
@@ -28,6 +30,7 @@ import { synthesize } from '../synth/synthesizer.js';
 import type { ResolvedEvent } from '../workflow/parser.js';
 import type { ResolvedChain, ResolvedChainEvent } from '../workflow/chain-tree.js';
 import type { ChainIdResult } from '../chain/register.js';
+import { DEFAULT_CONDUIT_TOOL } from '../config/types.js';
 import type { IronMonkeyConfig } from '../config/types.js';
 import type {
   Manifest,
@@ -96,6 +99,11 @@ interface BuildContext {
   idAlloc: IdAllocator;
   /** Pre-acquired `chainRef` → chain ID map for every sub-chain (Conduit or fallback). */
   chainIds: Map<string, ChainIdResult>;
+  /**
+   * Who minted this run's ids. When it is `'conduit'` a missing sub-chain is
+   * fatal rather than fallback-able: see {@link buildSpawns}.
+   */
+  chainIdSource: 'conduit' | 'bus' | 'fallback';
   synth: boolean;
   /**
    * Absolute planned emit time per `treePath`, produced by {@link planTiming}
@@ -160,7 +168,13 @@ function buildEvent(
   const timestamp = new Date(targetEmitTime).toISOString();
 
   // Config tool source overrides blank workflow source; workflow source overrides config when set.
-  const toolSource = re.source || ctx.config.tools[re.tool]?.source || re.tool;
+  // A workflow authored for the authority may bind no tool at all; the
+  // producer's config supplies the identity in that case. Order: what the
+  // event says, then the named tool's configured source, then the config
+  // default, then the tool name itself as a last resort.
+  const tool = re.tool || ctx.config.defaults?.tool || '';
+  const toolSource =
+    re.source || ctx.config.tools[tool]?.source || ctx.config.defaults?.source || tool;
 
   const links: LinkEntry[] = [];
   if (prevEventId) links.push(buildPathLink(prevEventId));
@@ -206,6 +220,17 @@ function buildEvent(
     synthesized = result.synthesized;
   }
 
+  // A LAYERED type carries its lineage on the wire: the schema declares every
+  // ancestor under `x-cdevents.inherits`, and a receiver that decomposes the
+  // arrival into one register per layer needs them named, in order. Taking
+  // them from the schema rather than the workflow means the lineage is
+  // authored once, where the type is defined, and cannot drift per pitch.
+  const lineage = (schema as { 'x-cdevents'?: { inherits?: unknown } })['x-cdevents']?.inherits;
+  const inherits =
+    Array.isArray(lineage) && lineage.every((u) => typeof u === 'string')
+      ? (lineage as string[])
+      : undefined;
+
   const payload: CDEventPayload = {
     context: {
       specversion: '0.6.0-draft',
@@ -214,6 +239,10 @@ function buildEvent(
       type: wireType,
       timestamp,
       chainId,
+      // Spread, not `inherits: undefined` — the sanctioned CDEvents schemas
+      // set `additionalProperties: false` on context, and a present-but-
+      // undefined key still counts as a property there.
+      ...(inherits === undefined ? {} : { inherits }),
       links: links.length > 0 ? links : undefined,
     },
     subject: { id: subjectId, content },
@@ -232,7 +261,7 @@ function buildEvent(
     treePath: re.treePath,
     type: wireType,
     stageId: re.pipeline,
-    stageTool: re.tool,
+    stageTool: tool,
     source: toolSource,
     chainId,
     targetBus: ctx.targetBus,
@@ -284,10 +313,18 @@ function buildSpawns(
   out: DetachedManifestChain[],
 ): void {
   for (const spawn of parentChain.spawns) {
-    // Each sub-chain's id is acquired up front (Conduit → fallback cascade) and
-    // looked up here by chainRef. A missing entry should not happen (all spawns
-    // are collected before acquisition) but is handled defensively as fallback.
+    // Each sub-chain's id is acquired up front and looked up here by chainRef.
+    // Under Conduit authority a miss is FATAL: minting a local URN for the one
+    // chain the handshake did not name produces a sub-chain whose every event
+    // is refused, while the rest of the run succeeds — a partial failure that
+    // reads as a working run.
     const acquired = ctx.chainIds.get(spawn.chainRef);
+    if (!acquired && ctx.chainIdSource === 'conduit') {
+      throw new ConduitAnsweredError(
+        `chain '${spawn.chainRef}' has no id: the handshake did not name it, and ` +
+          `an id this producer mints would be refused as not issued by the authority`,
+      );
+    }
     const subChainId =
       acquired?.chainId ?? generateFallbackChainId(`${ctx.workflowName}:${spawn.chainRef}`);
     const subChainIdSource = acquired?.source ?? 'fallback';
@@ -365,6 +402,20 @@ export async function buildManifest(
 
   const chainIds = new Map<string, ChainIdResult>();
 
+  /**
+   * Says out loud that this run's ids are locally minted. A fallback run looks
+   * identical to a real one until every event is refused at the door with
+   * `unknown chainId <id>: not issued by this authority`, so the one place it
+   * can be noticed is here.
+   */
+  const warnFallback = (reason: string): void => {
+    getLogger().warn(
+      { workflowId: workflowMeta.id, runId, reason },
+      'minting chain ids LOCALLY — Conduit did not issue them, so every event ' +
+        'of this run will be refused by an authority that is listening',
+    );
+  };
+
   /** Offline minting: one local URN per spawned chain, named as before. */
   const mintOffline = (): void => {
     for (const ref of spawnRefs) {
@@ -375,7 +426,13 @@ export async function buildManifest(
     }
   };
 
-  if (opts.chainId) {
+  // Conduit outranks the bus when one is configured. A bus-supplied id is
+  // only usable if that bus got it FROM the authority, which this producer
+  // cannot verify — and letting it win silently means the handshake is never
+  // made and every event is refused. When no Conduit is configured the bus
+  // remains the authority, which is how a Junction Box deployment works.
+  const conduitConfigured = !opts.noConduit && Boolean(config.conduit?.url);
+  if (opts.chainId && !conduitConfigured) {
     // Bus-authority run (e.g. a JB-acquired chainId): the whole run stays
     // under that authority — spawned chains mint local URNs. The per-chain
     // Conduit shim this path once used is retired.
@@ -383,33 +440,42 @@ export async function buildManifest(
     chainIdSource = opts.chainIdSource ?? 'fallback';
     mintOffline();
   } else if (opts.noConduit) {
+    warnFallback('--no-conduit was requested');
     chainId = generateFallbackChainId(workflowMeta.name);
     chainIdSource = 'fallback';
     mintOffline();
   } else {
-    // ONE atomic batch register mints the entire chain set (Proleptic §1);
-    // null means no daemon answered — the one legitimate offline case. The
-    // execution identity is declared here so Conduit can reach this producer
-    // when a TTL expires (docs/EXECUTION-INQUIRY.md §1).
-    const registered = await registerRun(workflowMeta.id, config.conduit, {
-      executionID: runId,
+    // ONE handshake mints the entire chain set before any event exists; null
+    // means no daemon answered — the one legitimate offline case. The
+    // execution handle is Iron Monkey's own run id, so a later inquiry about
+    // this execution is addressable (docs/EXECUTION-INQUIRY.md §1) and a
+    // second pitch of the same workflow opens a second run rather than
+    // silently joining the first.
+    if (opts.chainId) {
+      getLogger().warn(
+        { busChainId: opts.chainId, workflowId: workflowMeta.id },
+        'ignoring the chainId the bus supplied: Conduit is configured and is the ' +
+          'sole authority for chain identity',
+      );
+    }
+    const tool = config.conduit?.tool ?? DEFAULT_CONDUIT_TOOL;
+    const chainSet = await acquireChains(workflowMeta.id, config.conduit, {
+      tool,
+      execution: runId,
     });
-    if (!registered) {
+    if (!chainSet) {
+      warnFallback('no Conduit daemon answered the chain handshake');
       chainId = generateFallbackChainId(workflowMeta.name);
       chainIdSource = 'fallback';
       mintOffline();
     } else {
       // Producer-side machine gate: derivation divergence fails the run
       // BEFORE any event is thrown.
-      assertRegisterMatchesLocal(registered, mainChain);
-      const main = registered.chains.find((c) => c.role === 'main');
-      chainId = main?.chainId ?? registered.runId;
+      assertChainRefsMatchLocal(chainSet, mainChain);
+      chainId = chainSet.chains[ROOT_CHAIN_REF] ?? chainSet.runId;
       chainIdSource = 'conduit';
-      instanceId = registered.instanceId;
-      for (const chain of registered.chains) {
-        if (chain.role !== 'main') {
-          chainIds.set(chain.chainRef, { chainId: chain.chainId, source: 'conduit' });
-        }
+      for (const [ref, id] of Object.entries(chainSet.chains)) {
+        if (ref !== ROOT_CHAIN_REF) chainIds.set(ref, { chainId: id, source: 'conduit' });
       }
     }
   }
@@ -428,6 +494,7 @@ export async function buildManifest(
     targetBus,
     idAlloc: new IdAllocator(opts.seed),
     chainIds,
+    chainIdSource,
     synth: opts.synth !== false,
     plannedTimes,
     workflowName: workflowMeta.name,

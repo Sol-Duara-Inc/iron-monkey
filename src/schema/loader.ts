@@ -62,6 +62,17 @@ export async function loadSchemasFromDir(dir: string): Promise<Map<string, unkno
  *   or `null` if the schema does not contain a recognisable type enum.
  */
 function extractTypeString(schema: unknown): string | null {
+  // `x-cdevents.type` is the AUTHORED key: vendor and layered schemas declare
+  // their identity there (alongside subject/predicate/inherits) rather than
+  // pinning it in a one-value context.type enum the way the sanctioned
+  // dev.cdevents schemas do. Checked first because a schema that carries it
+  // means it, and its context block is often just `{ type: "object" }`.
+  const xc = (schema as Record<string, unknown> | null)?.['x-cdevents'];
+  if (xc !== null && typeof xc === 'object') {
+    const declared = (xc as Record<string, unknown>)['type'];
+    if (typeof declared === 'string' && declared.length > 0) return declared;
+  }
+
   try {
     const s = schema as Record<string, unknown>;
     const context = s['properties'] as Record<string, unknown>;

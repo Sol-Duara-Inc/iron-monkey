@@ -1,0 +1,66 @@
+{
+  "$id": "https://schemas.opsmx.com/build-finished",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "context": {
+      "type": "object"
+    },
+    "subject": {
+      "properties": {
+        "content": {
+          "additionalProperties": false,
+          "properties": {
+            "analysisId": {
+              "type": "string"
+            },
+            "applicationName": {
+              "type": "string"
+            },
+            "artifactId": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "pipelineExecutionId": {
+              "type": "string"
+            },
+            "verificationScore": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "applicationName",
+            "pipelineExecutionId"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "context",
+    "subject"
+  ],
+  "title": "com.opsmx build.finished",
+  "type": "object",
+  "x-cdevents": {
+    "inherits": [
+      "https://cdevents.dev/0.5.1/schema/build-finished-event"
+    ],
+    "predicate": "finished",
+    "subject": "build",
+    "type": "com.opsmx.build.finished.0.1.0"
+  }
+}

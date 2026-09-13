@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
+#
+# Follows sol-duara/dsanyika/build-gated. Identity took the guide as it stands
+# — a guide worth having is one you can use unchanged — and deepened only the
+# artifact receipt, because Saronis attaches a cost-centre to every artifact.
+group: sar-app-identity-dev
+author: noah-berg
+expression: build
+description: Identity's CI build, following the gated guide.
+produces:
+  - event: dev.cdevents.build.started.0.3.0
+  - event: dev.cdevents.testsuiterun.started.0.3.0
+  - event: dev.cdevents.testcaserun.started.0.3.0
+  - event: dev.cdevents.testcaserun.finished.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0
+  - event: dev.cdevents.artifact.packaged.0.3.0
+  - event: dev.cdevents.artifact.signed.0.3.0
+  - event: com.saronis.artifact.published.0.1.0
+  - event: com.opsmx.policy.gate.0.1.0
+  - event: dev.cdevents.build.finished.0.3.0

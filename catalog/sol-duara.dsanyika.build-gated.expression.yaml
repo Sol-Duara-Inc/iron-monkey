@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://cdrus.dev/schemas/0.1.0/expression.schema.json
+#
+# THE FULL CI BLOCK, and the reason it is a separate expression from "build":
+# "build" is referenced by the shipped workflows and its derived shape is
+# pinned, so the richer pattern takes its own name rather than reshaping
+# somebody else's authored corpus by changing its vocabulary underneath.
+#
+# The artifact and its signature live INSIDE the closure, and so does the gate.
+# A platform engineer who subscribes to a build wants the thing that was built,
+# the proof it is theirs, and the verdict — as one delivery. The build is not
+# finished until it has passed policy.
+group: sol-duara
+author: dsanyika
+expression: build-gated
+description: >
+  A CI build with unit cases reported individually, the packaged and signed
+  artifact, and a blocking policy gate, all closed by build.finished.
+produces:
+  - event: dev.cdevents.build.started.0.3.0
+  - event: dev.cdevents.testsuiterun.started.0.3.0
+  - event: dev.cdevents.testcaserun.started.0.3.0
+  - event: dev.cdevents.testcaserun.finished.0.3.0
+  - event: dev.cdevents.testsuiterun.finished.0.3.0
+  - event: dev.cdevents.artifact.packaged.0.3.0
+  - event: dev.cdevents.artifact.signed.0.3.0
+  - event: dev.cdevents.artifact.published.0.3.0
+  - event: com.solduara.policy.gate.0.1.0
+  - event: dev.cdevents.build.finished.0.3.0

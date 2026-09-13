@@ -1,0 +1,12 @@
+workflow:
+  id: payments-deploy
+  group: sar-app-payments-devops
+  author: grace-owens
+  name: Payments Deploy Pipeline
+  cdrus: {version: 0.1.0}
+  defaults: {timeout_ms: 1800000}
+  produces:
+    - event: dev.cdevents.pipelinerun.started
+    - expression: sar-app-compliance/lena-fisher/attestation
+    - event: dev.cdevents.pipelinerun.finished
+      as: deploy-done

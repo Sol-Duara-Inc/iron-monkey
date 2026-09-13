@@ -28,6 +28,7 @@ export function serveCommand(): Command {
     .option('--config <path>', 'default Iron Monkey config for triggered runs')
     .option('--bus <name>', 'default bus for triggered runs')
     .option('--workflow-root <dir>', 'restrict triggered workflows to paths inside this directory')
+    .option('--catalog <dir>', 'catalog directory for catalog:<id> triggers')
     .option(
       '--idle-timeout <ms>',
       'quiet window before the daemon retires itself; 0 never retires (default 3600000)',
@@ -41,6 +42,8 @@ export function serveCommand(): Command {
     const { getExecutionStore } = await import('../../execution/store.js');
     const { startInquiryServer } = await import('../../execution/server.js');
     const { createControlPlane } = await import('../../execution/control.js');
+    const { resolveCatalogRoot } = await import('../../catalog/roots.js');
+    const catalogRoot = resolveCatalogRoot({ flag: options.catalog as string | undefined });
 
     const logger = createLogger({
       level: (options.logLevel as LogLevel | undefined) ?? 'info',
@@ -59,11 +62,13 @@ export function serveCommand(): Command {
       host: options.host as string | undefined,
       token: options.token as string | undefined,
       idleTimeoutMs: options.idleTimeout as number | undefined,
+      catalogDir: catalogRoot.dir,
       onIdleShutdown: () => resolveIdle(),
       control: createControlPlane({
         config: options.config as string | undefined,
         bus: options.bus as string | undefined,
         workflowRoot: options.workflowRoot as string | undefined,
+        catalogDir: catalogRoot.dir,
         logLevel: options.logLevel as string | undefined,
         logFormat: options.logFormat as string | undefined,
       }),
