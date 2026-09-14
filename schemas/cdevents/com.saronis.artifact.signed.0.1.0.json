@@ -18,6 +18,7 @@
             }
           },
           "required": [
+            "artifactId",
             "signature"
           ],
           "type": "object"

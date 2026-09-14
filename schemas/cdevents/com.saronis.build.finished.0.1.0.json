@@ -39,10 +39,15 @@
             }
           },
           "required": [
+            "analysisId",
             "applicationName",
+            "artifactId",
+            "changeOrderNumber",
+            "costCenter",
             "environment",
             "pipelineExecutionId",
-            "tenantId"
+            "tenantId",
+            "verificationScore"
           ],
           "type": "object"
         },
