@@ -1,0 +1,26 @@
+{
+  "conduit": {
+    "url": "http://localhost:8080",
+    "tool": "iron-monkey"
+  },
+  "buses": {
+    "default": {
+      "type": "junction-box",
+      "url": "http://localhost:8080",
+      "events_path": "/api/v1/events",
+      "health_check": false,
+      "launch": false,
+      "expected_status": 202
+    }
+  },
+  "defaults": {
+    "source": "https://iron-monkey.example.com/"
+  },
+  "tools": {
+    "gke-prod": { "source": "https://gke.example.com/" },
+    "im-callback": { "source": "https://jenkins.example.com/" },
+    "jenkins-prod": { "source": "https://jenkins.example.com/" },
+    "security-scanner": { "source": "https://snyk.example.com/" },
+    "spinnaker-prod": { "source": "https://spinnaker.example.com/" }
+  }
+}

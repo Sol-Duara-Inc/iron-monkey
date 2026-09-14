@@ -226,8 +226,12 @@ function buildEvent(
   // them from the schema rather than the workflow means the lineage is
   // authored once, where the type is defined, and cannot drift per pitch.
   const lineage = (schema as { 'x-cdevents'?: { inherits?: unknown } })['x-cdevents']?.inherits;
+  // An EMPTY lineage means "this type is a root", and a root has no ancestors
+  // — so the key must be absent from the envelope, not present and empty. A
+  // receiver reads a declared-but-empty `inherits` as a lineage that names
+  // nothing, which matches no registered ancestry and is refused.
   const inherits =
-    Array.isArray(lineage) && lineage.every((u) => typeof u === 'string')
+    Array.isArray(lineage) && lineage.length > 0 && lineage.every((u) => typeof u === 'string')
       ? (lineage as string[])
       : undefined;
 
