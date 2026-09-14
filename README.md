@@ -52,53 +52,67 @@ A workflow is named either way: `catalog:<id>` reads it from the catalog, and
 anything else is a path you hand in. The two are equals — the only difference
 is eight characters.
 
-You supply the config, which says where events go and who this producer is:
+You supply the config, which says where events go and who this producer is.
+A working one ships at
+[`examples/conduit-test-compression.json`](examples/conduit-test-compression.json)
+— it points both the chain handshake and the event bus at a local Conduit:
 
-```yaml
-# iron-monkey.yaml
-buses:
-  default:
-    type: rabbitmq
-    url: amqp://localhost:5672
-    exchange: cdevents
-
-# Catalog workflows declare coordinates, not emitters. These name the producer
-# for any event that binds no tool or source of its own.
-defaults:
-  tool: jenkins-prod
-  source: https://jenkins.example.com/
+```json
+{
+  "conduit": { "url": "http://localhost:8080", "tool": "iron-monkey" },
+  "buses": {
+    "default": {
+      "type": "junction-box",
+      "url": "http://localhost:8080",
+      "events_path": "/api/v1/events",
+      "health_check": false,
+      "launch": false,
+      "expected_status": 202
+    }
+  },
+  "defaults": { "source": "https://iron-monkey.example.com/" }
+}
 ```
+
+`defaults` is the producer identity. Catalog workflows declare coordinates, not
+emitters, so they bind no tool or source of their own; this fills that in
+without editing the document, which is what lets a mirrored catalog stay
+byte-identical to the authority's copy.
+
+Named `iron-monkey.json` (or `.yaml`) in the working directory, it is picked up
+with no `--config` flag at all.
 
 ```bash
 # Validate, without connecting to any bus
-iron-monkey validate catalog:cdcon-2026-jenkins-spinnaker-demo --config ./iron-monkey.yaml
+iron-monkey validate catalog:cdcon-2026-jenkins-spinnaker-demo \
+  --config examples/conduit-test-compression.json
 
 # Dry-run: build and print the event manifest, do not emit
-iron-monkey dry-run catalog:cdcon-2026-jenkins-spinnaker-demo --no-conduit --bus default
+iron-monkey dry-run catalog:cdcon-2026-jenkins-spinnaker-demo --bus default
 
 # Same plan, deterministically
-iron-monkey dry-run catalog:cdcon-2026-jenkins-spinnaker-demo --no-conduit --bus default --seed 42
+iron-monkey dry-run catalog:cdcon-2026-jenkins-spinnaker-demo --bus default --seed 42
 
 # Pitch one workflow
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config ./iron-monkey.yaml --no-conduit --bus default
+  --config examples/conduit-test-compression.json --bus default
 
 # Pitch several simultaneously — catalog references and paths interleave freely
 iron-monkey run catalog:payments-deploy catalog:identity-deploy ./my-own.yaml \
-  --config ./iron-monkey.yaml --no-conduit --bus default
+  --config examples/conduit-test-compression.json --bus default
 
 # Pitch a full repertoire — per-workflow options, all thrown at once
-iron-monkey pitch --from ./chaos.yaml --config ./iron-monkey.yaml
+iron-monkey pitch --from ./chaos.yaml --config examples/conduit-test-compression.json
 
 # Pitch with failure injection (ids are `workflowEventId` values; see them with dry-run)
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config ./iron-monkey.yaml --no-conduit --bus default \
+  --config examples/conduit-test-compression.json --bus default \
   --inject missing:build-started \
   --inject late:service-deployed:10000
 
 # Save the manifest for auditing
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config ./iron-monkey.yaml --no-conduit --bus default \
+  --config examples/conduit-test-compression.json --bus default \
   --manifest-out run-$(date +%s).json
 ```
 
@@ -191,7 +205,7 @@ unaffected.
 ```bash
 # Run, then keep answering inquiries about it (read-only)
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config ./iron-monkey.yaml --no-conduit --bus default \
+  --config examples/conduit-test-compression.json --bus default \
   --inject missing:artifact-signed \
   --serve --inquiry-port 8137
 ```
@@ -228,7 +242,7 @@ driven from outside the process — start a run, withhold an event, ask what
 happened, take the endpoint away:
 
 ```bash
-iron-monkey serve --port 8137 --config ./iron-monkey.yaml --bus default
+iron-monkey serve --port 8137 --config examples/conduit-test-compression.json --bus default
 ```
 
 ```
@@ -429,10 +443,10 @@ Key points:
 Pass more than one workflow path to `run` and Iron Monkey pitches them all simultaneously. Each workflow gets its own bus connection, chain ID, and timing. One failure does not abort the others.
 
 ```bash
-iron-monkey run prod-payments-blue-green-cutover.yaml \
-               prod-auth-hotfix-fast-path.yaml \
-               prod-checkout-jenkins-spinnaker-canary.yaml \
-  --config local-rabbit.yaml --no-conduit --interval 1000
+iron-monkey run catalog:payments-deploy \
+               catalog:identity-deploy \
+               catalog:platform-svc-release \
+  --config examples/conduit-test-compression.json --interval 1000
 ```
 
 All workflows share the same flags. For per-workflow control use `pitch`.
@@ -463,7 +477,7 @@ pitches:
 ```
 
 ```bash
-iron-monkey pitch --from chaos.yaml --config local-rabbit.yaml
+iron-monkey pitch --from chaos.yaml --config examples/conduit-test-compression.json
 ```
 
 **Merge priority** (lowest → highest): `--config` / `--log-level` CLI flags → `shared` → per-pitch values.
@@ -658,9 +672,9 @@ Iron Monkey emits each spawned chain's events with its own `chainId`; the event 
 
 #### Chain IDs for sub-chains
 
-Every chain — main, blocking, and detached — gets its **own** chain ID, minted by Conduit in a single atomic batch register when a Conduit service is configured (and `--no-conduit` is not set). A local fallback URN is generated **only when no daemon answers** (unconfigured, unreachable, or timed out) so offline runs are never blocked; if a daemon answers unusably the run fails visibly (`ConduitAnsweredError`) rather than silently minting a non-UUID id that would exit reconciliation. Each sub-chain is registered under the name `<workflow>:<chainRef>` so it is individually addressable, and the `chainIdSource` (`conduit` / `bus` / `fallback`) is recorded on every chain in the manifest.
+Every chain — main, blocking, and detached — gets its **own** chain ID, minted by Conduit in one `GET /api/v1/chains?workflow=&tool=&execution=` handshake before any event is emitted (and `--no-conduit` is not set). Chain identifiers are server-minted: an event carrying an id the authority never issued is refused (`unknown chainId <id>: not issued by this authority`), so a locally-minted run is one Conduit has no record of. The handshake answers every chain of the run keyed by `chainRef`, with `root` naming the main line; if the producer and the daemon derive different chains the run fails **before** emission rather than minting fallbacks for the ones that did not match. A local fallback URN is generated **only when no daemon answers** so offline runs are never blocked, and it is announced loudly; if a daemon answers unusably the run fails visibly (`ConduitAnsweredError`). The `chainIdSource` (`conduit` / `bus` / `fallback`) is recorded on every chain in the manifest.
 
-> Sub-chains are acquired one call per chain today. The Proleptic Event Orchestrator protocol defines a single batch register (`POST /api/runs` with the whole run graph → a `chainRef`→`chainId` map); swapping it in changes only `acquireChainIds` in `src/chain/acquire.ts`.
+> Acquisition is one `GET /api/v1/chains` for the whole run, in `src/chain/handshake.ts`. It replaced a per-chain `/chainID` shim and then a batch `POST /api/runs`; the latter lives on operator-only routes a stock daemon does not bind, which is why the line-side handshake is the one a tool uses.
 
 ### Adding a new expression bundle
 
