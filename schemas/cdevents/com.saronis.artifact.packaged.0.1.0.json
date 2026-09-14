@@ -21,7 +21,9 @@
             }
           },
           "required": [
-            "change"
+            "artifactId",
+            "change",
+            "sbom"
           ],
           "type": "object"
         },

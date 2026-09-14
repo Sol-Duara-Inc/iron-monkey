@@ -27,9 +27,11 @@
             }
           },
           "required": [
+            "analysisId",
+            "applicationName",
             "artifactId",
             "environment",
-            "applicationName"
+            "verificationScore"
           ],
           "type": "object"
         },

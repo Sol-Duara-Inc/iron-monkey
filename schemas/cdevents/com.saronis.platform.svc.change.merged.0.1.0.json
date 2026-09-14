@@ -17,7 +17,10 @@
               "type": "string"
             }
           },
-          "required": [],
+          "required": [
+            "repository",
+            "reviewer"
+          ],
           "type": "object"
         },
         "id": {

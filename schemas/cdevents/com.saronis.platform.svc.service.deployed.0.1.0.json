@@ -33,9 +33,13 @@
             }
           },
           "required": [
+            "analysisId",
+            "applicationName",
             "artifactId",
             "environment",
-            "applicationName"
+            "repository",
+            "reviewer",
+            "verificationScore"
           ],
           "type": "object"
         },

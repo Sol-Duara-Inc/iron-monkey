@@ -30,8 +30,12 @@
             }
           },
           "required": [
+            "analysisId",
             "applicationName",
-            "pipelineExecutionId"
+            "artifactId",
+            "environment",
+            "pipelineExecutionId",
+            "verificationScore"
           ],
           "type": "object"
         },
