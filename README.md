@@ -367,6 +367,128 @@ General precedence: CLI args > environment variables > config file > built-in de
 
 ---
 
+## Emitting to Conduit
+
+Conduit's events door admits an emitter it can **name**, from an address the
+operator declared for the tool each event is bound to. Naming is an API key the
+Conduit operator issues; Iron Monkey carries it on every event.
+
+### 1. The operator issues the token
+
+On Conduit, not here. Inside the compose stack:
+
+```bash
+docker compose exec conduit conduitd users add \
+  -name iron-monkey -api-key <KEY> -config /etc/conduit/config.json
+```
+
+Outside compose:
+
+```bash
+conduitd users add -name iron-monkey -api-key <KEY> -config config.sql.json
+```
+
+`<KEY>` is any string the operator chooses — Conduit stores only its hash.
+Issuing a second key **adds** a credential; it does not replace the first.
+
+The token belongs to the operator and is **never committed**. It reaches Iron
+Monkey through the environment, and the config interpolates it:
+
+```bash
+export CONDUIT_TOKEN='<KEY>'
+```
+
+A `${VAR}` that is not set is a hard error at config load — the run stops
+before any request, rather than emitting un-named events.
+
+### 2. The bus carries it
+
+[`examples/emitting-to-conduit.json`](examples/emitting-to-conduit.json):
+
+```json
+{
+  "conduit": { "url": "http://localhost:8080", "token": "${CONDUIT_TOKEN}" },
+  "buses": {
+    "conduit": {
+      "type": "junction-box",
+      "url": "http://localhost:8080",
+      "events_path": "/api/v1/events",
+      "health_check": false,
+      "launch": false,
+      "expected_status": 202,
+      "headers": { "X-API-Key": "${CONDUIT_TOKEN}" }
+    }
+  }
+}
+```
+
+`headers` is attached to every event POST, so the key rides each arrival.
+Conduit accepts `X-API-Key: <token>` and `Authorization: Bearer <token>`
+identically — both resolve to the principal whose key hash matches.
+
+```bash
+iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
+  --config examples/emitting-to-conduit.json --bus conduit
+```
+
+`conduit.token` is separate: it is the bearer sent on chain registration and the
+chain handshake, not on events. Both may read the same variable.
+
+### 3. The operator declares the address
+
+Conduit admits an arrival only from an address inside the ranges declared for
+the tool that arrival is bound to — and the binding is the workflow
+**coordinate** it lands on, not anything Iron Monkey sends. In the Conduit
+config (`/etc/conduit/config.json` in compose):
+
+```json
+{ "tools": { "jenkins-prod": { "source_ranges": ["172.19.0.0/16"] } } }
+```
+
+A tool with **no** declared ranges admits any address, and its arrivals are
+marked source-unverified on Conduit's read model.
+
+The showcase workflow emits on behalf of `jenkins-prod`, `spinnaker-prod`,
+`gke-prod` and `security-scanner`, so Iron Monkey's address must sit inside the
+ranges declared for each of those, or they must declare none.
+
+Iron Monkey runs on the host, which the stack sees at the Docker gateway
+address. The shipped image is distroless — no shell, no `getent` — so read it
+from the network instead:
+
+```bash
+docker network inspect conduit-go_default \
+  --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+```
+
+### 4. What "not admitted" looks like
+
+Three answers mean the arrival did not land, and they are fixed in different
+places:
+
+| answer | meaning | fixed where |
+|---|---|---|
+| `401 {"error":"this surface requires an authenticated caller"}` | **no** credential reached the door — `headers` is missing or misspelled | **Iron Monkey side** |
+| `401 unauthorized` | a credential arrived that Conduit could not resolve — wrong key, or never issued | **Iron Monkey side** |
+| `403 {"error":"caller does not hold tool access"}` | the caller was named, but holds no access to the tool this coordinate binds to | **Conduit side** — the operator grants the principal access to that tool |
+| `{"accepted":false,"disposition":...,"reason":...}` with a 4xx or 503 | the caller was admitted and the arrival itself was refused — an undeclared field, a lineage mismatch, a chain id this authority never issued | **Conduit side** — the register, the schema, or the chain the event claims |
+
+An accepted arrival answers `202`, either `{"accepted":true,"disposition":...}`
+with `runId` and `chainId` when present, or `{"status":"held",...}` when the
+coordinate declares a wait floor.
+
+A `401` is the only one of these you fix here.
+
+**A wrong token fails earlier than the events door.** The chain handshake is
+optional-auth: it answers with no credential at all, but rejects one it cannot
+resolve. So a bad `CONDUIT_TOKEN` surfaces first as
+
+```
+Conduit refused the chain handshake for '<workflow>' as tool 'iron-monkey': HTTP 401 unauthorized
+```
+
+and no event is attempted. Fix the key, not the bus.
+
 ## Workflow YAML
 
 See [`catalog/cdcon-2026-anchored-release-showcase.workflow.yaml`](catalog/cdcon-2026-anchored-release-showcase.workflow.yaml) for a complete workflow exercising anchors, a detached chain and two blocking spawned chains.
