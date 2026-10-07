@@ -41,15 +41,15 @@ workflow:
   # code, and koinegen records that in its manifest strata; the engine reads
   # the parent from there. A namespace written in this file would be a third
   # party's account of somebody else's ancestry.
-  # PENCIL — a placeholder name, not a ruling. Rename freely.
-  #          Delete this line when the thing it names is real.
-  # platform-svc-controller does not exist yet: no station under
-  # koine-dsl/controllers/
-  # claims it, so this dispatch is a no-op until one ships. The declaration
-  # itself stays — a hello-world station is coming later.
+  # The station is koine-dsl/controllers/platform-svc-controller. It answers TWO
+  # of this graph's twenty-three arrivals — the merge and the deployment, the
+  # only two that carry this register — and lets the other twenty-one past.
+  # That is the demonstration, not a stub of one: a controller that reacted to
+  # everything would be the run tree restated, and what a platform team
+  # actually does is act at the one coordinate where acting matters.
   controller:
     name: platform-svc
-    namespace: com.saronis.platform.svc
+    namespace: com.saronis
 
   defaults:
     pipeline: platform-svc-release

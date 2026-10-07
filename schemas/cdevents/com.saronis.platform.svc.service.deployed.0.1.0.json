@@ -10,16 +10,36 @@
         "content": {
           "additionalProperties": false,
           "properties": {
+            "analysisId": {
+              "type": "string"
+            },
+            "applicationName": {
+              "type": "string"
+            },
             "artifactId": {
               "type": "string"
             },
             "environment": {
               "type": "object"
+            },
+            "repository": {
+              "type": "object"
+            },
+            "reviewer": {
+              "type": "string"
+            },
+            "verificationScore": {
+              "type": "integer"
             }
           },
           "required": [
+            "analysisId",
+            "applicationName",
             "artifactId",
-            "environment"
+            "environment",
+            "repository",
+            "reviewer",
+            "verificationScore"
           ],
           "type": "object"
         },
@@ -45,7 +65,8 @@
   "type": "object",
   "x-cdevents": {
     "inherits": [
-      "https://cdevents.dev/0.5.1/schema/service-deployed-event"
+      "https://cdevents.dev/0.5.1/schema/service-deployed-event",
+      "https://schemas.opsmx.com/service-deployed"
     ],
     "predicate": "deployed",
     "subject": "service",

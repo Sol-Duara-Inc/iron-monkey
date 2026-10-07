@@ -1,5 +1,5 @@
 {
-  "$id": "https://schema.saronis.app/artifact-signed",
+  "$id": "https://schemas.opsmx.com/service-deployed",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "context": {
@@ -10,16 +10,28 @@
         "content": {
           "additionalProperties": false,
           "properties": {
+            "analysisId": {
+              "type": "string"
+            },
+            "applicationName": {
+              "type": "string"
+            },
             "artifactId": {
               "type": "string"
             },
-            "signature": {
-              "type": "string"
+            "environment": {
+              "type": "object"
+            },
+            "verificationScore": {
+              "type": "integer"
             }
           },
           "required": [
+            "analysisId",
+            "applicationName",
             "artifactId",
-            "signature"
+            "environment",
+            "verificationScore"
           ],
           "type": "object"
         },
@@ -41,14 +53,14 @@
     "context",
     "subject"
   ],
-  "title": "com.saronis artifact.signed",
+  "title": "com.opsmx service.deployed",
   "type": "object",
   "x-cdevents": {
     "inherits": [
-      "https://cdevents.dev/0.5.1/schema/artifact-signed-event"
+      "https://cdevents.dev/0.5.1/schema/service-deployed-event"
     ],
-    "predicate": "signed",
-    "subject": "artifact",
-    "type": "com.saronis.artifact.signed.0.1.0"
+    "predicate": "deployed",
+    "subject": "service",
+    "type": "com.opsmx.service.deployed.0.1.0"
   }
 }

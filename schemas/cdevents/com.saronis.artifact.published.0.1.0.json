@@ -20,7 +20,11 @@
               "type": "string"
             }
           },
-          "required": [],
+          "required": [
+            "artifactId",
+            "sbom",
+            "user"
+          ],
           "type": "object"
         },
         "id": {

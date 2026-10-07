@@ -48,13 +48,18 @@
             }
           },
           "required": [
+            "analysisId",
             "applicationName",
+            "artifactId",
             "attestation",
             "changeOrderNumber",
             "controlId",
+            "costCenter",
             "environment",
             "pipelineExecutionId",
-            "tenantId"
+            "reviewer",
+            "tenantId",
+            "verificationScore"
           ],
           "type": "object"
         },
