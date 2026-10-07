@@ -8,8 +8,17 @@
  *
  * Rules:
  * - User-supplied values are never overwritten (workflow/bundle wins).
- * - Only fields marked `required` by the schema are synthesized; optional
- *   fields stay absent unless the user supplied them.
+ * - Top-level `subject.content` field selection mirrors Conduit's obligation
+ *   rule, keyed on the event type:
+ *     - `dev.cdevents.*` (the CDEvents commons): only fields marked `required`
+ *       by the schema are synthesized; optional fields stay absent unless the
+ *       user supplied them. In the commons, an optional field's absence carries
+ *       meaning, so fabricating a value would assert something untrue.
+ *     - any other namespace (e.g. `com.saronis.*`): every declared property is
+ *       synthesized, because Conduit obliges the full declared field set there.
+ *   Keying on the type string (not on a second `required` array) keeps the two
+ *   systems in agreement by construction. Nested objects always follow their
+ *   own `required` — Conduit's obligation is on top-level content keys alone.
  * - Synthesis is deterministic for a given `chainId + eventType + JSON pointer`
  *   so repeat runs with the same seed produce the same payloads.
  */
@@ -113,7 +122,17 @@ function walkObject(
     }
   }
 
-  for (const key of required) {
+  // Field selection mirrors Conduit's obligation rule, applied ONLY at the top
+  // level of content (`/subject/content`). For a non-commons event type Conduit
+  // obliges every declared field, so synthesize all of `props`; for the commons
+  // (and for every nested object, whatever the type) the obligation is the
+  // schema's own `required`. Sort the selected set so `synthesized` is
+  // deterministic regardless of declaration order.
+  const atContentRoot = pointer === '/subject/content';
+  const fillAllDeclared = atContentRoot && !ctx.eventType.startsWith('dev.cdevents.');
+  const selected = fillAllDeclared ? Object.keys(props) : required;
+
+  for (const key of [...selected].sort()) {
     if (out[key] !== undefined) continue;
     const sub = props[key];
     if (!sub) continue;
