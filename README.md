@@ -488,13 +488,15 @@ above declares.
 
 ### 4. What "not admitted" looks like
 
-Three answers mean the arrival did not land, and they are fixed in different
-places:
+These answers mean the arrival did not land, and they are fixed in different
+places. Note that `403` has two distinct causes — one about *who* is calling,
+one about *where from*:
 
 | answer | meaning | fixed where |
 |---|---|---|
 | `401 {"error":"this surface requires an authenticated caller"}` | **no** credential reached the door — `headers` is missing or misspelled | **Iron Monkey side** |
 | `401 unauthorized` | a credential arrived that Conduit could not resolve — wrong key, or never issued | **Iron Monkey side** |
+| `403 {"error":"caller does not hold tool access"}` | the caller was named, but holds no `tool.use` permission — the access map's first gate, checked before any address or coordinate. A deployment whose access map is empty skips this gate entirely, so it appears only where the map is enforced | **Conduit side** — the operator binds `tool.use` to the principal or a group it belongs to |
 | `403 {"accepted":false,"disposition":"rejected","reason":...}` | the caller was named, but the address it spoke from is outside the `source_ranges` declared for the tool this coordinate binds to; the coordinate stays waiting and the address is the evidence | **Conduit side** — the operator declares the range Iron Monkey speaks from for that tool (§3), or declares none |
 | `{"accepted":false,"disposition":...,"reason":...}` with a 4xx or 503 | the caller was admitted and the arrival itself was refused — an undeclared field, a lineage mismatch, a chain id this authority never issued | **Conduit side** — the register, the schema, or the chain the event claims |
 
