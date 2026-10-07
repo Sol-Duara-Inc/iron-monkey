@@ -466,25 +466,38 @@ The showcase workflow emits on behalf of `jenkins-prod`, `spinnaker-prod`,
 `gke-prod` and `security-scanner`, so Iron Monkey's address must sit inside the
 ranges declared for each of those, or they must declare none.
 
-Iron Monkey runs on the host, which the stack sees at the Docker gateway
-address. The shipped image is distroless — no shell, no `getent` — so read it
-from the network instead:
+Run on the host, Iron Monkey is seen by the stack at the Docker gateway
+address. The shipped Conduit image is distroless — no shell, no `getent` — so
+read it from the network instead:
 
 ```bash
 docker network inspect conduit-go_default \
   --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
 ```
 
+Run as the stack's own `iron-monkey` service (§5), Iron Monkey is a container
+on that network, and the range to declare is the network's subnet:
+
+```bash
+docker network inspect conduit-go_default \
+  --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+```
+
+which prints `172.19.0.0/16` on a default install — the value the example
+above declares.
+
 ### 4. What "not admitted" looks like
 
-Three answers mean the arrival did not land, and they are fixed in different
-places:
+These answers mean the arrival did not land, and they are fixed in different
+places. Note that `403` has two distinct causes — one about *who* is calling,
+one about *where from*:
 
 | answer | meaning | fixed where |
 |---|---|---|
 | `401 {"error":"this surface requires an authenticated caller"}` | **no** credential reached the door — `headers` is missing or misspelled | **Iron Monkey side** |
 | `401 unauthorized` | a credential arrived that Conduit could not resolve — wrong key, or never issued | **Iron Monkey side** |
-| `403 {"error":"caller does not hold tool access"}` | the caller was named, but holds no access to the tool this coordinate binds to | **Conduit side** — the operator grants the principal access to that tool |
+| `403 {"error":"caller does not hold tool access"}` | the caller was named, but holds no `tool.use` permission — the access map's first gate, checked before any address or coordinate. A deployment whose access map is empty skips this gate entirely, so it appears only where the map is enforced | **Conduit side** — the operator binds `tool.use` to the principal or a group it belongs to |
+| `403 {"accepted":false,"disposition":"rejected","reason":...}` | the caller was named, but the address it spoke from is outside the `source_ranges` declared for the tool this coordinate binds to; the coordinate stays waiting and the address is the evidence | **Conduit side** — the operator declares the range Iron Monkey speaks from for that tool (§3), or declares none |
 | `{"accepted":false,"disposition":...,"reason":...}` with a 4xx or 503 | the caller was admitted and the arrival itself was refused — an undeclared field, a lineage mismatch, a chain id this authority never issued | **Conduit side** — the register, the schema, or the chain the event claims |
 
 An accepted arrival answers `202`, either `{"accepted":true,"disposition":...}`
@@ -502,6 +515,50 @@ Conduit refused the chain handshake for '<workflow>' as tool 'iron-monkey': HTTP
 ```
 
 and no event is attempted. Fix the key, not the bus.
+
+### 5. As the `iron-monkey` service of a Conduit compose stack
+
+The Conduit repository's `docker-compose.yml` builds this checkout, cloned
+beside it as `../iron-monkey`, into a service named `iron-monkey`: a Node 24
+image that runs
+
+```
+serve --host 0.0.0.0 --port 9099 --idle-timeout 0 --log-format text --config /app/iron-monkey.json
+```
+
+Everything in §1–§3 is then supplied by that stack, and nothing in this
+repository is edited for it:
+
+- **The bus config** is the stack's own `iron-monkey.json`, mounted read-only
+  at `/app/iron-monkey.json`. It is the example in §2 addressed from inside
+  the network: `conduit.url` and the bus `url` are `http://conduit:8080`, and
+  the token is `${IRON_MONKEY_CONDUIT_TOKEN}`.
+- **The token** is issued exactly as in §1 and written to the stack's
+  git-ignored `.env` as `CONDUIT_TOKEN=<KEY>`; compose hands it to the service
+  as `IRON_MONKEY_CONDUIT_TOKEN`. With no token the service still answers
+  inquiries; a triggered run fails at its first event with `HTTP 401`.
+- **The catalog** is this checkout's `catalog/`, mounted read-only at
+  `/app/catalog`. A workflow file copied there is visible on the daemon's next
+  request — no rebuild, no restart — and `GET localhost:9099/api/catalog`
+  lists it as `catalog:<id>`.
+- **Conduit's side of the link** is `http://iron-monkey:9099`, the `base_url`
+  of the tool `iron-monkey` in the stack's config, which the `im-callback`
+  plugin asks when a coordinate's clock expires.
+
+Port 9099 is published on the host's loopback only, because the daemon runs
+without `--token` and its control plane starts runs. A run is started from the
+host:
+
+```bash
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"workflow":"catalog:platform-svc-release","interval":2000}' \
+  localhost:9099/api/executions
+```
+
+which answers `202 {"executionID":"<id>","workflowId":"platform-svc-release","status":"accepted"}`;
+`GET localhost:9099/api/executions/<id>` is the live record, and its
+`detail.runId` is the root chain id Conduit minted, readable at
+`GET localhost:8080/api/v1/runs/<runId>`.
 
 ## Workflow YAML
 
