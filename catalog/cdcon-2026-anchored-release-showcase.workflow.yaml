@@ -45,7 +45,7 @@ workflow:
 
   controller:
     name: saronis
-    namespace: com.saronis.compliance
+    namespace: com.saronis
 
   defaults:
     pipeline: anchored-release
