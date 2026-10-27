@@ -191,6 +191,23 @@ describe('JunctionBoxBus.emit', () => {
     expect(JSON.parse(call.init!.body as string)).toEqual(payload);
   });
 
+  it('names the ADDRESS when the transport fails, not just "fetch failed"', async () => {
+    // `fetch` rejects with a bare TypeError whose cause is buried. The first
+    // run against a Conduit that is not up is exactly when an operator meets
+    // this, and three words with no URL is not a diagnosis.
+    const bus = new JunctionBoxBus('conduit', baseConfig);
+    await bus.connect();
+    fetchCalls.length = 0;
+    fetchMock.mockImplementationOnce(async () => {
+      throw new TypeError('fetch failed');
+    });
+
+    const payload = makePayload();
+    await expect(bus.emit(payload.context.type, payload.context.id, payload)).rejects.toThrow(
+      /Junction Box bus 'conduit' unreachable at http:\/\/localhost:3000\/api\/events: fetch failed/,
+    );
+  });
+
   it('honours a custom events_path', async () => {
     const bus = new JunctionBoxBus('jb', { ...baseConfig, events_path: '/v2/ingest' });
     await bus.connect();
