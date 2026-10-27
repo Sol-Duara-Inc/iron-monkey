@@ -48,6 +48,16 @@ name. List it, then pitch one:
 iron-monkey catalog list
 ```
 
+The shipped config references `CONDUIT_TOKEN`, and an unset `${VAR}` is a hard
+error at load — deliberately, so a run cannot quietly emit un-named events. Set
+it before any command that takes `--config` (`catalog list` reads no config and
+needs nothing). Any value will do until you actually emit; only `run` and
+`pitch` send it:
+
+```bash
+export CONDUIT_TOKEN=unused
+```
+
 A workflow is named either way: `catalog:<id>` reads it from the catalog, and
 anything else is a path you hand in. The two are equals — the only difference
 is eight characters.
@@ -59,20 +69,23 @@ A working one ships at
 
 ```json
 {
-  "conduit": { "url": "http://localhost:8080", "tool": "iron-monkey" },
+  "conduit": { "url": "http://localhost:8080", "token": "${CONDUIT_TOKEN}" },
   "buses": {
     "default": {
       "type": "junction-box",
       "url": "http://localhost:8080",
       "events_path": "/api/v1/events",
-      "health_check": false,
-      "launch": false,
-      "expected_status": 202
+      "expected_status": 202,
+      "headers": { "X-API-Key": "${CONDUIT_TOKEN}" }
     }
   },
   "defaults": { "source": "https://iron-monkey.example.com/" }
 }
 ```
+
+Abridged — the file also names the five `tools` the catalog's coordinates bind
+to. `headers` is what puts the operator's token on every event; `conduit.token`
+is the bearer for the handshake. Both read the same variable.
 
 `defaults` is the producer identity. Catalog workflows declare coordinates, not
 emitters, so they bind no tool or source of their own; this fills that in
