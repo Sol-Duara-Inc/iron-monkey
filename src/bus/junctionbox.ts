@@ -23,6 +23,22 @@ import type { JunctionBoxBusConfig } from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
 import type { Bus, BusInspectResult, BusPurgeOptions } from './interface.js';
 
+/**
+ * Wraps a transport failure so it names the address it could not reach.
+ *
+ * `fetch` rejects with a bare `TypeError: fetch failed` whose cause is buried,
+ * which reaches an operator as three words and no URL — and the first run
+ * against a Conduit that is not up is exactly when that happens. The health
+ * check already said this properly; every other call deserves the same.
+ */
+async function reach(url: string, init: RequestInit, what: string): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    throw new Error(`${what} unreachable at ${url}: ${(err as Error).message}`);
+  }
+}
+
 /** Junction Box implementation of the {@link Bus} interface. */
 export class JunctionBoxBus implements Bus {
   private name: string;
@@ -127,12 +143,16 @@ export class JunctionBoxBus implements Bus {
     const path = this.config.events_path ?? '/api/events';
     const url = `${this.baseUrl()}${path}`;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...this.headers() },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10000),
-    });
+    const res = await reach(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.headers() },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000),
+      },
+      `Junction Box bus '${this.name}'`,
+    );
     const bodyText = await res.text();
     if (res.status !== expected) {
       logger.warn(
@@ -155,7 +175,7 @@ export class JunctionBoxBus implements Bus {
   /** Calls `GET /api/observatory` and returns the parsed body for diagnostics. */
   async inspect(): Promise<BusInspectResult> {
     const url = `${this.baseUrl()}/api/observatory`;
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await reach(url, { headers: this.headers() }, 'Junction Box');
     const bodyText = await res.text();
     let parsed: unknown = bodyText;
     try {

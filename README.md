@@ -54,7 +54,7 @@ is eight characters.
 
 You supply the config, which says where events go and who this producer is.
 A working one ships at
-[`examples/conduit-test-compression.json`](examples/conduit-test-compression.json)
+[`examples/emitting-to-conduit.json`](examples/emitting-to-conduit.json)
 — it points both the chain handshake and the event bus at a local Conduit:
 
 ```json
@@ -85,7 +85,7 @@ with no `--config` flag at all.
 ```bash
 # Validate, without connecting to any bus
 iron-monkey validate catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config examples/conduit-test-compression.json
+  --config examples/emitting-to-conduit.json
 
 # Dry-run: build and print the event manifest, do not emit
 iron-monkey dry-run catalog:cdcon-2026-jenkins-spinnaker-demo --bus default
@@ -95,24 +95,24 @@ iron-monkey dry-run catalog:cdcon-2026-jenkins-spinnaker-demo --bus default --se
 
 # Pitch one workflow
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config examples/conduit-test-compression.json --bus default
+  --config examples/emitting-to-conduit.json --bus default
 
 # Pitch several simultaneously — catalog references and paths interleave freely
 iron-monkey run catalog:payments-deploy catalog:identity-deploy ./my-own.yaml \
-  --config examples/conduit-test-compression.json --bus default
+  --config examples/emitting-to-conduit.json --bus default
 
 # Pitch a full repertoire — per-workflow options, all thrown at once
-iron-monkey pitch --from ./chaos.yaml --config examples/conduit-test-compression.json
+iron-monkey pitch --from ./chaos.yaml --config examples/emitting-to-conduit.json
 
 # Pitch with failure injection (ids are `workflowEventId` values; see them with dry-run)
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config examples/conduit-test-compression.json --bus default \
+  --config examples/emitting-to-conduit.json --bus default \
   --inject missing:build-started \
   --inject late:service-deployed:10000
 
 # Save the manifest for auditing
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config examples/conduit-test-compression.json --bus default \
+  --config examples/emitting-to-conduit.json --bus default \
   --manifest-out run-$(date +%s).json
 ```
 
@@ -205,7 +205,7 @@ unaffected.
 ```bash
 # Run, then keep answering inquiries about it (read-only)
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config examples/conduit-test-compression.json --bus default \
+  --config examples/emitting-to-conduit.json --bus default \
   --inject missing:artifact-signed \
   --serve --inquiry-port 8137
 ```
@@ -242,7 +242,7 @@ driven from outside the process — start a run, withhold an event, ask what
 happened, take the endpoint away:
 
 ```bash
-iron-monkey serve --port 8137 --config examples/conduit-test-compression.json --bus default
+iron-monkey serve --port 8137 --config examples/emitting-to-conduit.json --bus default
 ```
 
 ```
@@ -442,7 +442,7 @@ identically — both resolve to the principal whose key hash matches.
 
 ```bash
 iron-monkey run catalog:cdcon-2026-jenkins-spinnaker-demo \
-  --config examples/emitting-to-conduit.json --bus conduit
+  --config examples/emitting-to-conduit.json
 ```
 
 `conduit.token` is separate: it is the bearer sent on chain registration and the
@@ -623,7 +623,7 @@ Pass more than one workflow path to `run` and Iron Monkey pitches them all simul
 iron-monkey run catalog:payments-deploy \
                catalog:identity-deploy \
                catalog:platform-svc-release \
-  --config examples/conduit-test-compression.json --interval 1000
+  --config examples/emitting-to-conduit.json --interval 1000
 ```
 
 All workflows share the same flags. For per-workflow control use `pitch`.
@@ -654,7 +654,7 @@ pitches:
 ```
 
 ```bash
-iron-monkey pitch --from chaos.yaml --config examples/conduit-test-compression.json
+iron-monkey pitch --from chaos.yaml --config examples/emitting-to-conduit.json
 ```
 
 **Merge priority** (lowest → highest): `--config` / `--log-level` CLI flags → `shared` → per-pitch values.
