@@ -511,9 +511,8 @@ places:
 | `403 {"accepted":false,"disposition":"rejected","reason":...}` | the caller was named, but the address it spoke from is outside the `source_ranges` declared for the tool this coordinate binds to; the coordinate stays waiting and the address is the evidence | **Conduit side** — the operator declares the range Iron Monkey speaks from for that tool (§3), or declares none |
 | `{"accepted":false,"disposition":...,"reason":...}` with a 4xx or 503 | the caller was admitted and the arrival itself was refused — an undeclared field, a lineage mismatch, a chain id this authority never issued | **Conduit side** — the register, the schema, or the chain the event claims |
 
-An accepted arrival answers `202`, either `{"accepted":true,"disposition":...}`
-with `runId` and `chainId` when present, or `{"status":"held",...}` when the
-coordinate declares a wait floor.
+An accepted arrival answers `202 {"accepted":true,"workflowId":"...","chainId":"..."}`
+and nothing else.
 
 A `401` is the only one of these you fix here.
 
@@ -862,7 +861,7 @@ Iron Monkey emits each spawned chain's events with its own `chainId`; the event 
 
 #### Chain IDs for sub-chains
 
-Every chain — main, blocking, and detached — gets its **own** chain ID, minted by Conduit in one `GET /api/v1/chains?workflow=&tool=&execution=` handshake before any event is emitted (and `--no-conduit` is not set). Chain identifiers are server-minted: an event carrying an id the authority never issued is refused (`unknown chainId <id>: not issued by this authority`), so a locally-minted run is one Conduit has no record of. The handshake answers every chain of the run keyed by `chainRef`, with `root` naming the main line; if the producer and the daemon derive different chains the run fails **before** emission rather than minting fallbacks for the ones that did not match. A local fallback URN is generated **only when no daemon answers** so offline runs are never blocked, and it is announced loudly; if a daemon answers unusably the run fails visibly (`ConduitAnsweredError`). The `chainIdSource` (`conduit` / `bus` / `fallback`) is recorded on every chain in the manifest.
+Every chain — main, blocking, and detached — gets its **own** chain ID, minted by Conduit in one `GET /api/v1/chains?workflow=&tool=&execution=` handshake before any event is emitted (and `--no-conduit` is not set). Chain identifiers are server-minted. An event carrying an id the authority never issued is not turned away at the door: the door keeps it, and the consumer refuses it at placement with that same reason — `unknown chainId <id>: not issued by this authority` — recorded against the arrival. The handshake is still what makes a locally-minted run one Conduit has no record of. The handshake answers every chain of the run keyed by `chainRef`, with `root` naming the main line; if the producer and the daemon derive different chains the run fails **before** emission rather than minting fallbacks for the ones that did not match. A local fallback URN is generated **only when no daemon answers** so offline runs are never blocked, and it is announced loudly; if a daemon answers unusably the run fails visibly (`ConduitAnsweredError`). The `chainIdSource` (`conduit` / `bus` / `fallback`) is recorded on every chain in the manifest.
 
 > Acquisition is one `GET /api/v1/chains` for the whole run, in `src/chain/handshake.ts`. It replaced a per-chain `/chainID` shim and then a batch `POST /api/runs`; the latter lives on operator-only routes a stock daemon does not bind, which is why the line-side handshake is the one a tool uses.
 
@@ -950,9 +949,10 @@ Every event Iron Monkey emits follows the CDEvents 0.6.0-draft envelope:
     "source": "<tool-source-uri>",
     "type": "dev.cdevents.<noun>.<verb>.<version>",
     "timestamp": "<iso-8601>",
+    "workflowId": "<workflow-id>",
     "chainId": "<uuid-or-fallback-urn>",
     "links": [
-      { "type": "PATH", "target": "<previous-event-id>" }
+      { "linkType": "PATH", "from": { "contextId": "<previous-event-id>" } }
     ]
   },
   "subject": {
@@ -963,6 +963,8 @@ Every event Iron Monkey emits follows the CDEvents 0.6.0-draft envelope:
 ```
 
 `context.specversion` is always `"0.6.0-draft"`. Each of the 45 bundled event types carries its own version suffix, as defined by the CDEvents vocabulary.
+
+`context.workflowId` and `context.chainId` are the paired identifiers of our own links proposal, and **both ride every event**. The workflow id is how a tool says which workflow it is running — the same identifier it makes its initial query with — and carrying it on the event as well means an arrival can be identified from the arrival alone, by a consumer that cannot hold context from a webhook it has no reason to trust. An event identifying no workflow is `unprocessable`.
 
 `context.links` is a plain array of link objects following the [CDEvents 0.6.0 embedded-link spec](https://github.com/cdevents/spec/blob/main/links.md). The first event in a chain has no `links` entry. Subsequent events carry a `PATH` link pointing back to the immediately preceding event:
 

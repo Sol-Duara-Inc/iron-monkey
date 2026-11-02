@@ -18,7 +18,9 @@
         },
         "type": {
           "type": "string",
-          "enum": ["dev.cdevents.testsuiterun.finished.0.3.0"],
+          "enum": [
+            "dev.cdevents.testsuiterun.finished.0.3.0"
+          ],
           "default": "dev.cdevents.testsuiterun.finished.0.3.0"
         },
         "timestamp": {
@@ -34,13 +36,23 @@
           "type": "string",
           "minLength": 1
         },
+        "workflowId": {
+          "type": "string",
+          "minLength": 1
+        },
         "links": {
           "$ref": "links/embeddedlinksarray"
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["specversion", "id", "source", "type", "timestamp"]
+      "required": [
+        "specversion",
+        "id",
+        "source",
+        "type",
+        "timestamp"
+      ]
     },
     "subject": {
       "properties": {
@@ -67,12 +79,16 @@
               },
               "additionalProperties": false,
               "type": "object",
-              "required": ["id"]
+              "required": [
+                "id"
+              ]
             },
             "testSuite": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["id"],
+              "required": [
+                "id"
+              ],
               "properties": {
                 "id": {
                   "type": "string",
@@ -92,11 +108,21 @@
             },
             "outcome": {
               "type": "string",
-              "enum": ["success", "failure", "cancel", "error"]
+              "enum": [
+                "success",
+                "failure",
+                "cancel",
+                "error"
+              ]
             },
             "severity": {
               "type": "string",
-              "enum": ["low", "medium", "high", "critical"]
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ]
             },
             "reason": {
               "type": "string"
@@ -104,12 +130,18 @@
           },
           "additionalProperties": false,
           "type": "object",
-          "required": ["outcome", "environment"]
+          "required": [
+            "outcome",
+            "environment"
+          ]
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["id", "content"]
+      "required": [
+        "id",
+        "content"
+      ]
     },
     "customData": {
       "oneOf": [
@@ -128,5 +160,8 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["context", "subject"]
+  "required": [
+    "context",
+    "subject"
+  ]
 }
