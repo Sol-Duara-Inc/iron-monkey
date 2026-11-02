@@ -104,6 +104,11 @@ interface BuildContext {
    * fatal rather than fallback-able: see {@link buildSpawns}.
    */
   chainIdSource: 'conduit' | 'bus' | 'fallback';
+  /**
+   * The workflow id of the run — the value handed to the chain handshake,
+   * stamped on every event so an arrival identifies its workflow by itself.
+   */
+  workflowId: string;
   synth: boolean;
   /**
    * Absolute planned emit time per `treePath`, produced by {@link planTiming}
@@ -242,6 +247,7 @@ function buildEvent(
       source: toolSource,
       type: wireType,
       timestamp,
+      workflowId: ctx.workflowId,
       chainId,
       // Spread, not `inherits: undefined` — the sanctioned CDEvents schemas
       // set `additionalProperties: false` on context, and a present-but-
@@ -499,6 +505,7 @@ export async function buildManifest(
     idAlloc: new IdAllocator(opts.seed),
     chainIds,
     chainIdSource,
+    workflowId: workflowMeta.id,
     synth: opts.synth !== false,
     plannedTimes,
     workflowName: workflowMeta.name,

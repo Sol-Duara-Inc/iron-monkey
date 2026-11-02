@@ -41,6 +41,10 @@
           "type": "string",
           "minLength": 1
         },
+        "workflowId": {
+          "type": "string",
+          "minLength": 1
+        },
         "links": {
           "$ref": "links/embeddedlinksarray"
         }

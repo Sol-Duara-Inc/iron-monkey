@@ -156,6 +156,16 @@ export interface CDEventContext {
   type: string;
   /** ISO 8601 timestamp of when the event was scheduled for emission. */
   timestamp: string;
+  /**
+   * The workflow this event belongs to — a member of our own links proposal,
+   * beside `chainId`, and mandatory on every arrival.
+   *
+   * It is how a tool says WHICH workflow it is running, which is the same
+   * identifier it makes its initial query with. Carrying it on the event as
+   * well means a consumer that cannot hold context from a webhook it has no
+   * reason to trust can still identify the arrival from the arrival alone.
+   */
+  workflowId: string;
   /** Proleptic chain ID correlating all events in a workflow run. */
   chainId?: string;
   /**

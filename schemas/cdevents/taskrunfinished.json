@@ -37,6 +37,10 @@
           "type": "string",
           "minLength": 1
         },
+        "workflowId": {
+          "type": "string",
+          "minLength": 1
+        },
         "links": {
           "$ref": "links/embeddedlinksarray"
         }
@@ -91,7 +95,12 @@
             },
             "outcome": {
               "type": "string",
-              "enum": ["success", "failure", "cancel", "error"]
+              "enum": [
+                "success",
+                "failure",
+                "cancel",
+                "error"
+              ]
             },
             "errors": {
               "type": "string"

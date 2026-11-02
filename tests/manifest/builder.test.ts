@@ -101,6 +101,50 @@ describe('buildManifest', () => {
     expect(manifest.events[0].payload.context.specversion).toBe('0.6.0-draft');
   });
 
+  it('stamps context.workflowId on every event, main chain and sub-chains alike', async () => {
+    // Our links proposal pairs workflowId with chainId, and the events door
+    // refuses an arrival that identifies no workflow. It is also how a tool
+    // says WHICH workflow it is running — the same id it queries with — so an
+    // arrival can be identified from the arrival alone, by a consumer that
+    // cannot hold context from a webhook it has no reason to trust.
+    const wf = await validateWorkflow(
+      path.join(WORKFLOWS_DIR, 'cdcon-2026-anchored-release-showcase.workflow.yaml'),
+    );
+    const registry = loadExpressionRegistry(EXPRESSIONS_DIR);
+    const manifest = await buildManifest(
+      { id: wf.workflow.id, name: wf.workflow.name },
+      resolveChainTree(wf, registry),
+      { ...config, tools: {} },
+      { noConduit: true },
+    );
+
+    // The showcase carries sub-chains; an event on one of those identifies the
+    // same workflow as the main line, because it is the same run.
+    const every = [...manifest.events, ...(manifest.detachedChains ?? []).flatMap((c) => c.events)];
+    expect(every.length).toBeGreaterThan(manifest.events.length);
+    for (const e of every) {
+      expect(e.payload.context.workflowId).toBe('cdcon-2026-anchored-release-showcase');
+    }
+  });
+
+  it('declares workflowId in every sanctioned context schema, so it validates', async () => {
+    // The sanctioned context blocks set `additionalProperties: false`, so a
+    // member we emit but do not declare fails validation on every event. This
+    // guards the pairing itself: chainId without workflowId beside it is the
+    // drift to catch.
+    const { loadSchemasFromDir } = await import('../../src/schema/loader.js');
+    const schemas = await loadSchemasFromDir(SCHEMAS_DIR);
+    const missing: string[] = [];
+    for (const [type, schema] of schemas) {
+      const props = (
+        schema as { properties?: { context?: { properties?: Record<string, unknown> } } }
+      ).properties?.context?.properties;
+      if (props === undefined || props.chainId === undefined) continue;
+      if (props.workflowId === undefined) missing.push(type);
+    }
+    expect(missing).toEqual([]);
+  });
+
   it('emits CDEvents-spec PATH links on the second-and-later events', async () => {
     const manifest = await buildManifest(meta, twoEvents, config, { noConduit: true });
     const links = manifest.events[1].payload.context.links;
