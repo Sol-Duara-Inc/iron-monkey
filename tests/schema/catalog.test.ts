@@ -147,7 +147,17 @@ describe('compareVersions', () => {
 // The judge model: conduit-go's copy is canonical; this vendored mirror must
 // be byte-equal whenever the canonical repo is present. On drift, re-copy
 // from canonical — never edit the mirror to disagree.
-describe.skipIf(!existsSync(CANONICAL))('catalog sync-check (canonical: conduit-go)', () => {
+// Named explicitly — as CI's `mirrors` job does — the canonical copy MUST be
+// there: a checkout that never happened fails the gate instead of skipping it.
+// Only the developer-machine default may be absent.
+const required = Boolean(process.env.CONDUIT_GO_CATALOG);
+const present = existsSync(CANONICAL);
+
+describe.skipIf(!present && !required)('catalog sync-check (canonical: conduit-go)', () => {
+  it('finds the canonical catalog', () => {
+    expect(present, `CONDUIT_GO_CATALOG names ${CANONICAL}, which does not exist`).toBe(true);
+  });
+
   it('vendored catalog is byte-equal to canonical', () => {
     expect(readFileSync(VENDORED, 'utf-8')).toBe(readFileSync(CANONICAL, 'utf-8'));
   });

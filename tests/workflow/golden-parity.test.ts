@@ -101,8 +101,8 @@ describe('golden parity — IM derivation vs ratified chain sets', () => {
 });
 
 // ── mirror sync-check ─────────────────────────────────────────────────────────
-// Canonical home: conduit-go/pkg/cdrus/testdata. Runs only when that repo is
-// present (developer machines); CI without conduit-go skips. On drift the
+// Canonical home: conduit-go/pkg/cdrus/testdata. Runs on developer machines
+// that have the repo checked out, and in CI's `mirrors` job. On drift the
 // mechanical resolution is "canonical wins" — update this mirror, never edit
 // the mirror to disagree with canonical.
 
@@ -110,10 +110,20 @@ const CANONICAL = process.env.CONDUIT_GO_TESTDATA
   ? path.resolve(process.env.CONDUIT_GO_TESTDATA)
   : path.join(process.env.HOME ?? '', 'IdeaProjects/conduit-go/pkg/cdrus/testdata');
 
-describe.skipIf(!existsSync(CANONICAL))('golden mirror sync-check (canonical: conduit-go)', () => {
-  const entries = existsSync(CANONICAL) ? compareFixtureTrees(CANONICAL, SOURCES, GOLDENS) : [];
+// Named explicitly — as CI's `mirrors` job does — the canonical copy MUST be
+// there: a checkout that never happened fails the gate instead of skipping it.
+// Only the developer-machine default may be absent.
+const required = Boolean(process.env.CONDUIT_GO_TESTDATA);
+const present = existsSync(CANONICAL);
+
+describe.skipIf(!present && !required)('golden mirror sync-check (canonical: conduit-go)', () => {
+  const entries = present ? compareFixtureTrees(CANONICAL, SOURCES, GOLDENS) : [];
   const drift = (subset: typeof entries) =>
     subset.filter((e) => e.status !== 'identical').map((e) => `${e.file}: ${e.status}`);
+
+  it('finds the canonical testdata', () => {
+    expect(present, `CONDUIT_GO_TESTDATA names ${CANONICAL}, which does not exist`).toBe(true);
+  });
 
   it('mirrors every canonical source byte-for-byte', () => {
     const sources = entries.filter((e) => !e.file.startsWith('goldens/'));

@@ -29,15 +29,26 @@ const CANONICAL = process.env.CDRUS_SCHEMAS
   ? path.resolve(process.env.CDRUS_SCHEMAS)
   : path.join(process.env.HOME ?? '', 'IdeaProjects/cdrus/schemas');
 
+// Named explicitly — as CI's `mirrors` job does — the canonical copy MUST be
+// there: a checkout that never happened fails the gate instead of skipping it.
+// Only the developer-machine default may be absent.
+const required = Boolean(process.env.CDRUS_SCHEMAS);
 const present = existsSync(CANONICAL);
 
-describe.skipIf(!present)('CDrus grammar sync-check (canonical: Sol-Duara-Inc/cdrus)', () => {
-  it.each(PAIRS)('%s is byte-equal to canonical %s', (vendored, canonical) => {
-    expect(readFileSync(path.join(VENDORED, vendored), 'utf-8')).toBe(
-      readFileSync(path.join(CANONICAL, canonical), 'utf-8'),
-    );
-  });
-});
+describe.skipIf(!present && !required)(
+  'CDrus grammar sync-check (canonical: Sol-Duara-Inc/cdrus)',
+  () => {
+    it('finds the canonical schemas', () => {
+      expect(present, `CDRUS_SCHEMAS names ${CANONICAL}, which does not exist`).toBe(true);
+    });
+
+    it.each(PAIRS)('%s is byte-equal to canonical %s', (vendored, canonical) => {
+      expect(readFileSync(path.join(VENDORED, vendored), 'utf-8')).toBe(
+        readFileSync(path.join(CANONICAL, canonical), 'utf-8'),
+      );
+    });
+  },
+);
 
 // These run everywhere, canonical present or not: they pin the grammar
 // features IM was missing, so a future re-mirror that drops them fails here
