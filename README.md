@@ -322,7 +322,7 @@ it.
 > The grammar Iron Monkey validates against — `schemas/cdrus/workflow.schema.json`
 > and `schemas/cdrus/expression.schema.json` — is mirrored from
 > [Sol-Duara-Inc/cdrus](https://github.com/Sol-Duara-Inc/cdrus), the canonical
-> home. A sync-check test fails if the mirror drifts; canonical wins.
+> home; canonical wins.
 
 ---
 
@@ -964,7 +964,7 @@ Every event Iron Monkey emits follows the CDEvents 0.6.0-draft envelope:
 
 `context.specversion` is always `"0.6.0-draft"`. Each of the 45 bundled event types carries its own version suffix, as defined by the CDEvents vocabulary.
 
-`context.workflowId` and `context.chainId` are the paired identifiers of our own links proposal, and **both ride every event**. The workflow id is how a tool says which workflow it is running — the same identifier it makes its initial query with — and carrying it on the event as well means an arrival can be identified from the arrival alone, by a consumer that cannot hold context from a webhook it has no reason to trust. An event identifying no workflow is `unprocessable`.
+`context.workflowId` and `context.chainId` are paired, and **both ride every event**. `chainId` is CDEvents vocabulary; `workflowId` is Iron Monkey's addition — the one context member the bundled schemas declare that the upstream `cdevents/spec` schemas do not. The workflow id is how a tool says which workflow it is running — the same identifier it makes its initial query with — and carrying it on the event as well means an arrival can be identified from the arrival alone, by a consumer that cannot hold context from a webhook it has no reason to trust. An event identifying no workflow is `unprocessable`.
 
 `context.links` is a plain array of link objects following the [CDEvents 0.6.0 embedded-link spec](https://github.com/cdevents/spec/blob/main/links.md). The first event in a chain has no `links` entry. Subsequent events carry a `PATH` link pointing back to the immediately preceding event:
 

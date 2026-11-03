@@ -50,6 +50,22 @@
           "minLength": 1,
           "format": "uri",
           "examples": ["https://cdevents.dev/0.6.0-draft/schema/event-base-event"]
+        },
+        "chainId": {
+          "type": "string",
+          "description": "Identifier of the chain this event belongs to — the primary route. Server-minted by the authority; a producer carries back the value the chain handshake handed it. Paired with workflowId: an event carries one or both.",
+          "minLength": 1,
+          "examples": ["0190f8c2-6d4a-7b31-a2e5-9c1f4d8e0071"]
+        },
+        "workflowId": {
+          "type": "string",
+          "description": "Identifier of the workflow this run was built from. The producer states it on every event so a receiver can identify the run from the arrival alone, without holding context from an earlier call. Paired with chainId: an event carries one or both.",
+          "minLength": 1,
+          "examples": ["platform-svc-release"]
+        },
+        "links": {
+          "$ref": "links/embeddedlinksarray",
+          "description": "Embedded context links — PATH, END and RELATION. The relative $ref resolves against this schema's $id, to the same links/embeddedlinksarray subschema every per-event schema references."
         }
       }
     },
@@ -102,7 +118,9 @@
         "source": "example.com/source",
         "type": "dev.cdevents.event.base.0.1.0-draft",
         "timestamp": "2025-07-03T21:47:00.000Z",
-        "schemaUri": "https://cdevents.dev/0.6.0-draft/schema/event-base-event"
+        "schemaUri": "https://cdevents.dev/0.6.0-draft/schema/event-base-event",
+        "chainId": "0190f8c2-6d4a-7b31-a2e5-9c1f4d8e0071",
+        "workflowId": "platform-svc-release"
       },
       "subject": {
         "id": "subject-123",

@@ -102,8 +102,9 @@ describe('buildManifest', () => {
   });
 
   it('stamps context.workflowId on every event, main chain and sub-chains alike', async () => {
-    // Our links proposal pairs workflowId with chainId, and the events door
-    // refuses an arrival that identifies no workflow. It is also how a tool
+    // workflowId rides beside chainId (CDEvents vocabulary; workflowId is our
+    // addition), and the events door refuses an arrival that identifies no
+    // workflow. It is also how a tool
     // says WHICH workflow it is running — the same id it queries with — so an
     // arrival can be identified from the arrival alone, by a consumer that
     // cannot hold context from a webhook it has no reason to trust.
