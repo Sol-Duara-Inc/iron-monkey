@@ -359,7 +359,7 @@ buses:
     # health_check: true        # GET /health preflight (default)
     # launch: true              # POST /api/launch (default)
     # events_path: /api/events  # path used for per-event POSTs
-    # expected_status: 202      # HTTP status that signals "accepted"
+    # expected_status: 202      # HTTP status that signals "accepted" (201 always does too)
     # headers:                  # forwarded on every request
     #   Authorization: Bearer ${JB_TOKEN}
 
@@ -511,8 +511,13 @@ places:
 | `403 {"accepted":false,"disposition":"rejected","reason":...}` | the caller was named, but the address it spoke from is outside the `source_ranges` declared for the tool this coordinate binds to; the coordinate stays waiting and the address is the evidence | **Conduit side** — the operator declares the range Iron Monkey speaks from for that tool (§3), or declares none |
 | `{"accepted":false,"disposition":...,"reason":...}` with a 4xx or 503 | the caller was admitted and the arrival itself was refused — an undeclared field, a lineage mismatch, a chain id this authority never issued | **Conduit side** — the register, the schema, or the chain the event claims |
 
-An accepted arrival answers `202 {"accepted":true,"workflowId":"...","chainId":"..."}`
-and nothing else.
+An accepted arrival answers one of two ways. The **first** event of a run answers
+`201 {"accepted":true,"workflowId":"...","chainId":"...","chains":{...}}` — the
+chain it landed on, and in `chains` the run's unused sub-chains keyed by chain
+ref. Every later event answers `202 {"accepted":true,"workflowId":"...","chainId":"..."}`.
+Iron Monkey takes `201` and the bus's `expected_status` (default `202`) as
+success. It reads nothing from the `201` body: its chain ids come from the
+handshake it made before emitting.
 
 A `401` is the only one of these you fix here.
 
