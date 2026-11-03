@@ -157,8 +157,9 @@ export interface CDEventContext {
   /** ISO 8601 timestamp of when the event was scheduled for emission. */
   timestamp: string;
   /**
-   * The workflow this event belongs to — a member of our own links proposal,
-   * beside `chainId`, and mandatory on every arrival.
+   * The workflow this event belongs to — paired with `chainId` and mandatory on
+   * every arrival. Unlike `chainId`, which is CDEvents vocabulary, this member is
+   * ours: the upstream `cdevents/spec` schemas do not declare it.
    *
    * It is how a tool says WHICH workflow it is running, which is the same
    * identifier it makes its initial query with. Carrying it on the event as

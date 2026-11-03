@@ -12,7 +12,7 @@ IRON_MONKEY_SCHEMAS=/path/to/my/schemas iron-monkey run workflow.yaml
 
 ## How schema lookup works
 
-The loader reads every `.json` file in the schemas directory at startup and indexes each one by the event type string found in `context.type.enum[0]`. Filenames are irrelevant to lookup — only the type enum inside the schema matters.
+The loader reads every `.json` file at the top level of the schemas directory at startup and indexes each one by its event type string: `x-cdevents.type` when the schema declares one (the vendor and layered `com.*` schemas do), otherwise `context.type.enum[0]` (the sanctioned `dev.cdevents.*` schemas). Filenames are irrelevant to lookup — only the type string inside the schema matters.
 
 So given a schema file containing:
 
@@ -45,7 +45,7 @@ servicepublished.json      →  dev.cdevents.service.published.0.3.0
 ...
 ```
 
-`baseevent.json` is a Conduit-specific base schema used for chainId validation and is not part of the per-event type lookup.
+`baseevent.json` is the base-event schema (`dev.cdevents.event.base.<major>.<minor>.<patch>`, optionally suffixed `-draft`). Its `context` declares the same members the 45 sanctioned per-event schemas do — `chainId`, `workflowId` and `links` beside the CDEvents members — because that block sets `additionalProperties: false` and would otherwise refuse them. `inherits` is not among them: the builder stamps it only on layered types, whose schemas leave `context` open. It is not part of the type lookup: it carries neither `x-cdevents.type` nor a one-value `context.type.enum` (it constrains the type with a `pattern` instead), so the loader skips it and no emitted event is validated against it.
 
 ### Required subject.content fields by event type
 
@@ -69,13 +69,13 @@ Event 'build-started' (type: dev.cdevents.build.started.0.3.0) failed schema val
   /context/source: must NOT have fewer than 1 characters
 ```
 
-All other bundled types have no required content fields. Schemas use `additionalProperties: false` so unknown fields will fail validation.
+The table lists the common ones, not all of them: many other sanctioned types, and most of the vendor and layered `com.*` types, require content fields too, and a schema's own `subject.properties.content.required` is authoritative. Iron Monkey synthesizes any required field the workflow leaves out; pass `--no-synth` to have validation fail on it instead. Every per-event schema sets `additionalProperties: false` on `subject.content`, and the sanctioned ones set it on `context` and `subject` as well, so an unknown field fails validation.
 
 ## Schema format
 
 Schemas must follow the CDEvents 0.6.0-draft shape and use **JSON Schema 2020-12** (`"$schema": "https://json-schema.org/draft/2020-12/schema"`):
 
-- `context` requires `specversion`, `id`, `source`, `type`, `timestamp`; `chainId`, `links`, `schemaUri` are optional
+- `context` requires `specversion`, `id`, `source`, `type`, `timestamp`; `chainId`, `workflowId`, `links`, `schemaUri` are optional. Iron Monkey stamps `chainId` and `workflowId` on every event, so a `context` that sets `additionalProperties: false` must declare both or it refuses every event the tool emits
 - `context.links` is an array of EMBEDDED link objects, referenced via `$ref: "links/embeddedlinksarray"` — Iron Monkey registers this definition with AJV automatically. It is a discriminated union on `linkType`: `PATH` (`from.contextId`), `END` (`end.contextId`), and `RELATION` (`linkKind` + `target.contextId`). `START` is deliberately not representable — per the links spec it is a stand-alone link, never embedded
 - `subject` requires `id` and `content`; `source` is optional; no `type` field on subject
 - `additionalProperties: false` on both `context` and `subject`
@@ -84,7 +84,7 @@ Schemas must follow the CDEvents 0.6.0-draft shape and use **JSON Schema 2020-12
 
 1. Get the schema from the [CDEvents spec repository](https://github.com/cdevents/spec) or author one following the shape above.
 2. Drop the file in `schemas/cdevents/` (any filename ending in `.json`).
-3. The type string inside the schema (`context.type.enum[0]`) must match the event type used in your workflow YAML.
+3. The type string inside the schema — `x-cdevents.type` if it declares one, otherwise `context.type.enum[0]` — must match the event type used in your workflow YAML.
 
 Iron Monkey picks it up automatically on next run — no registration step needed.
 
