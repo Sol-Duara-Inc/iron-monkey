@@ -22,7 +22,7 @@ import { getLogger } from '../logger/index.js';
 import { registerBusShutdown } from './shutdown.js';
 import type { JunctionBoxBusConfig } from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
-import type { Bus, BusInspectResult, BusPurgeOptions } from './interface.js';
+import type { Bus, BusInspectResult, BusPurgeOptions, EmitReceipt } from './interface.js';
 
 /**
  * Wraps a transport failure so it names the address it could not reach.
@@ -139,7 +139,7 @@ export class JunctionBoxBus implements Bus {
    * Nothing is read from a `201` body: this bus's chain ids come from the
    * handshake it already performed.
    */
-  async emit(eventType: string, eventId: string, payload: CDEventPayload): Promise<void> {
+  async emit(eventType: string, eventId: string, payload: CDEventPayload): Promise<EmitReceipt> {
     if (!this.connected) {
       throw new Error(`Junction Box bus '${this.name}' is not connected`);
     }
@@ -175,6 +175,7 @@ export class JunctionBoxBus implements Bus {
       );
     }
     logger.debug({ bus: this.name, eventId, eventType, status: res.status }, 'event POSTed');
+    return { status: res.status };
   }
 
   /** Calls `GET /api/observatory` and returns the parsed body for diagnostics. */

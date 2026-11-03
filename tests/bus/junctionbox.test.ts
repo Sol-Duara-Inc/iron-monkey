@@ -240,9 +240,9 @@ describe('JunctionBoxBus.emit', () => {
     await bus.connect();
     fetchMock.mockImplementationOnce(async () => mockResponse(200, '')); // would have been 202
     const payload = makePayload();
-    await expect(
-      bus.emit(payload.context.type, payload.context.id, payload),
-    ).resolves.toBeUndefined();
+    await expect(bus.emit(payload.context.type, payload.context.id, payload)).resolves.toEqual({
+      status: 200,
+    });
   });
 
   it('refuses to emit before connect()', async () => {
@@ -292,7 +292,8 @@ describe("JunctionBoxBus.emit — the events door's answers", () => {
     const debug = vi.spyOn(getLogger(), 'debug');
     const warn = vi.spyOn(getLogger(), 'warn');
 
-    await expect(emitAnswered(201, created)).resolves.toBeUndefined();
+    // Resolves with the door's answer, which the runner logs at info.
+    await expect(emitAnswered(201, created)).resolves.toEqual({ status: 201 });
 
     expect(debug).toHaveBeenCalledWith(
       expect.objectContaining({ bus: 'conduit', status: 201 }),
@@ -302,7 +303,7 @@ describe("JunctionBoxBus.emit — the events door's answers", () => {
   });
 
   it('takes 202 — any later event — as success', async () => {
-    await expect(emitAnswered(202, { accepted: true })).resolves.toBeUndefined();
+    await expect(emitAnswered(202, { accepted: true })).resolves.toEqual({ status: 202 });
   });
 
   it('still refuses a status that is neither 201 nor expected_status', async () => {

@@ -12,7 +12,7 @@ import { getLogger } from '../logger/index.js';
 import { registerBusShutdown } from './shutdown.js';
 import type { RabbitMQBusConfig } from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
-import type { Bus, BusInspectResult, BusPurgeOptions } from './interface.js';
+import type { Bus, BusInspectResult, BusPurgeOptions, EmitReceipt } from './interface.js';
 
 /**
  * RabbitMQ implementation of the {@link Bus} interface. Maintains a single
@@ -67,7 +67,7 @@ export class RabbitMQBus implements Bus {
    * @param payload - CDEvent payload serialised as JSON.
    * @throws {Error} If not connected.
    */
-  async emit(eventType: string, _eventId: string, payload: CDEventPayload): Promise<void> {
+  async emit(eventType: string, _eventId: string, payload: CDEventPayload): Promise<EmitReceipt> {
     if (!this.channel) throw new Error('RabbitMQ not connected');
 
     const exchange = this.config.exchange ?? 'cdevents';
@@ -79,6 +79,7 @@ export class RabbitMQBus implements Bus {
       contentType: 'application/json',
       persistent: true,
     });
+    return {};
   }
 
   /**

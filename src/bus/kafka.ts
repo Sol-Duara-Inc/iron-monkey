@@ -13,7 +13,7 @@ import { getLogger } from '../logger/index.js';
 import { registerBusShutdown } from './shutdown.js';
 import type { KafkaBusConfig } from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
-import type { Bus, BusInspectResult, BusPurgeOptions } from './interface.js';
+import type { Bus, BusInspectResult, BusPurgeOptions, EmitReceipt } from './interface.js';
 
 export class KafkaBus implements Bus {
   private name: string;
@@ -43,7 +43,7 @@ export class KafkaBus implements Bus {
     logger.info({ bus: this.name }, 'connected to Kafka');
   }
 
-  async emit(eventType: string, eventId: string, payload: CDEventPayload): Promise<void> {
+  async emit(eventType: string, eventId: string, payload: CDEventPayload): Promise<EmitReceipt> {
     if (!this.producer) throw new Error('Kafka not connected');
 
     const topic = this.config.topic ?? 'cdevents';
@@ -57,6 +57,7 @@ export class KafkaBus implements Bus {
         },
       ],
     });
+    return {};
   }
 
   async inspect(): Promise<BusInspectResult> {
