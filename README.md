@@ -322,7 +322,7 @@ it.
 > The grammar Iron Monkey validates against — `schemas/cdrus/workflow.schema.json`
 > and `schemas/cdrus/expression.schema.json` — is mirrored from
 > [Sol-Duara-Inc/cdrus](https://github.com/Sol-Duara-Inc/cdrus), the canonical
-> home. A sync-check test fails if the mirror drifts; canonical wins.
+> home; canonical wins.
 
 ---
 
