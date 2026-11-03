@@ -52,3 +52,74 @@ jobs:
       - run: npm run test:integration
         env:
           IRON_MONKEY_BUS_URL: amqp://localhost:5672
+
+  mirrors:
+    # The vendored CDrus grammar, catalog and goldens against their canonical
+    # homes, so drift fails CI instead of only a developer's laptop. Both homes
+    # are private: MIRROR_READ_TOKEN is a read-only token for Sol-Duara-Inc/cdrus
+    # and Sol-Duara-Inc/conduit-go. Naming the paths makes the gates required —
+    # a canonical copy that is missing fails them rather than skipping them.
+    runs-on: ubuntu-latest
+    env:
+      CDRUS_SCHEMAS: ${{ github.workspace }}/canonical/cdrus/schemas
+      CONDUIT_GO_CATALOG: ${{ github.workspace }}/canonical/conduit-go/pkg/cdrus/cdevents-catalog.json
+      CONDUIT_GO_TESTDATA: ${{ github.workspace }}/canonical/conduit-go/pkg/cdrus/testdata
+
+    steps:
+      - name: Require MIRROR_READ_TOKEN
+        env:
+          MIRROR_READ_TOKEN: ${{ secrets.MIRROR_READ_TOKEN }}
+        run: |
+          if [ -z "$MIRROR_READ_TOKEN" ]; then
+            echo "::error::MIRROR_READ_TOKEN is not set: the mirror sync-checks cannot read Sol-Duara-Inc/cdrus or Sol-Duara-Inc/conduit-go."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - name: Check out canonical CDrus grammar (Sol-Duara-Inc/cdrus, default branch)
+        uses: actions/checkout@v4
+        with:
+          repository: Sol-Duara-Inc/cdrus
+          token: ${{ secrets.MIRROR_READ_TOKEN }}
+          path: canonical/cdrus
+          sparse-checkout: schemas
+          persist-credentials: false
+      - name: Check out canonical catalog and goldens (Sol-Duara-Inc/conduit-go, default branch)
+        uses: actions/checkout@v4
+        with:
+          repository: Sol-Duara-Inc/conduit-go
+          token: ${{ secrets.MIRROR_READ_TOKEN }}
+          path: canonical/conduit-go
+          sparse-checkout: pkg/cdrus
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - run: npm ci
+      - name: Mirror sync-checks
+        run: >-
+          npx vitest run
+          tests/schema/cdrus-grammar-sync.test.ts
+          tests/schema/catalog.test.ts
+          tests/workflow/golden-parity.test.ts
+          --reporter=default --reporter=json --outputFile=mirrors.json
+      - name: Fail if any sync-check was skipped
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'fs';
+          const report = JSON.parse(readFileSync('mirrors.json', 'utf-8'));
+          const gates = ['CDrus grammar sync-check', 'catalog sync-check', 'golden mirror sync-check'];
+          const results = report.testResults.flatMap((f) => f.assertionResults);
+          let bad = false;
+          for (const gate of gates) {
+            const mine = results.filter((r) => r.ancestorTitles.some((t) => t.startsWith(gate)));
+            const passed = mine.filter((r) => r.status === 'passed').length;
+            console.log(`${gate}: ${passed}/${mine.length} passed`);
+            if (mine.length === 0 || passed !== mine.length) bad = true;
+          }
+          if (report.numPendingTests + report.numTodoTests > 0) bad = true;
+          if (bad) {
+            console.log('::error::a mirror sync-check did not run and pass; it must never be skipped in this job');
+            process.exit(1);
+          }
+          JS

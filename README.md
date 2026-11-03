@@ -142,7 +142,7 @@ iron-monkey inspect <bus-name>        Show queue/topic depth and bindings
 iron-monkey purge <bus-name>          Drain a queue / reset a topic (--confirm required)
 iron-monkey serve                     Run the daemon: trigger runs over HTTP and answer
                                       Conduit's expiry inquiries
-iron-monkey version                   Print version and exit
+iron-monkey version                   Print version and exit (also --version, -V)
 ```
 
 ### Common flags (`run` and `dry-run`)
@@ -322,7 +322,9 @@ it.
 > The grammar Iron Monkey validates against — `schemas/cdrus/workflow.schema.json`
 > and `schemas/cdrus/expression.schema.json` — is mirrored from
 > [Sol-Duara-Inc/cdrus](https://github.com/Sol-Duara-Inc/cdrus), the canonical
-> home; canonical wins.
+> home; canonical wins. A sync-check fails if the mirror drifts — in CI's
+> `mirrors` job on every push and pull request, and locally when the canonical
+> repo is checked out (see [Development](#development)).
 
 ---
 
@@ -1013,6 +1015,16 @@ npm run lint
 npm run typecheck
 npm run format:check      # Prettier — CI runs this; use `format` to fix in place
 ```
+
+The mirror sync-checks compare the vendored CDrus grammar, catalog and goldens
+byte-for-byte with their canonical homes (`Sol-Duara-Inc/cdrus` and
+`Sol-Duara-Inc/conduit-go`). `npm test` runs them when it finds those repos —
+at `~/IdeaProjects/cdrus` and `~/IdeaProjects/conduit-go` by default, or at the
+paths in `CDRUS_SCHEMAS`, `CONDUIT_GO_CATALOG` and `CONDUIT_GO_TESTDATA`. With
+neither, they skip. **Naming a path makes its check required**: a path that does
+not exist fails the check rather than skipping it, which is how CI's `mirrors`
+job guarantees they ran. That job reads both private repos with the
+`MIRROR_READ_TOKEN` repository secret.
 
 ---
 
