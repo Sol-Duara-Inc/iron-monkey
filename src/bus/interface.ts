@@ -35,6 +35,17 @@ export interface BusPurgeOptions {
  * Callers obtain an instance via {@link createBus} and interact only through
  * this interface, keeping emission logic decoupled from the underlying broker.
  */
+/**
+ * What a bus learned from publishing one event. An HTTP bus reports the status
+ * the receiver answered with — Conduit's events door answers a run's first
+ * event `201` and every later one `202`, and that difference is the only
+ * evidence of which answer it gave. A broker bus has no answer to report.
+ */
+export interface EmitReceipt {
+  /** The HTTP status the receiver answered with. Absent on broker buses. */
+  status?: number;
+}
+
 export interface Bus {
   /**
    * Establishes the connection to the broker. Must be called before
@@ -51,9 +62,10 @@ export interface Bus {
    *   key or topic discriminant.
    * @param eventId - The CDEvents `context.id` UUID for logging and tracing.
    * @param payload - The full CDEvent payload object to serialise and send.
+   * @returns What the receiver answered, where the transport has an answer.
    * @throws {Error} If the adapter is not connected or publication fails.
    */
-  emit(eventType: string, eventId: string, payload: CDEventPayload): Promise<void>;
+  emit(eventType: string, eventId: string, payload: CDEventPayload): Promise<EmitReceipt>;
 
   /**
    * Returns diagnostic information about the connected broker, such as queue

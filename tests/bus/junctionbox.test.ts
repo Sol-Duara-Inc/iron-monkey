@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { JunctionBoxBus } from '../../src/bus/junctionbox.js';
 import type { JunctionBoxBusConfig } from '../../src/config/types.js';
 import type { CDEventPayload } from '../../src/manifest/types.js';
+import { getLogger } from '../../src/logger/index.js';
 
 // ── fetch mock plumbing ──────────────────────────────────────────────────────
 
@@ -239,9 +240,9 @@ describe('JunctionBoxBus.emit', () => {
     await bus.connect();
     fetchMock.mockImplementationOnce(async () => mockResponse(200, '')); // would have been 202
     const payload = makePayload();
-    await expect(
-      bus.emit(payload.context.type, payload.context.id, payload),
-    ).resolves.toBeUndefined();
+    await expect(bus.emit(payload.context.type, payload.context.id, payload)).resolves.toEqual({
+      status: 200,
+    });
   });
 
   it('refuses to emit before connect()', async () => {
@@ -249,6 +250,65 @@ describe('JunctionBoxBus.emit', () => {
     const payload = makePayload();
     await expect(bus.emit(payload.context.type, payload.context.id, payload)).rejects.toThrow(
       /not connected/,
+    );
+  });
+});
+
+// Conduit's events door answers a run's FIRST event `201 Created`, carrying the
+// chain it landed on and the unused sub-chains, and every later event `202`
+// (spec/operational.md §4.3.3). A bus that took only `expected_status` as
+// success stopped every run at its first event. Configured exactly as
+// Conduit's compose stack configures this bus (its iron-monkey.json).
+describe("JunctionBoxBus.emit — the events door's answers", () => {
+  const conduitConfig: JunctionBoxBusConfig = {
+    type: 'junction-box',
+    url: 'http://conduit:8080',
+    events_path: '/api/v1/events',
+    health_check: false,
+    launch: false,
+    expected_status: 202,
+  };
+
+  /** Connects, then answers the next events POST with `status` and `body`. */
+  async function emitAnswered(status: number, body: unknown): Promise<void> {
+    const bus = new JunctionBoxBus('conduit', conduitConfig);
+    await bus.connect();
+    fetchMock.mockImplementationOnce(async () => mockResponse(status, body));
+    const payload = makePayload();
+    return bus.emit(payload.context.type, payload.context.id, payload);
+  }
+
+  it('takes 201 — the first event of a run — as success, and logs it at debug', async () => {
+    // The body the door answered on 2026-11-03 for platform-svc-release.
+    const created = {
+      accepted: true,
+      chainId: '02b7fe06-d4cd-4845-8a47-760593bcd4e0',
+      chains: {},
+      disposition: 'expected',
+      runId: '02b7fe06-d4cd-4845-8a47-760593bcd4e0',
+      treePath: 'p0',
+      workflowId: 'platform-svc-release',
+    };
+    const debug = vi.spyOn(getLogger(), 'debug');
+    const warn = vi.spyOn(getLogger(), 'warn');
+
+    // Resolves with the door's answer, which the runner logs at info.
+    await expect(emitAnswered(201, created)).resolves.toEqual({ status: 201 });
+
+    expect(debug).toHaveBeenCalledWith(
+      expect.objectContaining({ bus: 'conduit', status: 201 }),
+      'event POSTed',
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('takes 202 — any later event — as success', async () => {
+    await expect(emitAnswered(202, { accepted: true })).resolves.toEqual({ status: 202 });
+  });
+
+  it('still refuses a status that is neither 201 nor expected_status', async () => {
+    await expect(emitAnswered(200, {})).rejects.toThrow(
+      new Error('Junction Box /api/v1/events returned HTTP 200 (expected 202): {}'),
     );
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Manifest, ManifestEvent } from '../../src/manifest/types.js';
 
 // ── hoisted mock objects (must be defined before vi.mock factories run) ───────
@@ -11,7 +11,21 @@ const mockBus = vi.hoisted(() => ({
   disconnect: vi.fn().mockResolvedValue(undefined),
 }));
 
+// The runner builds its own logger, so the only way to read the line it writes
+// per event is to hand it this one.
+const fakeLogger = vi.hoisted(() => {
+  const logger: Record<string, unknown> = {};
+  for (const level of ['trace', 'debug', 'info', 'warn', 'error', 'fatal']) logger[level] = vi.fn();
+  logger.child = vi.fn(() => logger);
+  return logger;
+});
+
 // ── module mocks ──────────────────────────────────────────────────────────────
+
+vi.mock('../../src/logger/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/logger/index.js')>()),
+  createLogger: vi.fn(() => fakeLogger),
+}));
 
 vi.mock('../../src/config/loader.js', () => ({
   loadConfig: vi.fn(),
@@ -96,6 +110,13 @@ function makeManifest(events: ManifestEvent[]): Manifest {
     createdAt: new Date().toISOString(),
     events,
   };
+}
+
+/** The fields of every `event emitted` line the runner logged at info, in order. */
+function emittedLines(): Record<string, unknown>[] {
+  return (fakeLogger.info as Mock).mock.calls
+    .filter(([, message]) => message === 'event emitted')
+    .map(([fields]) => fields as Record<string, unknown>);
 }
 
 const baseConfig = {
@@ -254,6 +275,45 @@ describe('runWorkflow', () => {
       runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false }),
     ).rejects.toThrow('connection lost');
     expect(mockBus.disconnect).toHaveBeenCalled();
+  });
+
+  it("puts the receiver's status on each 'event emitted' line, at info", async () => {
+    // Conduit's events door answers a run's first event 201 and every later
+    // one 202. That status is the only evidence of which answer it gave, so it
+    // belongs in the line every log level prints, not only in a debug line.
+    const manifest = makeManifest([
+      makeEvent({ eventId: 'evt-1', isLast: false }),
+      makeEvent({ eventId: 'evt-2', workflowEventId: 'build-finished' }),
+    ]);
+    (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
+    (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
+    mockBus.emit.mockResolvedValueOnce({ status: 201 }).mockResolvedValueOnce({ status: 202 });
+
+    await runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false });
+
+    expect(emittedLines()).toEqual([
+      expect.objectContaining({ eventId: 'evt-1', status: 201 }),
+      expect.objectContaining({ eventId: 'evt-2', status: 202 }),
+    ]);
+  });
+
+  it('omits status when the bus has no answer to report (a broker, or a Bus that resolves nothing)', async () => {
+    const manifest = makeManifest([
+      makeEvent({ eventId: 'evt-1', isLast: false }),
+      makeEvent({ eventId: 'evt-2', workflowEventId: 'build-finished' }),
+    ]);
+    (buildManifest as ReturnType<typeof vi.fn>).mockResolvedValue(manifest);
+    (applyInjections as ReturnType<typeof vi.fn>).mockReturnValue(manifest);
+    mockBus.emit.mockResolvedValueOnce({}).mockResolvedValueOnce(undefined);
+
+    await runWorkflow(new FileWorkflowSource('workflow.yaml'), { conduit: false });
+
+    const lines = emittedLines();
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).toMatchObject({ chainId: 'chain-1', type: 'dev.cdevents.build.started.0.3.0' });
+      expect(line).not.toHaveProperty('status');
+    }
   });
 
   it('throws when the resolved bus name is not in config', async () => {

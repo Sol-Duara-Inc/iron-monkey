@@ -42,7 +42,8 @@ export interface KafkaBusConfig {
  * Connection settings for the Junction Box HTTP bus. Junction Box exposes a
  * REST API that mirrors the role of an AMQP broker — `POST /api/runs/register` activates a
  * workflow run and returns a `runId` that becomes the Proleptic chainId, and
- * `/api/events` accepts each individual CDEvent (responding 202 on accept).
+ * `/api/events` accepts each individual CDEvent (responding 202 on accept, or
+ * 201 for a run's first event).
  * This adapter is the Iron Monkey counterpart of the `fire-sequence.zsh`
  * reference script.
  */
@@ -68,7 +69,8 @@ export interface JunctionBoxBusConfig {
   events_path?: string;
   /**
    * HTTP status code expected from the events endpoint on successful publish.
-   * Default `202`.
+   * Default `202`. A `201` is always success as well: Conduit's door answers a
+   * run's first event `201 Created`.
    */
   expected_status?: number;
   /** Extra headers to attach to every request (e.g. authorization tokens). */

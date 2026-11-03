@@ -401,11 +401,20 @@ async function emitEvent(
   }
 
   try {
-    await bus.emit(event.type, event.eventId, event.payload);
+    const receipt = await bus.emit(event.type, event.eventId, event.payload);
     event.emitStatus = 'emitted';
     event.actualEmitTime = Date.now();
     logger.info(
-      { chainId, eventId: event.eventId, type: event.type, workflowEventId: event.workflowEventId },
+      {
+        chainId,
+        eventId: event.eventId,
+        type: event.type,
+        workflowEventId: event.workflowEventId,
+        // The receiver's answer, at info so it is in every log: the events door
+        // answers a run's first event 201 and every later one 202. Absent, not
+        // empty, on a broker bus — or a Bus that still resolves nothing.
+        ...(receipt?.status === undefined ? {} : { status: receipt.status }),
+      },
       'event emitted',
     );
   } catch (err) {

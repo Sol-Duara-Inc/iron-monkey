@@ -8,7 +8,8 @@
  *                               (used as the Proleptic chainId); also arms
  *                               the workflow graph and starts the first-event
  *                               breach timer
- * - `POST /api/events`       — publish a single CDEvent payload (expects 202)
+ * - `POST /api/events`       — publish a single CDEvent payload (expects 202,
+ *                               or 201 for a run's first event)
  * - `GET  /api/observatory`  — diagnostic: list active workflow runs
  *
  * This is the Iron Monkey counterpart to the `fire-sequence.zsh` reference
@@ -21,7 +22,7 @@ import { getLogger } from '../logger/index.js';
 import { registerBusShutdown } from './shutdown.js';
 import type { JunctionBoxBusConfig } from '../config/types.js';
 import type { CDEventPayload } from '../manifest/types.js';
-import type { Bus, BusInspectResult, BusPurgeOptions } from './interface.js';
+import type { Bus, BusInspectResult, BusPurgeOptions, EmitReceipt } from './interface.js';
 
 /**
  * Wraps a transport failure so it names the address it could not reach.
@@ -131,10 +132,14 @@ export class JunctionBoxBus implements Bus {
   }
 
   /**
-   * POSTs a single CDEvent payload to `/api/events`. Treats any HTTP status
-   * other than the configured `expected_status` (default 202) as a failure.
+   * POSTs a single CDEvent payload to `/api/events`. Success is `201` or the
+   * configured `expected_status` (default 202); any other status is a failure.
+   * Conduit's events door answers a run's FIRST event `201 Created` (with the
+   * chain it landed on and the unused sub-chains) and every later one `202`.
+   * Nothing is read from a `201` body: this bus's chain ids come from the
+   * handshake it already performed.
    */
-  async emit(eventType: string, eventId: string, payload: CDEventPayload): Promise<void> {
+  async emit(eventType: string, eventId: string, payload: CDEventPayload): Promise<EmitReceipt> {
     if (!this.connected) {
       throw new Error(`Junction Box bus '${this.name}' is not connected`);
     }
@@ -154,7 +159,7 @@ export class JunctionBoxBus implements Bus {
       `Junction Box bus '${this.name}'`,
     );
     const bodyText = await res.text();
-    if (res.status !== expected) {
+    if (res.status !== 201 && res.status !== expected) {
       logger.warn(
         {
           bus: this.name,
@@ -170,6 +175,7 @@ export class JunctionBoxBus implements Bus {
       );
     }
     logger.debug({ bus: this.name, eventId, eventType, status: res.status }, 'event POSTed');
+    return { status: res.status };
   }
 
   /** Calls `GET /api/observatory` and returns the parsed body for diagnostics. */
