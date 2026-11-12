@@ -192,7 +192,9 @@ iron-monkey version                   Print version and exit (also --version, -V
 ```
 --port <port>              Listen port (default 8137; 0 picks a free one)
 --host <host>              Bind address (default 127.0.0.1)
---token <token>            Require this bearer credential on every request
+--token <token>            Credential the tool's API requires (env IRON_MONKEY_TOKEN)
+--token-scheme <scheme>    bearer | basic | header:<Name> (env IRON_MONKEY_TOKEN_SCHEME)
+--login <login>            succeed | fail (env IRON_MONKEY_LOGIN)
 --config <path>            Default Iron Monkey config for triggered runs
 --bus <name>               Default bus for triggered runs
 --workflow-root <dir>      Restrict triggered workflows to paths inside this dir
@@ -264,6 +266,9 @@ GET    /api/executions        the retained records
 GET    /api/executions/{id}   the inquiry answer
 POST   /api/control/go-dark   stop answering: { "mode": "5xx"|"hang", "seconds": 30 }
 DELETE /api/control/go-dark   answer again
+GET    /api/control/login     the tool's login: { "login": "succeed"|"fail" }
+PUT    /api/control/login     set it, with the same body
+GET    /api/control/logins    the last 100 requests the login judged
 GET    /healthz               always answers, even while dark
 ```
 
@@ -276,8 +281,15 @@ curl -X POST localhost:8137/api/executions -H 'Content-Type: application/json' \
 `/healthz` and the control plane keep answering while dark on purpose — an
 endpoint you darkened and cannot restore is a wedged rig. `run --serve` has no
 control plane: it answers about its own run and nothing more. Use
-`--workflow-root` to confine triggered workflow paths, and `--token` to require
-a bearer credential.
+`--workflow-root` to confine triggered workflow paths.
+
+Only the tool's API (`GET` and `HEAD` on `/api/executions` and
+`/api/executions/{id}`) meets the daemon's login; the bench never asks for a
+credential. `--token`, `--token-scheme` (`bearer`, `basic`, `header:<Name>`)
+and `--login` (`succeed`, `fail`), or `IRON_MONKEY_TOKEN`,
+`IRON_MONKEY_TOKEN_SCHEME` and `IRON_MONKEY_LOGIN`, set it. A refusal is `401`
+with a `reason`; `/api/control/login` switches the login, and
+`/api/control/logins` shows the form each request presented, never its value.
 
 Records are kept for the current run plus the last nine — but that count is a
 floor, not a cap: a record still inside its inquiry window is never evicted. An
@@ -560,9 +572,9 @@ repository is edited for it:
   of the tool `iron-monkey` in the stack's config, which the `im-callback`
   plugin asks when a coordinate's clock expires.
 
-Port 9099 is published on the host's loopback only, because the daemon runs
-without `--token` and its control plane starts runs. A run is started from the
-host:
+Port 9099 is published on the host's loopback only, because the daemon's
+control plane starts runs and never asks for a credential. A run is started
+from the host:
 
 ```bash
 curl -s -X POST -H 'Content-Type: application/json' \
