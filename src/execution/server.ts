@@ -23,11 +23,19 @@
  * never holds the process open by itself. Shutdown closes keep-alive sockets
  * explicitly — `server.close()` alone waits for held connections, which turns
  * "shut down" into "shut down eventually".
+ *
+ * **The tool's API sits behind a login; the bench does not.** `GET` and
+ * `HEAD` on `/api/executions` and `/api/executions/{id}` are the mocked tool's
+ * API, and meet its login (`./login.ts`). The bench the person at the machine
+ * drives never asks for a credential, as it stays reachable while dark. A
+ * producer that is down never reads a credential, so darkness answers first.
  */
 
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { getLogger } from '../logger/index.js';
+import { judgeLogin, loginChallenge, LOGIN_RECORD_SIZE } from './login.js';
+import type { LoginRecordEntry, LoginSetting, TokenScheme } from './login.js';
 import { projectExecution, deriveStatus } from './projection.js';
 import type { ExecutionStore } from './store.js';
 
@@ -86,10 +94,14 @@ export interface InquiryServerOptions {
    */
   host?: string;
   /**
-   * Operator-configured bearer credential. When unset, requests are accepted
-   * unauthenticated (dev default, paired with the loopback bind).
+   * The credential a caller of the tool's API must present; unset or empty,
+   * it takes none (dev default, paired with the loopback bind). Never the bench's.
    */
   token?: string;
+  /** How the credential is presented. Defaults to `bearer`. */
+  tokenScheme?: TokenScheme;
+  /** The login at start, `succeed` by default; the control plane can switch it. */
+  login?: LoginSetting;
   /** Quiet window before self-shutdown; `0` disables it entirely. */
   idleTimeoutMs?: number;
   /** Invoked after an idle shutdown, so a command can exit cleanly. */
@@ -166,6 +178,12 @@ export async function startInquiryServer(opts: InquiryServerOptions): Promise<In
   /** Epoch ms until which inquiries are darkened; 0 = lit. */
   let darkUntil = 0;
   let darkMode: DarkMode = '5xx';
+  /** The login in force; the control plane can switch it. */
+  let login: LoginSetting = opts.login ?? 'succeed';
+  const tokenScheme: TokenScheme = opts.tokenScheme ?? 'bearer';
+  const challenge = loginChallenge(opts.token, tokenScheme);
+  /** The last LOGIN_RECORD_SIZE requests the login judged, oldest first. */
+  const logins: LoginRecordEntry[] = [];
 
   const isDark = (): boolean => darkUntil > Date.now();
 
@@ -185,15 +203,28 @@ export async function startInquiryServer(opts: InquiryServerOptions): Promise<In
     const url = new URL(req.url ?? '/', `http://${host}`);
     const route = url.pathname;
     const method = req.method ?? 'GET';
+    // Read once: the login and the dark answer below must agree on it.
+    const dark = isDark();
+    const toolApi =
+      (method === 'GET' || method === 'HEAD') &&
+      (route === '/api/executions' || route.startsWith('/api/executions/'));
+    // Only the tool's API meets the login, and only while it is lit.
+    const verdict =
+      toolApi && !dark
+        ? judgeLogin(req.headers, { token: opts.token, tokenScheme, login })
+        : undefined;
 
     // Logged verbatim so the bench can assert the runner identity arrived.
     // IM RECORDS this header; IM cannot verify it — it is inbound data, not
     // an authentication IM performs (docs/EXECUTION-INQUIRY.md §2).
-    logger.info({ method, route, onBehalfOf }, 'inquiry request');
+    logger.info({ method, route, onBehalfOf, ...verdict }, 'inquiry request');
 
-    if (opts.token !== undefined && opts.token !== '') {
-      if (req.headers.authorization !== `Bearer ${opts.token}`) {
-        json(res, 401, { error: 'unauthorized' });
+    if (verdict !== undefined) {
+      logins.push({ at: new Date().toISOString(), method, route, ...verdict });
+      if (logins.length > LOGIN_RECORD_SIZE) logins.shift();
+      if (verdict.outcome === 'refused') {
+        if (challenge !== undefined) res.setHeader('WWW-Authenticate', challenge);
+        json(res, 401, { error: 'unauthorized', reason: verdict.reason });
         return;
       }
     }
@@ -233,6 +264,32 @@ export async function startInquiryServer(opts: InquiryServerOptions): Promise<In
           return;
         }
       }
+      if (route === '/api/control/login') {
+        if (method === 'GET') {
+          json(res, 200, { login });
+          return;
+        }
+        if (method === 'PUT') {
+          let body: Record<string, unknown> = {};
+          try {
+            body = await readJson(req);
+          } catch {
+            // An unreadable body is refused below, as any other wrong body is.
+          }
+          if (body.login !== 'succeed' && body.login !== 'fail') {
+            json(res, 400, { error: `field 'login' must be "succeed" or "fail"` });
+            return;
+          }
+          login = body.login;
+          logger.warn({ login }, 'login set');
+          json(res, 200, { login });
+          return;
+        }
+      }
+      if (route === '/api/control/logins' && method === 'GET') {
+        json(res, 200, { logins });
+        return;
+      }
       json(res, 404, { error: 'unknown control route', route });
       return;
     }
@@ -251,7 +308,7 @@ export async function startInquiryServer(opts: InquiryServerOptions): Promise<In
       return;
     }
 
-    if (route.startsWith('/api/executions') && isDark()) {
+    if (route.startsWith('/api/executions') && dark) {
       if (darkMode === 'hang') {
         // Deliberately no response: the plugin's "endpoint hangs" row, which
         // exercises its ≤5-minute retry budget rather than a fast failure.
