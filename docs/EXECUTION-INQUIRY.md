@@ -125,7 +125,7 @@ fiction into the record. Only `withheld` is backfillable.
 | `200`       | record found                                |
 | `404`       | no execution by that id was ever known      |
 | `410`       | known, but the record aged out of retention |
-| `401`/`403` | credential configured and missing/wrong     |
+| `401`       | the tool's login refused it (see Auth)      |
 
 `404` and `410` are **answers**, not silence — distinct from the "endpoint
 down / hangs" row of the plugin's table. See finding F5 for what `410` should
@@ -149,6 +149,7 @@ control plane.
 
 ```
 iron-monkey serve [--port 8137] [--host 127.0.0.1] [--token T]
+                  [--token-scheme bearer|basic|header:<Name>] [--login succeed|fail]
                   [--config im.yaml] [--bus default]
                   [--workflow-root DIR] [--idle-timeout MS]
 ```
@@ -160,6 +161,9 @@ iron-monkey serve [--port 8137] [--host 127.0.0.1] [--token T]
 | `GET /api/executions/{id}`    | the inquiry answer                              |
 | `POST /api/control/go-dark`   | stop answering: `{mode:"5xx"\|"hang", seconds}` |
 | `DELETE /api/control/go-dark` | answer again                                    |
+| `GET /api/control/login`      | the login: `{"login":"succeed"\|"fail"}`        |
+| `PUT /api/control/login`      | set it, with the same body                      |
+| `GET /api/control/logins`     | the last 100 requests the login judged          |
 | `GET /healthz`                | always answers, even while dark                 |
 
 The trigger body takes `workflow` (required), plus `config`, `bus`, `inject`,
@@ -191,8 +195,34 @@ callback.
 
 ### Auth
 
-An operator-configured bearer credential is accepted when set; when unset the
-server binds loopback only and accepts unauthenticated requests (dev default).
+IM mocks a tool behind a login. Only the tool's API meets it: `GET` and `HEAD`
+on `/api/executions` and `/api/executions/{id}`. The bench (`/healthz`, every
+`/api/control/` route, `POST /api/executions`, `GET /api/catalog`) never asks
+for a credential.
+
+`serve` takes `--token`, `--token-scheme` and `--login`, or else
+`IRON_MONKEY_TOKEN`, `IRON_MONKEY_TOKEN_SCHEME` and `IRON_MONKEY_LOGIN`. No
+token: the tool's API takes none. `bearer` (default) takes
+`Authorization: Bearer <token>`; `basic`, `Authorization: Basic` with base64 of
+the token, written `user:secret`; `header:<Name>`, the token bare under that
+header. The login is `succeed` (default) or `fail`. Any other value stops
+`serve` before it listens.
+
+A refusal is `401` with `{"error":"unauthorized","reason":"<reason>"}`, and,
+with a token set, `WWW-Authenticate` for `bearer` and `basic`. The reason is
+`this tool's login is set to fail` at `fail`, as a tool answers a revoked or
+expired credential; else `no credential was presented`, or
+`the credential presented is not the one this tool takes`. A darkened endpoint
+answers dark first. The token is never written to a log, a body or the record.
+
+`PUT /api/control/login` with `{"login":"fail"}` or `{"login":"succeed"}`
+switches the login until a restart. `GET /api/control/logins` answers the last
+100 judged requests, oldest first, each with `at`, `method`, `route`,
+`presented` (the form, never the value: `header:<Name>`, `bearer`, `basic`,
+`token`, `authorization` or `none`), `outcome` and, on a refusal, `reason`.
+`run --serve` and `pitch --serve` keep `--inquiry-token`, a bearer token for
+the tool's API only.
+
 `X-Conduit-On-Behalf-Of` is logged verbatim on every request so the bench can
 assert the runner identity arrived.
 

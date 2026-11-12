@@ -17,14 +17,26 @@ import type { LogLevel, LogFormat } from '../../logger/index.js';
  *   GET    /api/executions/{id}     the inquiry answer
  *   POST   /api/control/go-dark     stop answering inquiries (5xx or hang)
  *   DELETE /api/control/go-dark     answer again
+ *   GET    /api/control/login       whether the tool's login succeeds or fails
+ *   PUT    /api/control/login       set it: { "login": "succeed" | "fail" }
+ *   GET    /api/control/logins      the last 100 requests the login judged
  *   GET    /healthz                 always answers, even while dark
+ *
+ * Only the two GET routes on /api/executions (and HEAD on them) meet the
+ * login that --token, --token-scheme and --login set; every other route is
+ * the bench and takes no credential.
  */
 export function serveCommand(): Command {
   const cmd = new Command('serve')
     .description('run the daemon: trigger runs and answer Conduit expiry inquiries')
     .option('--port <port>', 'listen port (default 8137; 0 picks a free one)', parseInt)
     .option('--host <host>', 'bind address (default 127.0.0.1)')
-    .option('--token <token>', 'require this bearer credential on every request')
+    .option('--token <token>', "credential the tool's API requires (env IRON_MONKEY_TOKEN)")
+    .option(
+      '--token-scheme <scheme>',
+      'bearer | basic | header:<Name> (env IRON_MONKEY_TOKEN_SCHEME)',
+    )
+    .option('--login <login>', 'succeed | fail (env IRON_MONKEY_LOGIN)')
     .option('--config <path>', 'default Iron Monkey config for triggered runs')
     .option('--bus <name>', 'default bus for triggered runs')
     .option('--workflow-root <dir>', 'restrict triggered workflows to paths inside this directory')
@@ -38,6 +50,16 @@ export function serveCommand(): Command {
     .option('--log-format <fmt>', 'json | text', 'json');
 
   cmd.action(async (options: Record<string, unknown>) => {
+    // First, so a bad setting stops the daemon before it listens.
+    const { resolveLoginSettings } = await import('../../execution/login.js');
+    const login = resolveLoginSettings(
+      {
+        token: options.token as string | undefined,
+        tokenScheme: options.tokenScheme as string | undefined,
+        login: options.login as string | undefined,
+      },
+      process.env,
+    );
     const { createLogger, setLogger } = await import('../../logger/index.js');
     const { getExecutionStore } = await import('../../execution/store.js');
     const { startInquiryServer } = await import('../../execution/server.js');
@@ -60,7 +82,9 @@ export function serveCommand(): Command {
       store: getExecutionStore(),
       port: (options.port as number | undefined) ?? 8137,
       host: options.host as string | undefined,
-      token: options.token as string | undefined,
+      token: login.token,
+      tokenScheme: login.tokenScheme,
+      login: login.login,
       idleTimeoutMs: options.idleTimeout as number | undefined,
       catalogDir: catalogRoot.dir,
       onIdleShutdown: () => resolveIdle(),
