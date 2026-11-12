@@ -142,7 +142,7 @@ iron-monkey inspect <bus-name>        Show queue/topic depth and bindings
 iron-monkey purge <bus-name>          Drain a queue / reset a topic (--confirm required)
 iron-monkey serve                     Run the daemon: trigger runs over HTTP and answer
                                       Conduit's expiry inquiries
-iron-monkey version                   Print version and exit
+iron-monkey version                   Print version and exit (also --version, -V)
 ```
 
 ### Common flags (`run` and `dry-run`)
