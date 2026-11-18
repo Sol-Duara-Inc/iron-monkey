@@ -292,22 +292,34 @@ describe('synthesize — non-commons event types fill every declared field', () 
     const result = synthesize(undefined, schema, layeredCtx);
     expect('repository' in result.content).toBe(true);
     expect('reviewer' in result.content).toBe(true);
+    const pairs = Object.keys(result.content.repository as Record<string, unknown>).map(
+      (key) => `/subject/content/repository/${key}`,
+    );
     expect(result.synthesized).toEqual([
+      ...pairs,
       '/subject/content/repository',
       '/subject/content/reviewer',
     ]);
   });
 
-  // 2. An object field with no declared properties becomes an empty object.
-  it('fills an object field with no declared properties as {}', () => {
+  // 2. An object field with no declared properties carries three pairs.
+  it('fills an object field with no declared properties with a string, a number and a boolean', () => {
     const schema = wrap({
       type: 'object',
       properties: { repository: { type: 'object' }, reviewer: { type: 'string' } },
       required: [],
     });
     const result = synthesize(undefined, schema, layeredCtx);
-    expect(result.content.repository).toEqual({});
-    expect('repository' in result.content).toBe(true); // key presence, not truthiness
+    const repository = result.content.repository as Record<string, unknown>;
+    const keys = Object.keys(repository);
+    expect(keys).toHaveLength(3);
+    expect(keys[0]).toMatch(/^text-[0-9a-z]{6}$/);
+    expect(keys[1]).toMatch(/^number-[0-9a-z]{6}$/);
+    expect(keys[2]).toMatch(/^flag-[0-9a-z]{6}$/);
+    expect(repository[keys[0]]).toMatch(/^synth-repository-[0-9a-z]{6}$/);
+    expect(typeof repository[keys[1]]).toBe('number');
+    expect(Number.isFinite(repository[keys[1]])).toBe(true);
+    expect(typeof repository[keys[2]]).toBe('boolean');
   });
 
   // 3. A declared-but-unrequired field stays absent for a commons type.
@@ -503,5 +515,139 @@ describe('synthesize — integration with real CDEvent schemas', () => {
     };
     expect(validateEvent(payload, schema).valid).toBe(true);
     expect('repository' in result.content && 'reviewer' in result.content).toBe(true);
+  });
+});
+
+describe('synthesize — no synthesized object is sent empty', () => {
+  // Iron Monkey stands in for the platform engineer, whose objects carry data:
+  // an empty object is read differently from one with data.
+  const layeredCtx: SynthContext = {
+    ...baseCtx,
+    eventType: 'com.saronis.platform.svc.service.deployed.0.1.0',
+  };
+  const openObject = wrap({
+    type: 'object',
+    properties: { environment: { type: 'object' } },
+    required: [],
+  });
+
+  it('derives the pairs from the chain, the type and the pointer', () => {
+    const a = synthesize(undefined, openObject, layeredCtx);
+    const b = synthesize(undefined, openObject, layeredCtx);
+    expect(a.content).toEqual(b.content);
+    const other = synthesize(undefined, openObject, { ...layeredCtx, chainId: 'chain-fixed-2' });
+    expect(Object.keys(other.content.environment as object)).not.toEqual(
+      Object.keys(a.content.environment as object),
+    );
+  });
+
+  it('chooses an integer or a float for the number', () => {
+    const numbers: number[] = [];
+    for (let i = 0; i < 40; i++) {
+      const result = synthesize(undefined, openObject, { ...layeredCtx, chainId: `chain-${i}` });
+      const environment = result.content.environment as Record<string, unknown>;
+      numbers.push(environment[Object.keys(environment)[1]] as number);
+    }
+    expect(numbers.every((n) => Number.isFinite(n))).toBe(true);
+    expect(numbers.some((n) => Number.isInteger(n))).toBe(true);
+    expect(numbers.some((n) => !Number.isInteger(n))).toBe(true);
+  });
+
+  it('records each pair as synthesized', () => {
+    const result = synthesize(undefined, openObject, layeredCtx);
+    for (const key of Object.keys(result.content.environment as object)) {
+      expect(result.synthesized).toContain(`/subject/content/environment/${key}`);
+    }
+    expect(result.synthesized).toContain('/subject/content/environment');
+  });
+
+  it('fills every declared member of an object that requires none', () => {
+    const schema = wrap({
+      type: 'object',
+      properties: {
+        trigger: {
+          type: 'object',
+          properties: { type: { type: 'string' }, uri: { type: 'string', format: 'uri' } },
+        },
+      },
+      required: [],
+    });
+    const result = synthesize(undefined, schema, layeredCtx);
+    const trigger = result.content.trigger as Record<string, unknown>;
+    expect(Object.keys(trigger)).toEqual(['type', 'uri']);
+    expect(trigger.type).toMatch(/^synth-type-/);
+    expect(trigger.uri).toMatch(/^https:\/\/jenkins\.example\.com\/synth\/uri\//);
+    expect(result.synthesized).toContain('/subject/content/trigger/type');
+    expect(result.synthesized).toContain('/subject/content/trigger/uri');
+  });
+
+  it('keeps {} for an object whose schema declares no member and forbids any other key', () => {
+    const schema = wrap({
+      type: 'object',
+      properties: { sealed: { type: 'object', additionalProperties: false } },
+      required: [],
+    });
+    const result = synthesize(undefined, schema, layeredCtx);
+    expect(result.content.sealed).toEqual({});
+  });
+
+  it('never fills an object the workflow supplied, even an empty one', () => {
+    const result = synthesize({ environment: {} }, openObject, layeredCtx);
+    expect(result.content.environment).toEqual({});
+    expect(result.synthesized).toEqual([]);
+  });
+
+  it('fills a member-less object nested inside a required object', () => {
+    const schema = wrap({
+      type: 'object',
+      required: ['environment'],
+      properties: {
+        environment: {
+          type: 'object',
+          required: ['labels'],
+          properties: { labels: { type: 'object' } },
+        },
+      },
+    });
+    const result = synthesize({}, schema, baseCtx); // a commons type
+    const labels = (result.content.environment as Record<string, unknown>).labels as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(labels)).toHaveLength(3);
+    expect(Object.values(labels).map((v) => typeof v)).toEqual(['string', 'number', 'boolean']);
+  });
+
+  it('sends no empty object below the content, and stays valid, for every shipped schema', async () => {
+    const schemas = await loadSchemas();
+    const empties: string[] = [];
+    const find = (value: unknown, pointer: string, type: string): void => {
+      if (Array.isArray(value)) {
+        value.forEach((item, i) => find(item, `${pointer}/${i}`, type));
+        return;
+      }
+      if (value === null || typeof value !== 'object') return;
+      const keys = Object.keys(value);
+      if (keys.length === 0 && pointer !== '/subject/content') empties.push(`${type} ${pointer}`);
+      for (const key of keys)
+        find((value as Record<string, unknown>)[key], `${pointer}/${key}`, type);
+    };
+    for (const [eventType, schema] of schemas) {
+      const result = synthesize({}, schema, { ...baseCtx, eventType });
+      find(result.content, '/subject/content', eventType);
+      const payload = {
+        context: {
+          specversion: '0.6.0-draft',
+          id: '44444444-4444-4444-8444-444444444444',
+          source: baseCtx.toolSource,
+          type: eventType,
+          timestamp: baseCtx.timestamp,
+          chainId: baseCtx.chainId,
+        },
+        subject: { id: baseCtx.subjectId, content: result.content },
+      };
+      expect(validateEvent(payload, schema).valid, eventType).toBe(true);
+    }
+    expect(empties).toEqual([]);
   });
 });

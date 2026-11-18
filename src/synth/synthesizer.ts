@@ -21,6 +21,13 @@
  *   own `required` — Conduit's obligation is on top-level content keys alone.
  * - Synthesis is deterministic for a given `chainId + eventType + JSON pointer`
  *   so repeat runs with the same seed produce the same payloads.
+ * - No synthesized object is empty. Iron Monkey stands in for the platform
+ *   engineer, whose objects carry data, and an empty object is read
+ *   differently from one with data. An object whose schema declares members
+ *   but requires none gets every declared member; an object whose schema
+ *   declares none gets three pairs: a string, a number and a boolean. Only a
+ *   schema that declares no members and forbids any other key keeps `{}`,
+ *   because nothing else is valid there.
  */
 
 export interface SynthContext {
@@ -58,6 +65,7 @@ interface JSONSchema {
   minimum?: number;
   minItems?: number;
   minLength?: number;
+  additionalProperties?: boolean | JSONSchema;
 }
 
 /**
@@ -160,8 +168,12 @@ function generate(
   const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
 
   switch (type) {
-    case 'object':
-      return walkObject({}, schema, pointer, ctx, synthesized);
+    case 'object': {
+      const filled = walkObject({}, schema, pointer, ctx, synthesized);
+      return Object.keys(filled).length > 0
+        ? filled
+        : fillEmptyObject(schema, fieldName, pointer, ctx, synthesized);
+    }
     case 'array': {
       const min = schema.minItems ?? 0;
       if (min === 0 || !schema.items) return [];
@@ -180,6 +192,57 @@ function generate(
     default:
       return generateString(schema, fieldName, pointer, ctx);
   }
+}
+
+/**
+ * Fills an object that would otherwise be sent empty: the object at `pointer`,
+ * named `fieldName`, whose schema requires no member.
+ *
+ * - Members declared: every declared member, each filled by its own type.
+ * - No members declared: three pairs under keys derived from the pointer, a
+ *   string, a number (an integer or a float, chosen by the hash) and a
+ *   boolean, in that order. Every key and value is derived from
+ *   `(chainId, eventType, pointer)` like every other synthesized value.
+ * - No members declared and `additionalProperties: false`: `{}`.
+ *
+ * Every filled member's pointer is recorded in `synthesized`.
+ */
+function fillEmptyObject(
+  schema: JSONSchema,
+  fieldName: string,
+  pointer: string,
+  ctx: SynthContext,
+  synthesized: string[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const props = schema.properties ?? {};
+  const declared = Object.keys(props).sort();
+  if (declared.length > 0) {
+    for (const key of declared) {
+      const childPointer = `${pointer}/${key}`;
+      out[key] = generate(props[key], key, childPointer, ctx, synthesized);
+      synthesized.push(childPointer);
+    }
+    return out;
+  }
+  if (schema.additionalProperties === false) return out;
+
+  const textKey = `text-${shortHash(ctx, `${pointer}#text`)}`;
+  const numberKey = `number-${shortHash(ctx, `${pointer}#number`)}`;
+  const flagKey = `flag-${shortHash(ctx, `${pointer}#flag`)}`;
+  const numberSeed = parseInt(shortHash(ctx, `${pointer}/${numberKey}`), 36);
+  const flagSeed = parseInt(shortHash(ctx, `${pointer}/${flagKey}`), 36);
+
+  out[textKey] = `synth-${slugify(fieldName)}-${shortHash(ctx, `${pointer}/${textKey}`)}`;
+  out[numberKey] =
+    numberSeed % 2 === 0
+      ? numberSeed % 1000
+      : Number(`${numberSeed % 1000}.${(numberSeed % 89) + 10}`);
+  out[flagKey] = flagSeed % 2 === 0;
+  for (const key of [textKey, numberKey, flagKey]) {
+    synthesized.push(`${pointer}/${key}`);
+  }
+  return out;
 }
 
 function generateString(
